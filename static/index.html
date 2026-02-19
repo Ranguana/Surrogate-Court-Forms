@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NY Surrogate's Court — Probate Assistant</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --gold: #7a5c1e;
+  --gold-mid: #b8922a;
+  --gold-light: #d4a843;
+  --gold-bg: #fdf8ee;
+  --gold-border: #e8d098;
+  --bg: #f4f1eb;
+  --surface: #ffffff;
+  --surface2: #faf8f3;
+  --border: #ddd5c0;
+  --border-strong: #c9b87a;
+  --text: #1e1a12;
+  --text2: #5a4e35;
+  --text3: #9a8c6e;
+  --green: #2d6a4f;
+  --green-bg: #eaf5ef;
+  --green-border: #9fd4b8;
+  --red: #8b2020;
+  --red-bg: #fdf0f0;
+  --red-border: #e8a0a0;
+  --blue: #1a3f6e;
+  --blue-bg: #eef3fb;
+  --blue-border: #a8c4e8;
+  --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.55;
+}
+
+/* ── HEADER ── */
+#header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--gold-border);
+  padding: 11px 20px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  box-shadow: var(--shadow);
+  position: sticky; top: 0; z-index: 50;
+}
+#header h1 { font-size: 17px; font-weight: normal; color: var(--gold); display: flex; align-items: center; gap: 9px; }
+#header h1 .sub { font-size: 11px; color: var(--text3); border-left: 1px solid var(--border); padding-left: 9px; font-family: Arial, sans-serif; text-transform: uppercase; letter-spacing: .08em; font-weight: normal; }
+#estate-label { font-size: 12px; color: var(--text2); margin-top: 2px; font-style: italic; }
+.hbtns { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+
+/* ── BUTTONS ── */
+.btn { padding: 7px 15px; border-radius: 5px; cursor: pointer; font-family: Georgia, serif; font-size: 14px; transition: all .14s; border: 1px solid transparent; line-height: 1.3; }
+.btn:hover { opacity: .87; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--gold); color: #fff; border-color: var(--gold); font-weight: bold; }
+.btn-primary:hover { background: #6a4e1a; opacity: 1; }
+.btn-outline { background: transparent; color: var(--gold); border-color: var(--gold-border); }
+.btn-outline:hover { background: var(--gold-bg); opacity: 1; }
+.btn-sm { padding: 4px 10px; font-size: 13px; }
+.btn-danger { background: transparent; color: var(--red); border-color: var(--red-border); }
+.btn-danger:hover { background: var(--red-bg); opacity: 1; }
+
+/* ── STATUS BAR ── */
+#status-bar { padding: 8px 20px; font-size: 14px; display: none; font-family: Arial, sans-serif; }
+#status-bar.ok  { background: var(--green-bg); color: var(--green); border-bottom: 1px solid var(--green-border); display: block; }
+#status-bar.err { background: var(--red-bg);   color: var(--red);   border-bottom: 1px solid var(--red-border);   display: block; }
+#status-bar.info{ background: var(--blue-bg);  color: var(--blue);  border-bottom: 1px solid var(--blue-border);  display: block; }
+
+/* ── INTAKE PANEL ── */
+#intake-panel { background: var(--blue-bg); border-bottom: 1px solid var(--blue-border); padding: 14px 20px; display: none; }
+#intake-panel.open { display: block; }
+.intake-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.intake-row .intake-label { font-size: 14px; color: var(--blue); margin-bottom: 8px; font-family: Arial, sans-serif; font-weight: bold; }
+
+.upload-zone {
+  flex: 0 0 200px; border: 2px dashed var(--blue-border); border-radius: 8px;
+  padding: 16px 14px; text-align: center; cursor: pointer;
+  background: rgba(255,255,255,.6); transition: all .14s;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: rgba(255,255,255,.9); }
+.upload-zone input { display: none; }
+.uz-icon { font-size: 26px; margin-bottom: 5px; }
+.uz-text { font-size: 12px; color: var(--blue); font-family: Arial, sans-serif; line-height: 1.4; }
+#file-name { font-size: 12px; color: var(--gold); margin-top: 4px; font-family: Arial, sans-serif; word-break: break-all; }
+
+.paste-area { flex: 1; min-width: 240px; }
+.paste-area textarea {
+  width: 100%; background: rgba(255,255,255,.75); border: 1px solid var(--blue-border);
+  border-radius: 5px; padding: 9px 11px; font-family: monospace; font-size: 13px;
+  color: var(--text); resize: vertical; outline: none;
+}
+.paste-area textarea:focus { border-color: var(--blue); background: #fff; }
+.parse-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+#ai-msg { font-size: 13px; font-family: Arial, sans-serif; }
+
+/* ── LAYOUT ── */
+#main { display: flex; flex: 1; min-height: 0; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width: 185px; flex-shrink: 0; background: var(--surface);
+  border-right: 1px solid var(--border); padding-top: 14px; overflow-y: auto;
+}
+.nav-section { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .1em; padding: 12px 15px 4px; font-family: Arial, sans-serif; font-weight: bold; }
+.nav-btn {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 9px 15px; background: transparent; border: none; border-left: 3px solid transparent;
+  color: var(--text2); cursor: pointer; font-family: Georgia, serif; font-size: 14px; text-align: left; transition: all .12s;
+}
+.nav-btn:hover { color: var(--gold); background: var(--gold-bg); }
+.nav-btn.active { background: var(--gold-bg); border-left-color: var(--gold); color: var(--gold); font-weight: bold; }
+
+/* ── FORM AREA ── */
+#form-area { flex: 1; padding: 22px 26px; overflow-y: auto; }
+#form-area h2 { font-size: 18px; font-weight: normal; color: var(--gold); margin-bottom: 4px; }
+.divider { height: 1px; background: var(--gold-border); margin-bottom: 18px; opacity: .6; }
+.section { display: none; max-width: 740px; }
+.section.active { display: block; }
+
+/* ── FORM FIELDS ── */
+.field { margin-bottom: 13px; }
+.field label {
+  display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px;
+  text-transform: uppercase; letter-spacing: .05em; font-family: Arial, sans-serif; font-weight: bold;
+}
+.field label .req { color: var(--gold-mid); }
+.field input, .field select, .field textarea {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 5px; padding: 8px 11px; color: var(--text); font-size: 15px;
+  outline: none; font-family: Georgia, serif; transition: border-color .12s;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px rgba(212,168,67,.18);
+}
+.field select option { background: #fff; color: var(--text); }
+.field textarea { resize: vertical; }
+.field .hint { font-size: 12px; color: var(--text3); margin-top: 3px; font-family: Arial, sans-serif; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
+.grid4 { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0 16px; }
+.sub-head {
+  font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em;
+  border-top: 1px solid var(--border); padding-top: 13px; margin-bottom: 11px; margin-top: 6px;
+  font-family: Arial, sans-serif; font-weight: bold;
+}
+
+/* ── CHECKBOXES ── */
+.check-group { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 12px 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.check-item { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; cursor: pointer; user-select: none; }
+.check-item:last-child { margin-bottom: 0; }
+.cbox { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; border: 2px solid var(--border-strong); background: var(--surface); display: flex; align-items: center; justify-content: center; transition: all .12s; }
+.cbox.on { border-color: var(--gold); background: var(--gold); }
+.cbox .tick { color: #fff; font-size: 11px; display: none; }
+.cbox.on .tick { display: block; }
+.clabel { font-size: 14px; color: var(--text); }
+.clabel small { font-size: 12px; color: var(--text3); }
+
+/* ── PROCEEDING TYPE ── */
+.proc-banner { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: var(--shadow); }
+.proc-banner h3 { font-size: 15px; color: var(--text); margin-bottom: 12px; font-weight: normal; }
+.proc-options { display: flex; gap: 10px; flex-wrap: wrap; }
+.proc-btn {
+  padding: 11px 18px; border-radius: 7px; cursor: pointer; font-family: Georgia, serif;
+  font-size: 14px; border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text2); transition: all .14s; text-align: center; min-width: 145px;
+}
+.proc-btn small { display: block; font-size: 12px; color: var(--text3); margin-top: 2px; }
+.proc-btn:hover { border-color: var(--gold-border); color: var(--gold); background: var(--gold-bg); }
+.proc-btn.selected { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); font-weight: bold; box-shadow: 0 0 0 2px rgba(184,146,42,.2); }
+
+/* ── FAMILY TREE WIZARD ── */
+.ftw { background: var(--surface); border: 1px solid var(--gold-border); border-radius: 8px; padding: 18px; margin-bottom: 18px; box-shadow: var(--shadow); }
+.ftw-title { font-size: 14px; color: var(--gold); margin-bottom: 14px; font-weight: bold; }
+.ftw-step { padding: 13px 0; border-bottom: 1px solid var(--border); }
+.ftw-step:last-child { border-bottom: none; padding-bottom: 0; }
+.ftw-step:first-child { padding-top: 0; }
+.ftw-q { font-size: 15px; color: var(--text); margin-bottom: 4px; font-weight: bold; }
+.ftw-desc { font-size: 12px; color: var(--text3); margin-bottom: 10px; font-family: Arial, sans-serif; }
+.ftw-opts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ftw-opt {
+  padding: 7px 18px; border-radius: 5px; cursor: pointer; font-family: Georgia, serif;
+  font-size: 14px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); transition: all .12s;
+}
+.ftw-opt:hover { border-color: var(--gold-border); }
+.ftw-opt.sel-yes { border-color: var(--green); color: var(--green); background: var(--green-bg); font-weight: bold; }
+.ftw-opt.sel-no  { border-color: #c07050; color: #7a3820; background: #fdf5f0; font-weight: bold; }
+.ftw-clear { font-size: 12px; color: var(--text3); cursor: pointer; text-decoration: underline; font-family: Arial, sans-serif; background: none; border: none; }
+.ftw-result { background: var(--green-bg); border: 1px solid var(--green-border); border-radius: 6px; padding: 9px 12px; margin-top: 10px; font-size: 14px; color: var(--green); font-family: Arial, sans-serif; }
+
+/* ── DISTRIBUTEE CARDS ── */
+.dist-card { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 14px; margin-bottom: 11px; box-shadow: var(--shadow); }
+.dist-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 11px; }
+.dist-num { font-size: 13px; color: var(--gold); font-family: Arial, sans-serif; font-weight: bold; }
+.disp-row { display: flex; gap: 7px; margin-top: 9px; align-items: center; flex-wrap: wrap; }
+.disp-label { font-size: 12px; color: var(--text3); font-family: Arial, sans-serif; margin-right: 2px; }
+.disp-btn { padding: 5px 13px; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; font-size: 13px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); transition: all .12s; }
+.disp-btn.waiver  { border-color: var(--green); color: var(--green); background: var(--green-bg); font-weight: bold; }
+.disp-btn.citation{ border-color: #c07050; color: #7a3820; background: #fdf5f0; font-weight: bold; }
+.disp-btn.tbd     { border-color: #b0a090; color: var(--text3); }
+
+/* ── SUMMARY PANEL ── */
+#summary { width: 215px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); padding: 15px 13px; overflow-y: auto; }
+.sum-title { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; font-family: Arial, sans-serif; font-weight: bold; }
+#sum-content { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 11px 12px; margin-bottom: 14px; }
+.sum-row { margin-bottom: 7px; }
+.sum-k { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .05em; font-family: Arial, sans-serif; }
+.sum-v { font-size: 13px; color: var(--text2); line-height: 1.3; }
+.doc-list { margin-bottom: 12px; }
+.doc-item { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 5px; font-size: 13px; color: var(--text3); font-family: Arial, sans-serif; }
+.doc-item.on { color: var(--green); }
+.doc-item .dot { margin-top: 2px; flex-shrink: 0; font-size: 10px; }
+.disclaimer { font-size: 11px; color: var(--text3); line-height: 1.55; padding-top: 11px; border-top: 1px solid var(--border); font-family: Arial, sans-serif; }
+
+/* ── NOTICE ── */
+.notice { border-radius: 6px; padding: 11px 14px; font-size: 14px; margin-bottom: 15px; font-family: Arial, sans-serif; }
+.notice.info { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+.notice.warn { background: #fffbec; color: #6a4e10; border: 1px solid #e8d080; }
+
+/* ── MODAL ── */
+#modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100; display: none; align-items: center; justify-content: center; }
+#modal-overlay.open { display: flex; }
+#modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px; width: 500px; max-width: 96vw; max-height: 82vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md); }
+#modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+#modal-header h3 { font-size: 16px; font-weight: normal; color: var(--gold); }
+#modal-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 20px; padding: 2px 6px; }
+#modal-close:hover { color: var(--text); }
+#modal-body { padding: 17px 20px; overflow-y: auto; flex: 1; }
+#modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface2); border-radius: 0 0 9px 9px; }
+.save-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px 11px; color: var(--text); font-size: 15px; outline: none; font-family: Georgia, serif; }
+.save-input:focus { border-color: var(--gold-light); }
+.case-item { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 7px; margin-bottom: 8px; background: var(--surface2); cursor: pointer; transition: all .13s; }
+.case-item:hover { border-color: var(--gold-border); background: var(--gold-bg); }
+.case-name { font-size: 14px; color: var(--text); }
+.case-meta { font-size: 12px; color: var(--text3); margin-top: 2px; font-family: Arial, sans-serif; }
+.case-actions { display: flex; gap: 6px; }
+.empty-state { text-align: center; padding: 30px; font-size: 14px; color: var(--text3); font-family: Arial, sans-serif; }
+
+/* ── SPINNER ── */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(122,92,30,.2); border-top-color: var(--gold); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 5px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div>
+    <h1>⚖️ NY Surrogate's Court <span class="sub">Probate Assistant</span></h1>
+    <div id="estate-label"></div>
+  </div>
+  <div class="hbtns">
+    <button class="btn btn-outline" onclick="toggleIntake()">📄 Intake PDF</button>
+    <button class="btn btn-outline" onclick="openSave()">💾 Save Case</button>
+    <button class="btn btn-outline" onclick="openDashboard()">📂 Cases</button>
+    <button class="btn btn-primary" id="gen-btn" onclick="generatePacket()">📦 Generate Packet</button>
+  </div>
+</div>
+
+<div id="status-bar"></div>
+
+<!-- INTAKE PANEL -->
+<div id="intake-panel">
+  <div class="intake-row">
+    <div>
+      <div class="intake-label">📋 Upload intake PDF</div>
+      <div class="upload-zone" id="upload-zone"
+        onclick="document.getElementById('pdf-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDrop(event)">
+        <input type="file" id="pdf-input" accept=".pdf" onchange="handleFileSelect(this)">
+        <div class="uz-icon">📋</div>
+        <div class="uz-text">Click or drag &amp; drop<br>an intake PDF here</div>
+        <div id="file-name"></div>
+      </div>
+    </div>
+    <div class="paste-area">
+      <div class="intake-label">✏️ Or paste notes / email text</div>
+      <textarea id="ai-notes" rows="5" placeholder="Paste any client notes, emails, or text here..."></textarea>
+      <div class="parse-row">
+        <button class="btn btn-primary" id="ai-btn" onclick="parseAI()">✨ Extract &amp; Fill Fields</button>
+        <span id="ai-msg"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="nav-section">Intake</div>
+    <button class="nav-btn active" onclick="nav('intake',this)">🗂 Proceeding Type</button>
+    <div class="nav-section">Case Details</div>
+    <button class="nav-btn" onclick="nav('decedent',this)">📋 Decedent</button>
+    <button class="nav-btn" onclick="nav('petitioner',this)">👤 Petitioner</button>
+    <button class="nav-btn" onclick="nav('estate',this)">🏛 Estate &amp; Assets</button>
+    <button class="nav-btn" onclick="nav('distributees',this)">👨‍👩‍👧 Distributees</button>
+    <button class="nav-btn" id="nav-will" onclick="nav('will',this)">📜 Will &amp; Letters</button>
+    <div class="nav-section">Filing</div>
+    <button class="nav-btn" onclick="nav('filing',this)">📬 Filing Details</button>
+    <button class="nav-btn" onclick="nav('enclosures',this)">📎 Enclosures</button>
+  </div>
+
+  <!-- FORM AREA -->
+  <div id="form-area">
+
+    <!-- PROCEEDING TYPE -->
+    <div class="section active" id="sec-intake">
+      <h2>🗂 Proceeding Type</h2><div class="divider"></div>
+      <div class="proc-banner">
+        <h3>What type of proceeding is this?</h3>
+        <div class="proc-options">
+          <button class="proc-btn selected" onclick="setProceeding('Probate',this)">📜 Probate<small>Decedent had a will</small></button>
+          <button class="proc-btn" onclick="setProceeding('Administration',this)">📋 Administration<small>No will — NY domicile</small></button>
+          <button class="proc-btn" onclick="setProceeding('NonDomiciliary',this)">🏠 Non-Domiciliary<small>Lived out of state, no prior letters</small></button>
+          <button class="proc-btn" onclick="setProceeding('Ancillary',this)">🗺 Ancillary<small>Letters already issued elsewhere</small></button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Court County <span class="req">*</span></label>
+          <select id="county" onchange="updateSummary()">
+            <option value="">— Select County —</option>
+            <option>Bronx</option><option>Kings</option><option>Nassau</option>
+            <option>New York</option><option>Queens</option><option>Richmond</option><option>Suffolk</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Signed By <span class="req">*</span></label>
+          <select id="signer">
+            <option value="Jessica Wilson">Jessica Wilson, Esq.</option>
+            <option value="Robyn Foresta">Robyn Foresta, Legal Assistant</option>
+          </select>
+        </div>
+      </div>
+      <div class="sub-head">Additional Questions</div>
+      <div class="check-group">
+        <div class="check-item" id="q-selfprove-row" onclick="toggleCheck('selfProvingAffidavit')">
+          <div class="cbox" id="cb-selfProvingAffidavit"><span class="tick">✓</span></div>
+          <span class="clabel">Will has a self-proving / self-subscribing affidavit <small>(skips witness affidavit)</small></span>
+        </div>
+        <div class="check-item" onclick="toggleCheck('corporateExecutor')">
+          <div class="cbox" id="cb-corporateExecutor"><span class="tick">✓</span></div>
+          <span class="clabel">Corporate executor / trustee / administrator</span>
+        </div>
+        <div class="check-item" onclick="toggleCheck('preliminaryLetters')">
+          <div class="cbox" id="cb-preliminaryLetters"><span class="tick">✓</span></div>
+          <span class="clabel">Preliminary letters needed</span>
+        </div>
+        <div class="check-item" onclick="toggleCheck('dispenseBond')">
+          <div class="cbox on" id="cb-dispenseBond"><span class="tick">✓</span></div>
+          <span class="clabel">Dispensing with bond <small>(includes 805 Affidavit)</small></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- DECEDENT -->
+    <div class="section" id="sec-decedent">
+      <h2>📋 Decedent</h2><div class="divider"></div>
+      <div class="grid3">
+        <div class="field"><label>First Name <span class="req">*</span></label><input id="decedentFirstName" oninput="updateSummary()"></div>
+        <div class="field"><label>Middle Name</label><input id="decedentMiddleName"></div>
+        <div class="field"><label>Last Name <span class="req">*</span></label><input id="decedentLastName" oninput="updateSummary()"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Also Known As (a/k/a)</label><input id="decedentAKA"></div>
+        <div class="field"><label>Date of Birth</label><input id="decedentDOB" placeholder="MM/DD/YYYY"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Date of Death <span class="req">*</span></label><input id="decedentDOD" placeholder="MM/DD/YYYY" oninput="updateSummary()"></div>
+        <div class="field"><label>Place of Death</label><input id="decedentPlaceOfDeath"></div>
+      </div>
+      <div class="field"><label>Social Security Number</label><input id="ssn" placeholder="XXX-XX-XXXX"><div class="hint">From death certificate — used in letters to financial institutions</div></div>
+      <div class="sub-head">Domicile at Time of Death</div>
+      <div class="field"><label>Street Address</label><input id="decedentStreet"></div>
+      <div class="grid4">
+        <div class="field"><label>City / Town</label><input id="decedentCity"></div>
+        <div class="field"><label>County</label><input id="decedentCounty"></div>
+        <div class="field"><label>State</label><input id="decedentState" value="NY"></div>
+        <div class="field"><label>Zip</label><input id="decedentZip"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Citizenship</label>
+          <select id="decedentCitizenship"><option>U.S.A.</option><option>Other</option></select>
+        </div>
+        <div class="field" id="foreign-state-row" style="display:none">
+          <label>Foreign Domicile State <span class="req">*</span></label>
+          <input id="foreignState" placeholder="e.g. California">
+          <div class="hint">State where decedent was domiciled</div>
+        </div>
+      </div>
+      <div class="sub-head">Family Background (for Heirship Affidavit)</div>
+      <div class="grid2">
+        <div class="field"><label>Mother's Full Name</label><input id="motherName"></div>
+        <div class="field"><label>Mother's Date of Death (or "Living")</label><input id="motherDOD"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Father's Full Name</label><input id="fatherName"></div>
+        <div class="field"><label>Father's Date of Death (or "Living")</label><input id="fatherDOD"></div>
+      </div>
+      <div class="field"><label>Marital Status at Death <span class="req">*</span></label>
+        <select id="maritalStatus" onchange="updateMaritalFields()">
+          <option value="">— select —</option>
+          <option value="never_married">Never Married</option>
+          <option value="married">Married (still married at death)</option>
+          <option value="divorced">Divorced</option>
+          <option value="widowed">Widowed (spouse predeceased)</option>
+        </select>
+      </div>
+      <div id="marital-spouse-row" class="field" style="display:none">
+        <label>Spouse's Full Name</label>
+        <input id="spouseName" placeholder="Full legal name">
+      </div>
+      <div id="marital-divorce-row" class="field" style="display:none">
+        <label>Year of Divorce</label>
+        <input id="divorceYear" placeholder="e.g. 1998">
+      </div>
+      <div id="marital-widowed-row" class="field" style="display:none">
+        <label>Spouse's Date of Death</label>
+        <input id="priorSpouseDeathDate" placeholder="e.g. March 15, 2018">
+      </div>
+      <div class="field"><label>Children</label>
+        <textarea id="childrenNote" rows="2" placeholder="e.g. No children / Two children: James (born 1985) and Susan (born 1988)"></textarea>
+      </div>
+    </div>
+
+    <!-- PETITIONER -->
+    <div class="section" id="sec-petitioner">
+      <h2>👤 Petitioner</h2><div class="divider"></div>
+      <div class="grid3">
+        <div class="field"><label>First Name <span class="req">*</span></label><input id="petitionerFirstName" oninput="updateSummary()"></div>
+        <div class="field"><label>Middle Name</label><input id="petitionerMiddleName"></div>
+        <div class="field"><label>Last Name <span class="req">*</span></label><input id="petitionerLastName" oninput="updateSummary()"></div>
+      </div>
+      <div class="field"><label>Street Address</label><input id="petitionerStreet"></div>
+      <div class="grid3">
+        <div class="field"><label>City / Town</label><input id="petitionerCity"></div>
+        <div class="field"><label>State</label><input id="petitionerState" value="NY"></div>
+        <div class="field"><label>Zip</label><input id="petitionerZip"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Citizenship</label>
+          <select id="petitionerCitizenship"><option>U.S.A.</option><option>Other</option></select>
+        </div>
+        <div class="field"><label>Interest of Petitioner</label>
+          <select id="petitionerInterest">
+            <option>Executor(s) named in decedent's Will</option>
+            <option>Administrator</option><option>Distributee</option>
+            <option>Creditor</option><option>Designee</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Is Petitioner an Attorney?</label>
+          <select id="petitionerIsAttorney"><option>No</option><option>Yes</option></select>
+        </div>
+        <div class="field"><label>Relationship to Decedent</label>
+          <input id="petitionerRelationship" placeholder="e.g. Spouse, Child, Sibling, Designee">
+        </div>
+      </div>
+      <div class="sub-head">Deponent for Heirship Affidavit (if different from petitioner)</div>
+      <div class="grid2">
+        <div class="field"><label>Deponent Name</label><input id="deponentName" placeholder="Leave blank to use petitioner"></div>
+        <div class="field"><label>Deponent Relationship to Decedent</label><input id="deponentRelationship"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Deponent Address</label><input id="deponentAddress" placeholder="Leave blank to use petitioner address"></div>
+        <div class="field"><label>Years Known Decedent</label><input id="yearsKnown" placeholder="e.g. 30"></div>
+      </div>
+      <div class="field"><label>Sole Distributee (for Heirship Affidavit conclusion)</label>
+        <input id="soleDistributee" placeholder="Leave blank to use petitioner name">
+      </div>
+    </div>
+
+    <!-- ESTATE -->
+    <div class="section" id="sec-estate">
+      <h2>🏛 Estate &amp; Assets</h2><div class="divider"></div>
+      <div class="notice info">Do not include jointly held assets, assets held in trust, or assets with a named beneficiary.</div>
+      <div class="grid2">
+        <div class="field"><label>Personal Property ($)</label><input id="personalPropertyValue" placeholder="0"></div>
+        <div class="field"><label>Total Real Property ($)</label><input id="realPropertyValue" placeholder="0"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Improved Real Property ($)</label><input id="improvedRealProperty"></div>
+        <div class="field"><label>Unimproved Real Property ($)</label><input id="unimprovedRealProperty"></div>
+      </div>
+      <div class="field"><label>Real Property Description</label>
+        <textarea id="realPropertyDescription" rows="2" placeholder="Address and brief description of each parcel"></textarea>
+      </div>
+      <div class="field"><label>Gross Rents — 18 months ($)</label><input id="grossRents18mo"></div>
+      <div class="field"><label>Other Assets / Causes of Action</label>
+        <textarea id="otherAssets" rows="2">NONE</textarea>
+      </div>
+      <div class="sub-head">Liabilities (for 805 Affidavit)</div>
+      <div class="grid2">
+        <div class="field"><label>Outstanding Mortgages ($)</label><input id="mortgageAmount" placeholder="NONE"></div>
+        <div class="field"><label>Funeral Expenses Paid ($)</label><input id="funeralPaid"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Funeral Expenses Outstanding ($)</label><input id="funeralOutstanding"></div>
+        <div class="field"><label>Misc. Debts</label><input id="miscDebts" placeholder="NONE"></div>
+      </div>
+    </div>
+
+    <!-- DISTRIBUTEES -->
+    <div class="section" id="sec-distributees">
+      <h2>👨‍👩‍👧 Distributees</h2><div class="divider"></div>
+
+      <!-- FAMILY TREE WIZARD -->
+      <div class="ftw" id="ftw-panel">
+        <div class="ftw-title">🌳 Intestate Succession — EPTL 4-1.1</div>
+        <div id="ftw-steps"></div>
+      </div>
+
+      <div class="sub-head">Distributee Details</div>
+      <div id="dist-list"></div>
+      <button class="btn btn-outline" onclick="addDist()" id="add-dist-btn" style="width:100%;margin-top:4px">+ Add Distributee</button>
+    </div>
+
+    <!-- WILL & LETTERS -->
+    <div class="section" id="sec-will">
+      <h2>📜 Will &amp; Letters</h2><div class="divider"></div>
+      <div class="grid2">
+        <div class="field"><label>Date of Will</label><input id="willDate" placeholder="MM/DD/YYYY" oninput="updateSummary()"></div>
+        <div class="field"><label>Codicil Date (if any)</label><input id="codicilDate" placeholder="MM/DD/YYYY"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Witness 1 Name</label><input id="witness1"></div>
+        <div class="field"><label>Witness 2 Name</label><input id="witness2"></div>
+      </div>
+      <div class="field"><label>No Other Will / Codicil</label>
+        <textarea id="noOtherWill" rows="2">NONE</textarea>
+      </div>
+      <div id="ancillary-fields" style="display:none">
+        <div class="sub-head">Ancillary — Foreign Letters Info (Para 3)</div>
+        <div class="grid2">
+          <div class="field"><label>Date Foreign Letters Issued</label><input id="foreignLettersDate" placeholder="MM/DD/YYYY"></div>
+          <div class="field"><label>Foreign Letters Issued To</label><input id="foreignLettersIssuedTo"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Foreign Court Name</label><input id="foreignCourtName" placeholder="e.g. Circuit Court, Hillsborough County"></div>
+          <div class="field"><label>Bond / Security Amount ($)</label><input id="foreignBondAmount" placeholder="0"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Letters Requested <span class="req">*</span></label>
+          <select id="lettersType" onchange="updateSummary()">
+            <option>Letters Testamentary</option>
+            <option>Letters of Administration</option>
+            <option>Letters of Trusteeship</option>
+            <option>Letters of Administration c.t.a.</option>
+            <option>Temporary Administration</option>
+            <option>Ancillary Letters of Administration</option>
+            <option>Ancillary Letters of Administration d.b.n.</option>
+          </select>
+        </div>
+        <div class="field"><label>Letters to Issue To <span class="req">*</span></label>
+          <input id="lettersTo" oninput="updateSummary()">
+        </div>
+      </div>
+    </div>
+
+    <!-- FILING -->
+    <div class="section" id="sec-filing">
+      <h2>📬 Filing Details</h2><div class="divider"></div>
+      <div class="grid2">
+        <div class="field"><label>E-File Date</label><input id="efileDate" placeholder="Leave blank for today's date"></div>
+        <div class="field"><label>File No. (if known)</label><input id="fileNo"></div>
+      </div>
+      <div class="sub-head">Letter of Instruction / Authorization</div>
+      <div class="grid2">
+        <div class="field"><label>Institution Name</label><input id="institutionName" placeholder="e.g. Chase Bank"></div>
+        <div class="field"><label>Account Number(s)</label><input id="accountNumbers"></div>
+      </div>
+    </div>
+
+    <!-- ENCLOSURES -->
+    <div class="section" id="sec-enclosures">
+      <h2>📎 Enclosures</h2><div class="divider"></div>
+      <p style="font-size:14px;color:var(--text2);margin-bottom:13px">Check everything being physically mailed with the cover letter:</p>
+      <div class="check-group">
+        <div class="check-item" onclick="toggleCheck('encWill')"><div class="cbox" id="cb-encWill"><span class="tick">✓</span></div><span class="clabel">Original Last Will and Testament</span></div>
+        <div class="check-item" onclick="toggleCheck('encDeathCert')"><div class="cbox on" id="cb-encDeathCert"><span class="tick">✓</span></div><span class="clabel">Death Certificate</span></div>
+        <div class="check-item" onclick="toggleCheck('encDivorceDegree')"><div class="cbox" id="cb-encDivorceDegree"><span class="tick">✓</span></div><span class="clabel">Original Divorce Decree with translation</span></div>
+        <div class="check-item" onclick="toggleCheck('encSpouseDeathCert')"><div class="cbox" id="cb-encSpouseDeathCert"><span class="tick">✓</span></div><span class="clabel">Death Certificate of Spouse</span></div>
+        <div class="check-item" onclick="toggleCheck('encAffidavitComparison')"><div class="cbox" id="cb-encAffidavitComparison"><span class="tick">✓</span></div><span class="clabel">Affidavit of Comparison</span></div>
+        <div class="check-item" onclick="toggleCheck('encForeignLetters')"><div class="cbox" id="cb-encForeignLetters"><span class="tick">✓</span></div><span class="clabel">Exemplified copy of foreign Letters / Decree</span></div>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Additional Enclosures (one per line)</label>
+        <textarea id="additionalEnclosures" rows="3"></textarea>
+      </div>
+    </div>
+
+  </div><!-- /form-area -->
+
+  <!-- SUMMARY PANEL -->
+  <div id="summary">
+    <div class="sum-title">Case Summary</div>
+    <div id="sum-content"><p style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif">Fill in fields to see summary</p></div>
+    <div class="sum-title">Documents in Packet</div>
+    <div id="doc-list" class="doc-list"></div>
+    <div class="disclaimer">⚠️ Always verify completed documents with a licensed NY attorney before filing.</div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div id="modal-header">
+      <h3 id="modal-title">Save Case</h3>
+      <button id="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-body"></div>
+    <div id="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-action-btn" onclick="modalAction()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD MODAL -->
+<div id="dashboard-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:110;display:none;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto;">
+  <div id="dashboard" style="background:#fff;border-radius:10px;width:780px;max-width:96vw;box-shadow:0 8px 40px rgba(0,0,0,.18);margin-bottom:40px;">
+    <div style="padding:18px 22px;border-bottom:2px solid var(--gold-border);display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <h2 style="font-size:18px;font-weight:normal;color:var(--gold)">⚖️ Case Dashboard</h2>
+        <div id="dash-subtitle" style="font-size:12px;color:var(--text3);margin-top:2px;font-family:Arial,sans-serif"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="openNewCase()">+ New Case</button>
+        <button onclick="closeDashboard()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text3);padding:2px 6px;">✕</button>
+      </div>
+    </div>
+
+    <!-- search + filter bar -->
+    <div style="padding:12px 22px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--surface2)">
+      <input id="dash-search" placeholder="🔍  Search by name, county, type..." oninput="renderDashboard()"
+        style="flex:1;min-width:200px;padding:7px 11px;border:1px solid var(--border);border-radius:5px;font-size:14px;font-family:Georgia,serif;background:#fff;color:var(--text)">
+      <select id="dash-filter" onchange="renderDashboard()"
+        style="padding:7px 11px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:#fff;color:var(--text);font-family:Arial,sans-serif">
+        <option value="">All Types</option>
+        <option value="Probate">Probate</option>
+        <option value="Administration">Administration</option>
+        <option value="NonDomiciliary">Non-Domiciliary</option>
+        <option value="Ancillary">Ancillary</option>
+      </select>
+      <select id="dash-county" onchange="renderDashboard()"
+        style="padding:7px 11px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:#fff;color:var(--text);font-family:Arial,sans-serif">
+        <option value="">All Counties</option>
+        <option>Bronx</option><option>Kings</option><option>Nassau</option>
+        <option>New York</option><option>Queens</option><option>Richmond</option><option>Suffolk</option>
+      </select>
+    </div>
+
+    <!-- case table -->
+    <div id="dash-table" style="padding:0 0 8px 0;min-height:200px;"></div>
+
+    <div style="padding:12px 22px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);font-family:Arial,sans-serif;background:var(--surface2);border-radius:0 0 10px 10px;">
+      Cases are saved in your browser. They stay on this computer between sessions.
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let proceeding = "Probate";
+const checks = {
+  selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
+  encWill:false, encDeathCert:true, encDivorceDegree:false,
+  encSpouseDeathCert:false, encAffidavitComparison:false, encForeignLetters:false,
+};
+let distributees = [{name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"}];
+
+// EPTL 4-1.1 succession chain
+// null=unanswered, true=yes, false=no
+const ft = { spouse:null, children:null, parents:null, siblings:null, grandparents:null, auntsUncles:null, firstCousins:null };
+const FT_ORDER = ["spouse","children","parents","siblings","grandparents","auntsUncles","firstCousins"];
+const FT_STEPS = [
+  { key:"spouse",       q:"Is there a surviving spouse (husband/wife)?",
+    desc:"EPTL 4-1.1(a)(1) — spouse takes all or majority of estate",
+    yes:"Yes — surviving spouse", no:"No surviving spouse" },
+  { key:"children",     q:"Did the decedent have children, or issue of a deceased child?",
+    desc:"EPTL 4-1.1(a)(2) — includes marital, non-marital, and adopted children",
+    yes:"Yes — children or issue", no:"No children or issue",
+    showIf: ()=> ft.spouse !== true },
+  { key:"parents",      q:"Are either of the decedent's parents alive?",
+    desc:"EPTL 4-1.1(a)(3)",
+    yes:"Yes — one or both parents living", no:"No living parents",
+    showIf: ()=> ft.spouse !== true && ft.children !== true },
+  { key:"siblings",     q:"Are there surviving siblings, or issue of deceased siblings?",
+    desc:"EPTL 4-1.1(a)(4) — whole and half blood; include children of predeceased siblings",
+    yes:"Yes — siblings or their issue", no:"No",
+    showIf: ()=> ft.spouse !== true && ft.children !== true && ft.parents !== true },
+  { key:"grandparents", q:"Are any grandparents (maternal or paternal) surviving?",
+    desc:"EPTL 4-1.1(a)(5)",
+    yes:"Yes — grandparents surviving", no:"No",
+    showIf: ()=> ft.spouse !== true && ft.children !== true && ft.parents !== true && ft.siblings !== true },
+  { key:"auntsUncles",  q:"Are any aunts, uncles, or their children (first cousins) surviving?",
+    desc:"EPTL 4-1.1(a)(5) — children of predeceased aunts/uncles count",
+    yes:"Yes", no:"No",
+    showIf: ()=> ft.spouse !== true && ft.children !== true && ft.parents !== true && ft.siblings !== true && ft.grandparents !== true },
+  { key:"firstCousins", q:"Are any first cousins once removed surviving?",
+    desc:"EPTL 4-1.1(a)(6) — children of predeceased first cousins",
+    yes:"Yes", no:"No",
+    showIf: ()=> ft.spouse !== true && ft.children !== true && ft.parents !== true && ft.siblings !== true && ft.grandparents !== true && ft.auntsUncles !== true },
+];
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function nav(id, btn) {
+  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById("sec-"+id).classList.add("active");
+  btn.classList.add("active");
+}
+
+// ── PROCEEDING TYPE ───────────────────────────────────────────────────────────
+function setProceeding(type, btn) {
+  proceeding = type;
+  document.querySelectorAll(".proc-btn").forEach(b=>b.classList.remove("selected"));
+  btn.classList.add("selected");
+  const nonNY = type==="Ancillary"||type==="NonDomiciliary";
+  document.getElementById("foreign-state-row").style.display   = nonNY ? "block" : "none";
+  document.getElementById("q-selfprove-row").style.display     = type==="Probate" ? "flex" : "none";
+  document.getElementById("nav-will").style.display            = (type==="Administration"||type==="NonDomiciliary") ? "none" : "flex";
+  document.getElementById("ancillary-fields").style.display    = type==="Ancillary" ? "block" : "none";
+  document.getElementById("ftw-panel").style.display           = type==="Probate" ? "none" : "block";
+  const lt = document.getElementById("lettersType");
+  if(type==="Probate")           lt.value = "Letters Testamentary";
+  else if(type==="Ancillary")    lt.value = "Ancillary Letters of Administration";
+  else                           lt.value = "Letters of Administration";
+  updateSummary(); updateDocList();
+}
+
+// ── CHECKBOXES ────────────────────────────────────────────────────────────────
+function toggleCheck(key) {
+  checks[key] = !checks[key];
+  document.getElementById("cb-"+key).classList.toggle("on", checks[key]);
+  updateSummary(); updateDocList();
+}
+
+// ── FAMILY TREE WIZARD ────────────────────────────────────────────────────────
+function renderFTW() {
+  const container = document.getElementById("ftw-steps");
+  container.innerHTML = "";
+
+  FT_STEPS.forEach(step => {
+    if (step.showIf && !step.showIf()) return;
+    const answered = ft[step.key] !== null;
+    const isYes = ft[step.key] === true;
+    const div = document.createElement("div");
+    div.className = "ftw-step";
+    div.innerHTML = `
+      <div class="ftw-q">${step.q}</div>
+      <div class="ftw-desc">${step.desc}</div>
+      <div class="ftw-opts">
+        <button class="ftw-opt ${isYes?'sel-yes':''}" onclick="setFT('${step.key}',true)">${step.yes}</button>
+        <button class="ftw-opt ${answered&&!isYes?'sel-no':''}" onclick="setFT('${step.key}',false)">${step.no}</button>
+        ${answered?`<button class="ftw-clear" onclick="setFT('${step.key}',null)">Clear</button>`:""}
+      </div>
+      ${isYes ? `<div class="ftw-result">✓ Enter ${step.yes.toLowerCase()} details in Distributees below</div>` : ""}
+    `;
+    container.appendChild(div);
+  });
+}
+
+function setFT(key, val) {
+  ft[key] = val;
+  // Reset all downstream answers
+  const idx = FT_ORDER.indexOf(key);
+  for (let i = idx+1; i < FT_ORDER.length; i++) ft[FT_ORDER[i]] = null;
+  renderFTW(); updateSummary();
+}
+
+// ── DISTRIBUTEES ──────────────────────────────────────────────────────────────
+function renderDists() {
+  const c = document.getElementById("dist-list");
+  c.innerHTML = "";
+  distributees.forEach((d,i)=>{
+    const el = document.createElement("div");
+    el.className = "dist-card";
+    el.innerHTML = `
+      <div class="dist-card-header">
+        <span class="dist-num">Distributee #${i+1}</span>
+        ${distributees.length>1?`<button class="btn btn-danger btn-sm" onclick="removeDist(${i})">Remove</button>`:""}
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Full Name</label><input value="${d.name}" oninput="ud(${i},'name',this.value)"></div>
+        <div class="field"><label>Relationship to Decedent</label><input value="${d.relationship}" oninput="ud(${i},'relationship',this.value)"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Domicile / Mailing Address</label><input value="${d.address}" oninput="ud(${i},'address',this.value)"></div>
+        <div class="field"><label>Citizenship</label><input value="${d.citizenship}" oninput="ud(${i},'citizenship',this.value)"></div>
+      </div>
+      <div class="disp-row">
+        <span class="disp-label">Disposition:</span>
+        <button class="disp-btn ${d.disposition==='waiver'?'waiver':''}"   onclick="setDisp(${i},'waiver')">✓ Waiver</button>
+        <button class="disp-btn ${d.disposition==='citation'?'citation':''}" onclick="setDisp(${i},'citation')">📋 Citation</button>
+        <button class="disp-btn ${d.disposition==='tbd'?'tbd':''}"         onclick="setDisp(${i},'tbd')">? TBD</button>
+      </div>`;
+    c.appendChild(el);
+  });
+  document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
+  updateSummary();
+}
+function addDist()     { if(distributees.length<7){distributees.push({name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"});renderDists();} }
+function removeDist(i) { distributees.splice(i,1); renderDists(); }
+function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
+function setDisp(i,v)  { distributees[i].disposition=v; renderDists(); updateDocList(); }
+
+// ── FORM DATA ─────────────────────────────────────────────────────────────────
+function g(id){const el=document.getElementById(id);return el?el.value:"";}
+
+function getFormData() {
+  const enclosures=[];
+  if(checks.encWill)               enclosures.push("Original Last Will and Testament");
+  if(checks.encDeathCert)          enclosures.push("Death Certificate");
+  if(checks.encDivorceDegree)      enclosures.push("Original Divorce Decree with translation");
+  if(checks.encSpouseDeathCert)    enclosures.push("Death Certificate of Spouse");
+  if(checks.encAffidavitComparison)enclosures.push("Affidavit of Comparison");
+  if(checks.encForeignLetters)     enclosures.push("Exemplified copy of foreign Letters/Decree");
+  g("additionalEnclosures").split("\n").map(s=>s.trim()).filter(Boolean).forEach(s=>enclosures.push(s));
+  return {
+    proceedingType:proceeding, signer:g("signer"), county:g("county"), ...checks,
+    decedentFirstName:g("decedentFirstName"), decedentMiddleName:g("decedentMiddleName"),
+    decedentLastName:g("decedentLastName"), decedentAKA:g("decedentAKA"),
+    decedentDOB:g("decedentDOB"), decedentDOD:g("decedentDOD"),
+    decedentPlaceOfDeath:g("decedentPlaceOfDeath"), ssn:g("ssn"),
+    decedentStreet:g("decedentStreet"), decedentCity:g("decedentCity"),
+    decedentCounty:g("decedentCounty"), decedentState:g("decedentState"), decedentZip:g("decedentZip"),
+    decedentCitizenship:g("decedentCitizenship"), foreignState:g("foreignState"),
+    motherName:g("motherName"), motherDOD:g("motherDOD"),
+    fatherName:g("fatherName"), fatherDOD:g("fatherDOD"),
+    maritalStatus:g("maritalStatus"), spouseName:g("spouseName"),
+    divorceYear:g("divorceYear"), priorSpouseDeathDate:g("priorSpouseDeathDate"),
+    childrenNote:g("childrenNote"),
+    petitionerFirstName:g("petitionerFirstName"), petitionerMiddleName:g("petitionerMiddleName"),
+    petitionerLastName:g("petitionerLastName"), petitionerStreet:g("petitionerStreet"),
+    petitionerCity:g("petitionerCity"), petitionerState:g("petitionerState"), petitionerZip:g("petitionerZip"),
+    petitionerCitizenship:g("petitionerCitizenship"), petitionerInterest:g("petitionerInterest"),
+    petitionerIsAttorney:g("petitionerIsAttorney"), petitionerRelationship:g("petitionerRelationship"),
+    deponentName:g("deponentName"), deponentRelationship:g("deponentRelationship"),
+    deponentAddress:g("deponentAddress"), yearsKnown:g("yearsKnown"), soleDistributee:g("soleDistributee"),
+    personalPropertyValue:g("personalPropertyValue"), realPropertyValue:g("realPropertyValue"),
+    improvedRealProperty:g("improvedRealProperty"), unimprovedRealProperty:g("unimprovedRealProperty"),
+    realPropertyDescription:g("realPropertyDescription"),
+    grossRents18mo:g("grossRents18mo"), otherAssets:g("otherAssets"),
+    mortgageAmount:g("mortgageAmount"), funeralPaid:g("funeralPaid"),
+    funeralOutstanding:g("funeralOutstanding"), miscDebts:g("miscDebts"),
+    willDate:g("willDate"), codicilDate:g("codicilDate"),
+    witness1:g("witness1"), witness2:g("witness2"), noOtherWill:g("noOtherWill"),
+    foreignLettersDate:g("foreignLettersDate"), foreignLettersIssuedTo:g("foreignLettersIssuedTo"),
+    foreignCourtName:g("foreignCourtName"), foreignBondAmount:g("foreignBondAmount"),
+    lettersType:g("lettersType"), lettersTo:g("lettersTo"),
+    efileDate:g("efileDate"), fileNo:g("fileNo"),
+    institutionName:g("institutionName"), accountNumbers:g("accountNumbers"),
+    enclosures, distributees,
+  };
+}
+
+// ── DOC LIST ──────────────────────────────────────────────────────────────────
+function getDocList(){
+  const d=[];
+  d.push({name:"Court Cover Letter",on:true});
+  if(proceeding==="Probate")         d.push({name:"Petition for Probate (P-1)",on:true});
+  if(proceeding==="Administration")  d.push({name:"Administration Petition (A-1)",on:true});
+  if(proceeding==="NonDomiciliary")  d.push({name:"Non-Domiciliary Petition (A-1)",on:true});
+  if(proceeding==="Ancillary")       d.push({name:"Ancillary Petition (AA-1)",on:true});
+  d.push({name:"805 Affidavit",on:checks.dispenseBond});
+  if(proceeding!=="Probate"){d.push({name:"Affidavit of Heirship",on:true});d.push({name:"Family Tree (FT-1)",on:false,note:"fill manually"});}
+  if(proceeding==="Probate") d.push({name:"Witness Affidavit",on:!checks.selfProvingAffidavit});
+  d.push({name:"Attorney Certification",on:true});
+  if(checks.corporateExecutor)  d.push({name:"Corporate Verification",on:true});
+  if(checks.preliminaryLetters) d.push({name:"Preliminary Letters",on:true});
+  const waivers=distributees.filter(x=>x.name&&x.disposition==="waiver").length;
+  const citations=distributees.filter(x=>x.name&&x.disposition==="citation").length;
+  const tbds=distributees.filter(x=>x.name&&x.disposition==="tbd").length;
+  if(waivers>0)  d.push({name:`Waiver Cover Letter ×${waivers}`,on:true});
+  if(citations>0)d.push({name:`Citation ×${citations}`,on:true,note:"generated by court"});
+  if(tbds>0)     d.push({name:`${tbds} distributee(s) TBD`,on:false});
+  return d;
+}
+function updateDocList(){
+  document.getElementById("doc-list").innerHTML=getDocList().map(d=>
+    `<div class="doc-item ${d.on?'on':''}">
+      <span class="dot">${d.on?'●':'○'}</span>
+      <span>${d.name}${d.note?` <small style="color:var(--text3)">(${d.note})</small>`:""}</span>
+    </div>`
+  ).join("");
+}
+
+// ── SUMMARY ───────────────────────────────────────────────────────────────────
+function updateSummary(){
+  const dn=[g("decedentFirstName"),g("decedentLastName")].filter(Boolean).join(" ");
+  const pn=[g("petitionerFirstName"),g("petitionerLastName")].filter(Boolean).join(" ");
+  const co=g("county");
+  document.getElementById("estate-label").textContent = dn?`Estate of ${dn}${co?" · "+co+" County":""}` : "";
+  const rows=[
+    ["Type",proceeding],["Estate",dn],["County",co],["Date of Death",g("decedentDOD")],
+    ["Petitioner",pn],["Letters",g("lettersType")],["To",g("lettersTo")],
+    ["Personal Prop.",g("personalPropertyValue")?"$"+g("personalPropertyValue"):""],
+    ["Real Prop.",g("realPropertyValue")?"$"+g("realPropertyValue"):""],
+    ["Signed By",g("signer")],
+  ].filter(([,v])=>v);
+  const fd=distributees.filter(d=>d.name);
+  let html=rows.map(([k,v])=>`<div class="sum-row"><div class="sum-k">${k}</div><div class="sum-v">${v}</div></div>`).join("");
+  if(fd.length){
+    html+=`<div style="border-top:1px solid var(--border);padding-top:7px;margin-top:4px">
+      <div class="sum-k" style="margin-bottom:4px">Distributees</div>
+      ${fd.map(d=>{const ic=d.disposition==="waiver"?"✓":d.disposition==="citation"?"📋":"?";return`<div style="font-size:13px;color:var(--text2);margin-bottom:2px">${ic} ${d.name}${d.relationship?" ("+d.relationship+")":""}</div>`;}).join("")}
+    </div>`;
+  }
+  document.getElementById("sum-content").innerHTML=html||`<p style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif">Fill in fields to see summary</p>`;
+  updateDocList();
+}
+
+// ── INTAKE PANEL ──────────────────────────────────────────────────────────────
+function toggleIntake(){ document.getElementById("intake-panel").classList.toggle("open"); }
+
+function updateMaritalFields(){
+  const v=document.getElementById("maritalStatus").value;
+  const hasSpouse=v==="married"||v==="divorced"||v==="widowed";
+  document.getElementById("marital-spouse-row").style.display  = hasSpouse   ? "" : "none";
+  document.getElementById("marital-divorce-row").style.display = v==="divorced" ? "" : "none";
+  document.getElementById("marital-widowed-row").style.display = v==="widowed"  ? "" : "none";
+}
+
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById("upload-zone").classList.remove("drag");
+  const f=e.dataTransfer.files[0];
+  if(f&&f.name.toLowerCase().endsWith(".pdf")) processPDF(f);
+}
+function handleFileSelect(inp){ if(inp.files[0]) processPDF(inp.files[0]); }
+
+async function processPDF(file){
+  document.getElementById("file-name").textContent=file.name;
+  const msg=document.getElementById("ai-msg");
+  msg.textContent="Extracting text from PDF..."; msg.style.color="var(--blue)";
+  try {
+    const form=new FormData(); form.append("file",file);
+    const res=await fetch("/parse-pdf",{method:"POST",body:form});
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    document.getElementById("ai-notes").value=data.text;
+    msg.textContent=`✓ ${data.pages} page(s) extracted — click "Extract & Fill Fields"`;
+    msg.style.color="var(--green)";
+  } catch(e){
+    msg.textContent="⚠ Could not read PDF: "+e.message;
+    msg.style.color="var(--red)";
+  }
+}
+
+// ── AI PARSE ──────────────────────────────────────────────────────────────────
+async function parseAI(){
+  const notes=document.getElementById("ai-notes").value.trim();
+  const btn=document.getElementById("ai-btn");
+  const msg=document.getElementById("ai-msg");
+  if(!notes) return;
+  btn.innerHTML='<span class="spinner"></span> Extracting...'; btn.disabled=true; msg.textContent="";
+
+  try {
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",max_tokens:2000,
+        system:`NY Surrogate's Court intake assistant. Extract and return ONLY raw JSON. Fields:
+proceedingType (Probate/Administration/NonDomiciliary/Ancillary — if no will and decedent NOT domiciled in NY use NonDomiciliary, if letters already issued elsewhere use Ancillary),
+decedentFirstName,decedentMiddleName,decedentLastName,decedentAKA,
+decedentDOB,decedentDOD (MM/DD/YYYY),decedentPlaceOfDeath,ssn,
+decedentStreet,decedentCity,decedentCounty,decedentState,decedentZip,decedentCitizenship,
+foreignState (state of foreign domicile if applicable),
+motherName,motherDOD,fatherName,fatherDOD,
+maritalStatus (one of: never_married / married / divorced / widowed),
+spouseName (full name of spouse — required if married/divorced/widowed),
+divorceYear (4-digit year — required if divorced),
+priorSpouseDeathDate (date spouse died — required if widowed),
+childrenNote,
+petitionerFirstName,petitionerMiddleName,petitionerLastName,
+petitionerStreet,petitionerCity,petitionerState,petitionerZip,
+petitionerInterest (Administrator/Executor/Distributee/Designee/Other),
+petitionerRelationship,
+county (NY county ONLY — Kings for Brooklyn, New York for Manhattan, Queens, Bronx, Richmond for Staten Island, Nassau, Suffolk — leave blank if not an NY county),
+personalPropertyValue,realPropertyValue,improvedRealProperty,realPropertyDescription,
+willDate,witness1,witness2,lettersTo,
+survivingSpouse (boolean),survivingChildren (boolean),survivingParents (boolean),survivingSiblings (boolean),
+distributees: [{name,relationship,address,citizenship,disposition}].
+Return raw JSON only — no markdown, no backticks, no explanation.`,
+        messages:[{role:"user",content:"Extract from:\n\n"+notes}]
+      })
+    });
+    const json=await res.json();
+    const parsed=JSON.parse(json.content[0].text.replace(/```json|```/g,"").trim());
+    let count=0;
+
+    const textF=["decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","ssn","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","foreignState","motherName","motherDOD","fatherName","fatherDOD","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerRelationship","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","willDate","witness1","witness2","lettersTo","soleDistributee","yearsKnown"];
+    for(const k of textF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
+
+    const selF=["county","lettersType","petitionerInterest","petitionerCitizenship","decedentCitizenship","petitionerIsAttorney","maritalStatus"];
+    for(const k of selF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
+
+    if(parsed.proceedingType){
+      const ptMap={"Probate":"Probate","Administration":"Administration","Ancillary":"Ancillary","NonDomiciliary":"NonDomiciliary","Non-Domiciliary":"NonDomiciliary"};
+      const pt=ptMap[parsed.proceedingType]||parsed.proceedingType;
+      const pb=document.querySelector(`.proc-btn[onclick*="${pt}"]`);
+      if(pb) setProceeding(pt,pb);
+    }
+    if(parsed.distributees&&parsed.distributees.length){
+      distributees=parsed.distributees.map(d=>({...d,disposition:d.disposition||"tbd"}));
+      renderDists(); count++;
+    }
+    // Family tree
+    const ftMap={"spouse":"spouse","children":"children","parents":"parents","siblings":"siblings","grandparents":"grandparents","auntsUncles":"auntsUncles","firstCousins":"firstCousins"};
+    for(const k of Object.keys(ftMap)){if(parsed[k]===true||parsed[k]===false){ft[k]=parsed[k];}}
+
+    updateMaritalFields(); updateSummary(); renderFTW();
+    document.getElementById("ai-msg").textContent=`✓ Extracted ${count} fields`;
+    document.getElementById("ai-msg").style.color="var(--green)";
+  }catch(e){
+    document.getElementById("ai-msg").textContent="⚠ Parse failed — check console";
+    document.getElementById("ai-msg").style.color="var(--red)";
+    console.error(e);
+  }
+  document.getElementById("ai-btn").disabled=false;
+  document.getElementById("ai-btn").textContent="Extract & Fill";
+}
+
+// ── SAVE / LOAD ────────────────────────────────────────────────────────────────
+const STORAGE_KEY = "probate_cases_v2";
+
+function getSavedCases(){
+  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); }
+  catch{ return {}; }
+}
+function saveCases(cases){ localStorage.setItem(STORAGE_KEY,JSON.stringify(cases)); }
+
+function openSave(){
+  const data=getFormData();
+  const decedent=[data.decedentFirstName,data.decedentLastName].filter(Boolean).join(" ")||"Unnamed Case";
+  const suggested=`${decedent}${data.county?" — "+data.county:""}${data.proceedingType?" ("+data.proceedingType+")":""}`;
+  document.getElementById("modal-title").textContent="Save Case";
+  document.getElementById("modal-action-btn").style.display="inline-block";
+  document.getElementById("modal-action-btn").textContent="Save";
+  document.getElementById("modal-body").innerHTML=`
+    <div style="margin-bottom:4px;font-size:12px;color:var(--text2);font-family:Arial,sans-serif">Case Name</div>
+    <input id="save-name" value="${suggested}" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:5px;font-size:14px;font-family:Georgia,serif;color:var(--text);background:#fff">
+    <p style="margin-top:10px;font-size:12px;color:var(--text3);font-family:Arial,sans-serif">Saves all current fields to your browser. Reload any time from the Cases dashboard.</p>`;
+  document.getElementById("modal-overlay").classList.add("open");
+  setTimeout(()=>{ const i=document.getElementById("save-name"); if(i){i.focus();i.select();} },50);
+}
+
+function modalAction(){
+  const name=(document.getElementById("save-name")?.value||"").trim();
+  if(!name){ document.getElementById("save-name").style.borderColor="var(--red)"; return; }
+  const cases=getSavedCases();
+  cases[name]={savedAt:Date.now(),proceeding,checks:{...checks},distributees:JSON.parse(JSON.stringify(distributees)),ft:{...ft},data:getFormData()};
+  saveCases(cases);
+  closeModal();
+  showStatus(`✓ Saved: "${name}"`, "ok");
+}
+
+function closeModal(){
+  document.getElementById("modal-overlay").classList.remove("open");
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function openDashboard(){
+  renderDashboard();
+  document.getElementById("dashboard-overlay").style.display="flex";
+}
+
+function closeDashboard(){
+  document.getElementById("dashboard-overlay").style.display="none";
+}
+
+function renderDashboard(){
+  const cases=getSavedCases();
+  const search=(document.getElementById("dash-search")?.value||"").toLowerCase();
+  const filterType=document.getElementById("dash-filter")?.value||"";
+  const filterCounty=document.getElementById("dash-county")?.value||"";
+
+  const keys=Object.keys(cases).sort((a,b)=>(cases[b].savedAt||0)-(cases[a].savedAt||0));
+
+  const filtered=keys.filter(k=>{
+    const c=cases[k];
+    const d=c.data||{};
+    const matchSearch=!search||k.toLowerCase().includes(search)||
+      (d.decedentFirstName||"").toLowerCase().includes(search)||
+      (d.decedentLastName||"").toLowerCase().includes(search)||
+      (d.county||"").toLowerCase().includes(search);
+    const matchType=!filterType||(c.proceeding||d.proceedingType||"")==filterType;
+    const matchCounty=!filterCounty||(d.county||"")==filterCounty;
+    return matchSearch&&matchType&&matchCounty;
+  });
+
+  const total=keys.length;
+  document.getElementById("dash-subtitle").textContent=`${total} case${total!==1?"s":""} saved${filtered.length!==total?` — ${filtered.length} shown`:""}`;
+
+  const PROC_COLORS={
+    Probate:"#1a3f6e",Administration:"#2d6a4f",
+    NonDomiciliary:"#6a3f1a",Ancillary:"#5a1a6a"
+  };
+  const PROC_BG={
+    Probate:"#eef3fb",Administration:"#eaf5ef",
+    NonDomiciliary:"#fdf3eb",Ancillary:"#f5ebfd"
+  };
+  const PROC_LABELS={
+    Probate:"Probate",Administration:"Administration",
+    NonDomiciliary:"Non-Dom.",Ancillary:"Ancillary"
+  };
+
+  if(filtered.length===0){
+    document.getElementById("dash-table").innerHTML=`
+      <div style="text-align:center;padding:50px;color:var(--text3);font-family:Arial,sans-serif;font-size:14px">
+        ${total===0?"No saved cases yet. Fill out a case and click 💾 Save Case.":"No cases match your search."}
+      </div>`;
+    return;
+  }
+
+  let html=`<table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead><tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+      <th style="padding:10px 16px;text-align:left;font-weight:normal;font-family:Arial,sans-serif;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Estate</th>
+      <th style="padding:10px 12px;text-align:left;font-weight:normal;font-family:Arial,sans-serif;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Type</th>
+      <th style="padding:10px 12px;text-align:left;font-weight:normal;font-family:Arial,sans-serif;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">County</th>
+      <th style="padding:10px 12px;text-align:left;font-weight:normal;font-family:Arial,sans-serif;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Saved</th>
+      <th style="padding:10px 12px;text-align:right;font-weight:normal;font-family:Arial,sans-serif;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Actions</th>
+    </tr></thead><tbody>`;
+
+  filtered.forEach((k,i)=>{
+    const c=cases[k];
+    const d=c.data||{};
+    const pt=c.proceeding||d.proceedingType||"";
+    const county=d.county||"";
+    const dod=d.decedentDOD||"";
+    const pet=[d.petitionerFirstName,d.petitionerLastName].filter(Boolean).join(" ");
+    const date=c.savedAt?new Date(c.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"";
+    const color=PROC_COLORS[pt]||"#555";
+    const bg=PROC_BG[pt]||"#f5f5f5";
+    const label=PROC_LABELS[pt]||pt;
+    const bg_row=i%2===0?"#fff":"var(--surface2)";
+    const kEsc=k.replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+
+    html+=`<tr style="background:${bg_row};border-bottom:1px solid var(--border);cursor:pointer" onclick="loadCaseFromDash('${kEsc}')" title="Click to load">
+      <td style="padding:11px 16px">
+        <div style="font-weight:normal;color:var(--text)">${k}</div>
+        ${pet?`<div style="font-size:12px;color:var(--text3);margin-top:2px;font-family:Arial,sans-serif">Petitioner: ${pet}${dod?" · DOD: "+dod:""}</div>`:""}
+      </td>
+      <td style="padding:11px 12px">
+        <span style="background:${bg};color:${color};padding:3px 8px;border-radius:4px;font-size:12px;font-family:Arial,sans-serif;white-space:nowrap">${label}</span>
+      </td>
+      <td style="padding:11px 12px;font-size:13px;color:var(--text2);font-family:Arial,sans-serif">${county}</td>
+      <td style="padding:11px 12px;font-size:12px;color:var(--text3);font-family:Arial,sans-serif;white-space:nowrap">${date}</td>
+      <td style="padding:11px 12px;text-align:right;white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();loadCaseFromDash('${kEsc}')">Load</button>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCaseFromDash('${kEsc}')" style="margin-left:5px">Delete</button>
+      </td>
+    </tr>`;
+  });
+
+  html+=`</tbody></table>`;
+  document.getElementById("dash-table").innerHTML=html;
+}
+
+function loadCaseFromDash(name){
+  const cases=getSavedCases();
+  const saved=cases[name];
+  if(!saved) return;
+  const data=saved.data||{};
+
+  // Restore proceeding
+  const pt=saved.proceeding||data.proceedingType||"Probate";
+  const pb=document.querySelector(`.proc-btn[onclick*="${pt}"]`);
+  if(pb) setProceeding(pt,pb);
+
+  // Restore checkboxes
+  if(saved.checks){ Object.assign(checks,saved.checks); Object.keys(checks).forEach(k=>{ const el=document.getElementById("cb-"+k); if(el) el.classList.toggle("on",!!checks[k]); }); }
+
+  // Restore family tree
+  if(saved.ft){ Object.assign(ft,saved.ft); renderFTW(); }
+
+  // Restore distributees
+  if(saved.distributees){ distributees=saved.distributees; renderDists(); }
+
+  // Restore all text/select fields
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","institutionName","accountNumbers","ssn","additionalEnclosures"];
+  for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
+  updateMaritalFields();
+
+  updateSummary();
+  closeDashboard();
+  showStatus(`✓ Loaded: "${name}"`, "ok");
+}
+
+function openNewCase(){
+  if(!confirm("Start a new blank case? Unsaved changes will be lost.")) return;
+  location.reload();
+}
+
+function deleteCaseFromDash(name){
+  if(!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  const cases=getSavedCases();
+  delete cases[name];
+  saveCases(cases);
+  renderDashboard();
+}
+
+// Close dashboard on overlay click
+document.getElementById("dashboard-overlay").addEventListener("click",function(e){ if(e.target===this) closeDashboard(); });
+document.getElementById("modal-overlay").addEventListener("click",function(e){ if(e.target===this) closeModal(); });
+
+// Ctrl/Cmd+S to save
+document.addEventListener("keydown",function(e){ if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();openSave();} });
+
+// ── STATUS ────────────────────────────────────────────────────────────────────
+function showStatus(text,type){
+  const el=document.getElementById("status-bar");
+  el.textContent=text; el.className=type;
+  if(type==="ok") setTimeout(()=>{ if(el.textContent===text) el.className=""; },4000);
+}
+
+// ── GENERATE PACKET ───────────────────────────────────────────────────────────
+async function generatePacket(){
+  const data=getFormData();
+  if(!data.decedentLastName){ showStatus("⚠ Please enter the decedent's last name.","err"); return; }
+  if(!data.county){ showStatus("⚠ Please select a county.","err"); return; }
+  const btn=document.getElementById("gen-btn");
+  btn.textContent="⏳ Generating..."; btn.disabled=true;
+  showStatus("Generating document packet...","info");
+  try{
+    const res=await fetch("/generate-packet",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+    if(!res.ok) throw new Error(`Server error ${res.status}`);
+    const errCount=parseInt(res.headers.get('X-Generation-Errors')||'0');
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=`${data.decedentLastName}_packet.zip`; a.click();
+    URL.revokeObjectURL(url);
+    if(errCount>0){
+      showStatus(`⚠ Packet downloaded but ${errCount} document(s) failed — see MISSING files in ZIP.`,"err");
+    } else {
+      showStatus("✓ Packet downloaded. Review all documents before filing.","ok");
+    }
+  }catch(e){ showStatus(`⚠ ${e.message}`,"err"); }
+  btn.textContent="📦 Generate Packet"; btn.disabled=false;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+renderDists();
+updateSummary();
+updateDocList();
+fetch("/check").then(r=>r.json()).then(d=>{
+  const missing=[...Object.entries(d.pdfs||{}),...Object.entries(d.templates||{})].filter(([,v])=>!v).map(([k])=>k);
+  if(missing.length) showStatus("⚠ Missing template files: "+missing.join(", "),"err");
+}).catch(()=>{});
+</script>
+</body>
+</html>
