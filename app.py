@@ -96,16 +96,9 @@ def generate_packet():
                                fill_administration_doc(data)))
                 print("[OK] 02 Administration petition (A-1)")
             elif proceeding == "NonDomiciliary":
-                files.append((f"02_NOTE_NonDomiciliary_A1.txt",
-                    f"PETITION FOR NON-DOMICILIARY LETTERS OF ADMINISTRATION\n\n"
-                    f"Use the A-1 form. Title: 'Petition for Non-Domiciliary Letters of Administration'\n\n"
-                    f"Decedent domicile (out of state):\n"
-                    f"  {data.get('decedentStreet','')}\n"
-                    f"  {data.get('decedentCity','')}, {data.get('foreignState','')} {data.get('decedentZip','')}\n\n"
-                    f"Petitioner: {data.get('petitionerFirstName','')} {data.get('petitionerLastName','')}\n"
-                    f"  {data.get('petitionerStreet','')}, {data.get('petitionerCity','')}, NY {data.get('petitionerZip','')}\n\n"
-                    f"NY Property:\n  {data.get('realPropertyDescription','(see estate details)')}".encode()))
-                print("[OK] 02 NonDomiciliary note")
+                files.append((f"02_Petition_NonDomiciliary_A1_{last_name}.docx",
+                               fill_administration_doc(data)))
+                print("[OK] 02 NonDomiciliary petition (A-1)")
             else:
                 print(f"[WARN] 02 No petition — unrecognised proceedingType={proceeding!r}")
         except Exception as e:
