@@ -1013,70 +1013,122 @@ def fill_administration_doc(data):
 
 # ─── FAMILY TREE WORKSHEET (FT-1) ─────────────────────────────────────────────
 
+def fill_ft1_pdf(data):
+    """Fill the actual FT-1 Family Tree Affidavit court form PDF."""
+    reader = PdfReader(os.path.join(TEMPLATES_DIR, "Family_Tree_Affidavit_Fill-In.pdf"))
+    writer = PdfWriter()
+    writer.clone_reader_document_root(reader)
+
+    dec_name    = decedent_full(data)
+    aka         = data.get("decedentAKA", "")
+    file_no     = data.get("fileNo", "")
+    pet_name    = petitioner_full(data)
+    pet_addr    = ", ".join(filter(None, [
+        data.get("petitionerStreet", ""),
+        data.get("petitionerCity", ""),
+        data.get("petitionerState", "NY"),
+        data.get("petitionerZip", ""),
+    ]))
+    pet_rel     = data.get("petitionerRelationship", "")
+    marital     = (data.get("maritalStatus") or "").strip()
+    spouse_name = (data.get("spouseName") or "").strip()
+    divorce_yr  = (data.get("divorceYear") or "").strip()
+
+    # Distribute distributees into sections by relationship keyword
+    all_dists = data.get("distributees", [])
+
+    def _match(d, *keywords):
+        return any(k in (d.get("relationship") or "").lower() for k in keywords)
+
+    children  = [d for d in all_dists if _match(d, "child", "son", "daughter")]
+    siblings  = [d for d in all_dists if _match(d, "brother", "sister", "sibling")]
+    nieces    = [d for d in all_dists if _match(d, "niece", "nephew")]
+    mat_aunts = [d for d in all_dists if _match(d, "maternal aunt", "maternal uncle")]
+    pat_aunts = [d for d in all_dists if _match(d, "paternal aunt", "paternal uncle")]
+    cousins   = [d for d in all_dists if _match(d, "cousin")]
+
+    fields = {}
+
+    # ── Header ──────────────────────────────────────────────────────────────────
+    fields["128"]         = dec_name          # Estate of
+    fields["230"]         = aka               # a/k/a
+    fields["331"]         = dec_name          # repeated on "Deceased" line
+    fields["412"]         = file_no           # File No.
+    fields["Combo Box00"] = "LETTERS OF ADMINISTRATION"
+
+    # ── Deponent (petitioner) ───────────────────────────────────────────────────
+    fields["5a5"] = pet_name   # I, ___
+    fields["5b6"] = pet_addr   # reside at
+    fields["5c7"] = pet_rel    # relationship to decedent
+
+    # ── Section 1a: Marriages ───────────────────────────────────────────────────
+    if marital == "never_married":
+        fields["Check Box01h"] = "/Yes"
+    elif marital == "married" and spouse_name:
+        fields["6a9"] = spouse_name            # surviving spouse
+    elif marital == "divorced" and spouse_name:
+        fields["6b10"] = spouse_name           # ex-spouse name
+        fields["Check Box01a"] = "/Yes"        # divorced
+        if divorce_yr:
+            fields["6a9"] = f"divorced {divorce_yr}"
+    elif marital == "widowed" and spouse_name:
+        # Spouse predeceased — list as ex-spouse who died while married
+        fields["6b10"] = spouse_name
+        fields["Check Box01b"] = "/Yes"        # died while married to decedent
+
+    # ── Section 1b: Children (6 slots) ─────────────────────────────────────────
+    child_name_f = ["816",  "917",  "1018",  "1119",  "1220",  "1321"]
+    child_dod_f  = ["8a22", "9a23", "10a24", "11a25", "12a26", "13a27"]
+    for i, c in enumerate(children[:6]):
+        if c.get("name"):
+            fields[child_name_f[i]] = c["name"]
+
+    # ── Section 2: Parents (page 2, fields 25/26) ───────────────────────────────
+    # Not in our data model — left blank for manual completion
+
+    # ── Section 3a: Siblings (6 slots, page 2) ─────────────────────────────────
+    sib_name_f = ["27", "28", "29", "30", "31", "32"]
+    sib_dod_f  = ["27a","28a","29a","30a","31a","32a"]
+    for i, s in enumerate(siblings[:6]):
+        if s.get("name"):
+            fields[sib_name_f[i]] = s["name"]
+
+    # ── Section 3b: Nieces/Nephews (7 slots, page 2) ───────────────────────────
+    # fields: name / child-of / DOD
+    nie_name_f = ["33","34","35","36","37","38","39"]
+    nie_cof_f  = ["33a","34a","35a","36a","37a","38a","39a"]
+    nie_dod_f  = ["33b","34b","35b","36b","37b","38b","39b"]
+    for i, n in enumerate(nieces[:7]):
+        if n.get("name"):
+            fields[nie_name_f[i]] = n["name"]
+
+    # ── Section 4b: Maternal Aunts/Uncles (7 slots, page 3) ────────────────────
+    mat_name_f = ["49","50","51","52","53","54","55"]
+    for i, a in enumerate(mat_aunts[:7]):
+        if a.get("name"):
+            fields[mat_name_f[i]] = a["name"]
+
+    # ── Section 5b: Paternal Aunts/Uncles (7 slots, page 4) ────────────────────
+    pat_name_f = ["71","72","73","74","75","76","77"]
+    for i, a in enumerate(pat_aunts[:7]):
+        if a.get("name"):
+            fields[pat_name_f[i]] = a["name"]
+
+    # ── Apply fields across all pages ───────────────────────────────────────────
+    all_form_fields = reader.get_fields() or {}
+    for fid, val in fields.items():
+        if fid in all_form_fields and val:
+            for page in writer.pages:
+                try:
+                    writer.update_page_form_field_values(page, {fid: val})
+                except Exception:
+                    pass
+
+    buf = io.BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 def generate_ft1(data):
-    doc = Document()
-
-    county   = data.get("county", "")
-    decedent = decedent_full(data)
-    dod      = data.get("decedentDOD", "")
-
-    # Title block
-    title1 = doc.add_paragraph()
-    title1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title1.add_run(f"SURROGATE\u2019S COURT \u2014 {county.upper()} COUNTY")
-    run.bold = True
-    run.font.size = Pt(14)
-
-    title2 = doc.add_paragraph()
-    title2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title2.add_run("FAMILY TREE (FT-1 WORKSHEET)")
-    run.bold = True
-    run.font.size = Pt(12)
-
-    doc.add_paragraph(f"Estate of {decedent}")
-    doc.add_paragraph(f"Date of Death: {dod}    County: {county}")
-    doc.add_paragraph("")
-
-    # Surviving relatives
-    hdr = doc.add_paragraph()
-    hdr.add_run("SURVIVING RELATIVES (EPTL 4-1.1):").bold = True
-
-    surv_fields = [
-        ("survivingSpouse",                  "Surviving Spouse"),
-        ("survivingChildren",                "Children / Issue"),
-        ("survivingIssue",                   "Issue of Predeceased Children"),
-        ("survivingParents",                 "Parents"),
-        ("survivingSiblings",                "Siblings"),
-        ("survivingGrandparents",            "Grandparents"),
-        ("survivingAuntsUncles",             "Aunts or Uncles"),
-        ("survivingFirstCousinsOnceRemoved", "First Cousins Once Removed"),
-    ]
-    for key, label in surv_fields:
-        check = "[X]" if data.get(key) else "[ ]"
-        doc.add_paragraph(f"  {check} {label}")
-
-    doc.add_paragraph("")
-
-    # Distributees table
-    dist_hdr = doc.add_paragraph()
-    dist_hdr.add_run("DISTRIBUTEES:").bold = True
-
-    table = doc.add_table(rows=1, cols=4)
-    table.style = "Table Grid"
-    hrow = table.rows[0]
-    for i, h in enumerate(["Name", "Relationship", "Address", "Citizenship"]):
-        run = hrow.cells[i].paragraphs[0].add_run(h)
-        run.bold = True
-
-    for dist in data.get("distributees", []):
-        if dist.get("name"):
-            row = table.add_row()
-            row.cells[0].text = dist.get("name", "")
-            row.cells[1].text = dist.get("relationship", "")
-            row.cells[2].text = dist.get("address", "")
-            row.cells[3].text = dist.get("citizenship", "U.S.A.")
-
-    doc.add_paragraph("")
-    doc.add_paragraph("Note: Verify against petition before filing.")
-
-    return make_docx_bytes(doc)
+    return fill_ft1_pdf(data)

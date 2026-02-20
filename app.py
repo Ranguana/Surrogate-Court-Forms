@@ -125,7 +125,7 @@ def generate_packet():
     # 5. FT-1 Family Tree (non-probate only)
     if non_probate:
         try:
-            files.append((f"05_FT1_Family_Tree_{last_name}.docx", generate_ft1(data)))
+            files.append((f"05_FT1_Family_Tree_{last_name}.pdf", generate_ft1(data)))
             print("[OK] 05 FT-1 Family Tree")
         except Exception as e:
             print(f"[ERR] 05 FT-1: {e}")
