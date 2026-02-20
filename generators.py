@@ -527,20 +527,37 @@ def generate_attorney_cert(data):
     return make_docx_bytes(doc)
 
 
-# ─── PROBATE PDF (P-1) ────────────────────────────────────────────────────────
+# ─── PROBATE PDF (P-1 + OATH + WITNESS) ──────────────────────────────────────
 
-def fill_probate_pdf(data):
+def _extract_pdf_pages(writer, page_indices):
+    """Extract specific page indices from a PdfWriter into new PDF bytes."""
+    out = PdfWriter()
+    for idx in page_indices:
+        out.add_page(writer.pages[idx])
+    buf = io.BytesIO()
+    out.write(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def _build_probate_writer(data):
+    """Fill all fields in Probate-_NY_Court_Forms.pdf; return (writer, reader)."""
     reader = PdfReader(os.path.join(PDFS_DIR, "Probate-_NY_Court_Forms.pdf"))
     writer = PdfWriter()
     writer.clone_reader_document_root(reader)
 
-    county = data.get("county", "")
-    dec = decedent_full(data)
-    pet = petitioner_full(data)
+    county   = data.get("county", "")
+    dec      = decedent_full(data)
+    pet      = petitioner_full(data)
+    lt       = data.get("lettersType", "")
     witnesses = ", ".join(filter(None, [data.get("witness1", ""), data.get("witness2", "")]))
-    lt = data.get("lettersType", "")
+    pet_addr  = ", ".join(filter(None, [
+        data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
+        data.get("petitionerState", ""), data.get("petitionerZip", ""),
+    ]))
 
     fields = {
+        # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
         "To the Surrogates Court County of": county,
         "WILL OF": dec,
@@ -574,23 +591,39 @@ def fill_probate_pdf(data):
         "Letters Testamentary to 2": data.get("lettersTo", ""),
         "Letters of Administration cta to": data.get("lettersTo", ""),
         "Print Name": pet,
+
+        # ── Oath and Designation (page 5) ───────────────────────────────────────
         "COUNTY OF_2": county,
+        "OATH OF": pet,
         "Surrogates Court of": county,
-        "My domicile is": ", ".join(filter(None, [
-            data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
-            data.get("petitionerState", ""), data.get("petitionerZip", "")
-        ])),
-        "Print Name_3": pet,
+        "My domicile is": pet_addr,
         "Street Address": data.get("petitionerStreet", ""),
+        "Print Name_3": pet,
+        "Signature of Attorney": data.get("attorneyName", ""),
+        "Print Name_4": data.get("attorneyName", ""),
+        "Firm Name": data.get("firmName", ""),
+        "Tel No": data.get("attorneyPhone", ""),
+        "Email": data.get("attorneyEmail", ""),
+        "Address of Attorney": data.get("firmAddress", ""),
+
+        # ── Attesting Witness (page 10) ─────────────────────────────────────────
+        "COUNTY OF_7": county,
+        "WILL OF 1": data.get("decedentFirstName", ""),
+        "WILL OF 2": data.get("decedentLastName", ""),
+        "aka 1": data.get("decedentAKA", ""),
+        "STATE OF NEW YORK_5": "New York",
+        "COUNTY OF_8": county,
     }
 
     # Letters type checkboxes
     if "Testamentary" in lt:
         fields["Letters Testamentary"] = "X"
+        fields["EXECUTOR"] = "X"          # oath page 5
     elif "Trusteeship" in lt:
         fields["Letters of Trusteeship"] = "X"
     elif "c.t.a" in lt:
         fields["Letters of Administration cta"] = "X"
+        fields["ADMINISTRATOR cta"] = "X"  # oath page 5
     elif "Temporary" in lt:
         fields["Temporary Administration"] = "X"
 
@@ -626,7 +659,7 @@ def fill_probate_pdf(data):
             fields[addr_f[i]] = f"{dist.get('address','')} | {dist.get('citizenship','')}"
             fields[int_f[i]] = dist.get("relationship", "Distributee")
 
-    # Fill all pages
+    # Apply all fields across all pages
     all_fields = reader.get_fields() or {}
     for fid, val in fields.items():
         if fid in all_fields and val:
@@ -636,10 +669,34 @@ def fill_probate_pdf(data):
                 except Exception:
                     pass
 
-    buf = io.BytesIO()
-    writer.write(buf)
-    buf.seek(0)
-    return buf.read()
+    return writer, reader
+
+
+def generate_probate_docs(data):
+    """
+    Returns list of (filename, bytes) for the full probate packet:
+      - P-1 Petition (pages 1-4)
+      - Combined Verification, Oath and Designation (page 5)
+      - Affidavit of Attesting Witness (page 10) — omitted if self-proving will
+    Fills the source PDF only once for efficiency.
+    """
+    writer, _ = _build_probate_writer(data)
+    last = data.get("decedentLastName", "estate").replace(" ", "_")
+    docs = [
+        (f"02_Petition_P1_{last}.pdf",        _extract_pdf_pages(writer, [0, 1, 2, 3])),
+        (f"03_Oath_Designation_{last}.pdf",   _extract_pdf_pages(writer, [4])),
+    ]
+    if not data.get("selfProvingAffidavit"):
+        docs.append(
+            (f"04_Affidavit_Attesting_Witness_{last}.pdf", _extract_pdf_pages(writer, [9]))
+        )
+    return docs
+
+
+# Keep for backward compatibility (ancillary PDF still uses its own function)
+def fill_probate_pdf(data):
+    writer, _ = _build_probate_writer(data)
+    return _extract_pdf_pages(writer, [0, 1, 2, 3])
 
 
 # ─── ANCILLARY ADMIN PDF (AA-1) ───────────────────────────────────────────────

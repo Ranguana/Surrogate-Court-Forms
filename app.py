@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from generators import (
     generate_cover_letter, generate_805, generate_heirship,
     generate_waiver_cover, generate_attorney_cert,
-    fill_probate_pdf, fill_ancillary_pdf,
+    generate_probate_docs, fill_ancillary_pdf,
     fill_administration_doc, generate_ft1,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
@@ -56,8 +56,9 @@ def generate_packet():
 
     print(f"\n[PACKET] proceeding={proceeding!r}  decedent={last_name!r}")
 
-    # 1. Court cover letter (always)
+    # ── 01. Court cover letter (always) ─────────────────────────────────────────
     try:
+        print("[TRYING] 01 generate_cover_letter()")
         files.append((f"01_Cover_Letter_{last_name}.docx", generate_cover_letter(data)))
         print("[OK] 01 Cover letter")
     except Exception as e:
@@ -67,52 +68,72 @@ def generate_packet():
         files.append((f"01_MISSING_Cover_Letter.txt",
                        f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 2. Main petition
-    try:
-        if proceeding == "Probate":
-            files.append((f"02_Petition_Probate_P1_{last_name}.pdf", fill_probate_pdf(data)))
-            print("[OK] 02 Probate petition (P-1)")
-        elif proceeding == "Ancillary":
-            files.append((f"02_Petition_Ancillary_AA1_{last_name}.pdf", fill_ancillary_pdf(data)))
-            print("[OK] 02 Ancillary petition (AA-1)")
-        elif proceeding == "Administration":
-            files.append((f"02_Petition_Administration_A1_{last_name}.docx",
-                           fill_administration_doc(data)))
-            print("[OK] 02 Administration petition (A-1)")
-        elif proceeding == "NonDomiciliary":
-            files.append((f"02_NOTE_NonDomiciliary_A1.txt",
-                f"PETITION FOR NON-DOMICILIARY LETTERS OF ADMINISTRATION\n\n"
-                f"Use the A-1 form. Title: 'Petition for Non-Domiciliary Letters of Administration'\n\n"
-                f"Decedent domicile (out of state):\n"
-                f"  {data.get('decedentStreet','')}\n"
-                f"  {data.get('decedentCity','')}, {data.get('foreignState','')} {data.get('decedentZip','')}\n\n"
-                f"Petitioner: {data.get('petitionerFirstName','')} {data.get('petitionerLastName','')}\n"
-                f"  {data.get('petitionerStreet','')}, {data.get('petitionerCity','')}, NY {data.get('petitionerZip','')}\n\n"
-                f"NY Property:\n  {data.get('realPropertyDescription','(see estate details)')}".encode()))
-            print("[OK] 02 NonDomiciliary note")
-        else:
-            print(f"[WARN] 02 No petition generated — unrecognised proceedingType={proceeding!r}")
-    except Exception as e:
-        print(f"[ERR] 02 Main petition: {e}")
-        traceback.print_exc()
-        errors.append(f"Main petition: {e}")
-        files.append((f"02_MISSING_Main_Petition.txt",
-                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
+    # ── 02-04. Main petition (and oath + witness for Probate) ────────────────────
+    # Probate:         02=P-1, 03=Oath & Designation, 04=Attesting Witness
+    # Administration:  02=A-1 petition
+    # Ancillary:       02=AA-1 petition
+    # NonDomiciliary:  02=instructions note
+    if proceeding == "Probate":
+        try:
+            print("[TRYING] generate_probate_docs() → P-1 + Oath & Designation + Attesting Witness")
+            for fname, fbytes in generate_probate_docs(data):
+                files.append((fname, fbytes))
+                print(f"[OK] {fname}")
+        except Exception as e:
+            print(f"[ERR] Probate docs: {e}")
+            traceback.print_exc()
+            errors.append(f"Probate docs: {e}")
+            files.append((f"02_MISSING_Probate_Docs.txt",
+                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
+    else:
+        try:
+            print(f"[TRYING] 02 petition for proceeding={proceeding!r}")
+            if proceeding == "Ancillary":
+                files.append((f"02_Petition_Ancillary_AA1_{last_name}.pdf", fill_ancillary_pdf(data)))
+                print("[OK] 02 Ancillary petition (AA-1)")
+            elif proceeding == "Administration":
+                files.append((f"02_Petition_Administration_A1_{last_name}.docx",
+                               fill_administration_doc(data)))
+                print("[OK] 02 Administration petition (A-1)")
+            elif proceeding == "NonDomiciliary":
+                files.append((f"02_NOTE_NonDomiciliary_A1.txt",
+                    f"PETITION FOR NON-DOMICILIARY LETTERS OF ADMINISTRATION\n\n"
+                    f"Use the A-1 form. Title: 'Petition for Non-Domiciliary Letters of Administration'\n\n"
+                    f"Decedent domicile (out of state):\n"
+                    f"  {data.get('decedentStreet','')}\n"
+                    f"  {data.get('decedentCity','')}, {data.get('foreignState','')} {data.get('decedentZip','')}\n\n"
+                    f"Petitioner: {data.get('petitionerFirstName','')} {data.get('petitionerLastName','')}\n"
+                    f"  {data.get('petitionerStreet','')}, {data.get('petitionerCity','')}, NY {data.get('petitionerZip','')}\n\n"
+                    f"NY Property:\n  {data.get('realPropertyDescription','(see estate details)')}".encode()))
+                print("[OK] 02 NonDomiciliary note")
+            else:
+                print(f"[WARN] 02 No petition — unrecognised proceedingType={proceeding!r}")
+        except Exception as e:
+            print(f"[ERR] 02 petition: {e}")
+            traceback.print_exc()
+            errors.append(f"Main petition: {e}")
+            files.append((f"02_MISSING_Main_Petition.txt",
+                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 3. 805 Affidavit (always)
+    # ── 805 Affidavit (always)
+    # Probate:    slot 05  (after petition 02, oath 03, witness 04)
+    # Non-probate: slot 03  (petition is only 02)
+    afft_num = "05" if proceeding == "Probate" else "03"
     try:
-        files.append((f"03_805_Affidavit_{last_name}.docx", generate_805(data)))
-        print("[OK] 03 805 Affidavit")
+        print(f"[TRYING] {afft_num} generate_805()")
+        files.append((f"{afft_num}_805_Affidavit_{last_name}.docx", generate_805(data)))
+        print(f"[OK] {afft_num} 805 Affidavit")
     except Exception as e:
-        print(f"[ERR] 03 805 Affidavit: {e}")
+        print(f"[ERR] {afft_num} 805 Affidavit: {e}")
         traceback.print_exc()
         errors.append(f"805 Affidavit: {e}")
-        files.append((f"03_MISSING_805_Affidavit.txt",
+        files.append((f"{afft_num}_MISSING_805_Affidavit.txt",
                        f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 4. Affidavit of Heirship (non-probate only)
+    # ── Affidavit of Heirship (non-probate only) — slot 04
     if non_probate:
         try:
+            print("[TRYING] 04 generate_heirship()")
             files.append((f"04_Affidavit_of_Heirship_{last_name}.docx", generate_heirship(data)))
             print("[OK] 04 Heirship affidavit")
         except Exception as e:
@@ -122,9 +143,10 @@ def generate_packet():
             files.append((f"04_MISSING_Heirship_Affidavit.txt",
                            f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 5. FT-1 Family Tree (non-probate only)
+    # ── FT-1 Family Tree (non-probate only) — slot 05
     if non_probate:
         try:
+            print("[TRYING] 05 generate_ft1()")
             files.append((f"05_FT1_Family_Tree_{last_name}.pdf", generate_ft1(data)))
             print("[OK] 05 FT-1 Family Tree")
         except Exception as e:
@@ -134,34 +156,34 @@ def generate_packet():
             files.append((f"05_MISSING_FT1_Family_Tree.txt",
                            f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 6/5. Attorney certification (06 for non-probate, 05 for probate)
-    atty_num = "06" if non_probate else "05"
+    # ── Attorney certification — slot 06 (all proceedings)
     try:
-        files.append((f"{atty_num}_Attorney_Certification_{last_name}.docx",
+        print("[TRYING] 06 generate_attorney_cert()")
+        files.append((f"06_Attorney_Certification_{last_name}.docx",
                        generate_attorney_cert(data)))
-        print(f"[OK] {atty_num} Attorney cert")
+        print("[OK] 06 Attorney cert")
     except Exception as e:
-        print(f"[ERR] {atty_num} Attorney cert: {e}")
+        print(f"[ERR] 06 Attorney cert: {e}")
         traceback.print_exc()
         errors.append(f"Attorney cert: {e}")
-        files.append((f"{atty_num}_MISSING_Attorney_Cert.txt",
+        files.append((f"06_MISSING_Attorney_Cert.txt",
                        f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # 7/6. Waiver cover letters for distributees who agreed
-    waiver_num = "07" if non_probate else "06"
+    # ── Waiver cover letters — slot 07+ (all proceedings)
     distributees = data.get("distributees", [])
     for dist in distributees:
         if dist.get("disposition") == "waiver" and dist.get("name"):
             try:
-                fname = f"{waiver_num}_Waiver_Cover_{dist['name'].replace(' ','_')}.docx"
+                print(f"[TRYING] 07 generate_waiver_cover() for {dist['name']!r}")
+                fname = f"07_Waiver_Cover_{dist['name'].replace(' ','_')}.docx"
                 files.append((fname, generate_waiver_cover(data, dist)))
-                print(f"[OK] {waiver_num} Waiver cover: {dist['name']}")
+                print(f"[OK] 07 Waiver cover: {dist['name']}")
             except Exception as e:
-                print(f"[ERR] {waiver_num} Waiver cover {dist.get('name')}: {e}")
+                print(f"[ERR] 07 Waiver cover {dist.get('name')}: {e}")
                 traceback.print_exc()
                 errors.append(f"Waiver cover for {dist.get('name')}: {e}")
                 safe = dist['name'].replace(' ', '_')
-                files.append((f"{waiver_num}_MISSING_Waiver_{safe}.txt",
+                files.append((f"07_MISSING_Waiver_{safe}.txt",
                                f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # 00. Summary sheet (prepended)
