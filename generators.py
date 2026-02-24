@@ -900,12 +900,6 @@ def fill_administration_doc(data):
         data.get("petitionerState", ""),
         data.get("petitionerZip", ""),
     ]))
-    dec_addr = ", ".join(filter(None, [
-        data.get("decedentStreet", ""),
-        data.get("decedentCity", ""),
-        data.get("decedentState", ""),
-        data.get("decedentZip", ""),
-    ]))
 
     def set_para(idx, text):
         para = doc.paragraphs[idx]
@@ -920,25 +914,31 @@ def fill_administration_doc(data):
     set_para(11, f"No:  {file_no}")
     set_para(16, f"TO THE SURROGATE\u2019S COURT, COUNTY OF {county}")
     set_para(19, f"Name:   {petitioner}")
-    set_para(21, f"Domicile:   {pet_addr}")
+    # [22] = street address / city field; [24] = county/state/zip field
+    set_para(22, f"{data.get('petitionerStreet', '')}\t{data.get('petitionerCity', '')}")
+    set_para(24, f"\t{data.get('petitionerState', '')}\t{data.get('petitionerZip', '')}")
 
-    # Para 29: citizenship + interest of petitioner
+    # Para 29: citizenship — template uses "[   ] U.S.A." (3 spaces)
     para29 = doc.paragraphs[29]
     if "U.S.A." in pet_citizenship:
-        replace_para(para29, "[ ] U.S.A.", "[X] U.S.A.")
+        replace_para(para29, "[   ] U.S.A.", "[X] U.S.A.")
+    # Para 30: interest of petitioner — distributee checkbox is on para 30, not 29
+    para30 = doc.paragraphs[30]
     pet_rel = data.get("petitionerRelationship", "")
-    if pet_rel and "[ ] Distributee" in para29.text:
-        replace_para(para29, "[ ] Distributee", f"[X] Distributee ({pet_rel})")
+    if pet_rel:
+        replace_para(para30, "[ ] Distributee", f"[X] Distributee ({pet_rel})")
 
-    # Para 32: attorney checkbox
+    # Para 32: attorney — "Yes" uses "[   ]" (3 spaces), "No" uses "[ ]" (1 space)
     para32 = doc.paragraphs[32]
     if data.get("petitionerIsAttorney") == "Yes":
-        replace_para(para32, "[ ] Yes", "[X] Yes")
+        replace_para(para32, "[   ] Yes", "[X] Yes")
     else:
         replace_para(para32, "[ ] No", "[X] No")
 
     set_para(38, f"Name:   {decedent}")
-    set_para(40, f"Domicile:   {dec_addr}")
+    # [41] = street address / city field; [43] = state/zip field
+    set_para(41, f"{data.get('decedentStreet', '')}\t{data.get('decedentCity', '')}")
+    set_para(43, f"{data.get('decedentState', '')}\t{data.get('decedentZip', '')}")
 
     # Para 44: date of death / place of death / citizenship
     para44 = doc.paragraphs[44]
@@ -946,7 +946,7 @@ def fill_administration_doc(data):
     full44 = re.sub(r'(Date of Death:)\s*\t?', f'\\1 {dod}  ', full44)
     full44 = re.sub(r'(Place of Death:)\s*\t?', f'\\1 {pod}  ', full44)
     if "U.S.A." in dec_citizenship:
-        full44 = full44.replace("[ ] U.S.A.", "[X] U.S.A.")
+        full44 = full44.replace("[  ]      U.S.A.", "[X] U.S.A.")
     replace_para(para44, para44.text, full44)
 
     # Para 51: personal property value
@@ -1010,17 +1010,17 @@ def fill_administration_doc(data):
         if i < len(debt_lines):
             set_para(debt_idx, debt_lines[i])
 
-    # Para 135: letters type checkbox
+    # Para 135: letters type — template uses "[    ]" (4 spaces) except Temporary uses "[ ]" (1 space)
     para135 = doc.paragraphs[135]
     lt_lower = lt.lower()
     if "temporary" in lt_lower:
-        replace_para(para135, "[ ] Temporary", "[X] Temporary")
+        replace_para(para135, "[ ] Temporary Administration to", f"[X] Temporary Administration to {letters_to}")
     elif "limited" in lt_lower:
-        replace_para(para135, "[ ] Limited Administration", f"[X] Limited Administration to {letters_to}")
+        replace_para(para135, "[    ] Limited Administration to", f"[X] Limited Administration to {letters_to}")
     elif "limitation" in lt_lower:
-        replace_para(para135, "[ ] Administration with Limitation", f"[X] Administration with Limitation to {letters_to}")
+        replace_para(para135, "[    ] Administration with Limitation to", f"[X] Administration with Limitation to {letters_to}")
     else:
-        replace_para(para135, "[ ] Administration to", f"[X] Administration to {letters_to}")
+        replace_para(para135, "[    ] Administration to", f"[X] Administration to {letters_to}")
 
     set_para(157, f"Dated:  {today()}")
     set_para(166, f"COUNTY OF {county}\t)")
@@ -1044,18 +1044,19 @@ def fill_administration_doc(data):
                     replace_para(para, "File No.   \t", f"File No. {file_no}")
 
     # Mark correct letters type checkbox in table col 2
+    # Table cells use "[   ]\t" format (3 spaces + tab)
     lt_check_map = [
-        ("[ ] Administration",                  not any(x in lt_lower for x in ("limited", "limitation", "temporary"))),
-        ("[ ] Limited Administration",          "limited" in lt_lower),
-        ("[ ] Administration with Limitations", "limitation" in lt_lower),
-        ("[ ] Temporary Administration",        "temporary" in lt_lower),
+        ("[   ]\tAdministration",              not any(x in lt_lower for x in ("limited", "limitation", "temporary"))),
+        ("[   ]\tLimited Administration",      "limited" in lt_lower),
+        ("[   ]\tAdministration with Limitations", "limitation" in lt_lower),
+        ("[   ]\tTemporary Administration",    "temporary" in lt_lower),
     ]
     for row in table.rows:
         for cell in row.cells:
             for para in cell.paragraphs:
                 for old_check, should_check in lt_check_map:
                     if old_check in para.text and should_check:
-                        replace_para(para, old_check, old_check.replace("[ ]", "[X]"))
+                        replace_para(para, old_check, old_check.replace("[   ]", "[X]"))
 
     # Global pass for repeated schedule headers (paras 203+)
     replace_in_doc(doc, {
