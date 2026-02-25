@@ -12,8 +12,11 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pypdf import PdfReader, PdfWriter
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
-PDFS_DIR = os.path.dirname(__file__)
+TEMPLATES_DIR       = os.path.join(os.path.dirname(__file__), "templates")
+ADMIN_TEMPLATES_DIR = os.path.join(TEMPLATES_DIR, "Admin")
+PROBATE_TEMPLATES_DIR = os.path.join(TEMPLATES_DIR, "Probate")
+WORD_TEMPLATES_DIR  = os.path.join(TEMPLATES_DIR, "Not Using Word Docs")
+PDFS_DIR            = os.path.dirname(__file__)
 
 COUNTY_INFO = {
     "Bronx": {
@@ -381,7 +384,7 @@ def generate_805(data):
 # ─── AFFIDAVIT OF HEIRSHIP ────────────────────────────────────────────────────
 
 def generate_heirship(data):
-    doc = Document(os.path.join(TEMPLATES_DIR, "Affidavit_of_Heirship_Full_Admin.docx"))
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Affidavit_of_Heirship_Full_Admin.docx"))
     decedent = decedent_full(data)
     county = data.get("county", "")
     petitioner = petitioner_full(data)
@@ -499,7 +502,7 @@ def generate_heirship(data):
 # ─── WAIVER COVER LETTER ──────────────────────────────────────────────────────
 
 def generate_waiver_cover(data, distributee):
-    doc = Document(os.path.join(TEMPLATES_DIR, "Waiver_cover_letter.docx"))
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Waiver_cover_letter.docx"))
     decedent = decedent_full(data)
     petitioner = petitioner_full(data)
     dist_name = distributee.get("name", "")
@@ -520,7 +523,7 @@ def generate_waiver_cover(data, distributee):
 # ─── ATTORNEY CERTIFICATION ───────────────────────────────────────────────────
 
 def generate_attorney_cert(data):
-    doc = Document(os.path.join(TEMPLATES_DIR, "newcertform_6_59_19_PM.docx"))
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "newcertform_6_59_19_PM.docx"))
     replace_in_doc(doc, {
         "Dated:": f"Dated: {today()}",
     })
@@ -884,7 +887,7 @@ def fill_administration_pdf(data):
     """Fill the A-1 Administration Petition + Oath PDF form."""
     from collections import defaultdict
 
-    reader = PdfReader(os.path.join(TEMPLATES_DIR, "Admin Petition + Oath.pdf"))
+    reader = PdfReader(os.path.join(ADMIN_TEMPLATES_DIR, "Admin Petition + Oath.pdf"))
     writer = PdfWriter()
     writer.clone_reader_document_root(reader)
 
@@ -1083,7 +1086,7 @@ def fill_administration_pdf(data):
 
 def fill_ft1_pdf(data):
     """Fill the actual FT-1 Family Tree Affidavit court form PDF."""
-    reader = PdfReader(os.path.join(TEMPLATES_DIR, "Family_Tree_Affidavit_Fill-In.pdf"))
+    reader = PdfReader(os.path.join(ADMIN_TEMPLATES_DIR, "Family_Tree_Affidavit_Fill-In.pdf"))
     writer = PdfWriter()
     writer.clone_reader_document_root(reader)
 
