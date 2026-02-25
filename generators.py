@@ -544,8 +544,8 @@ def _extract_pdf_pages(writer, page_indices):
 
 
 def _build_probate_writer(data):
-    """Fill all fields in Probate-_NY_Court_Forms.pdf; return (writer, reader)."""
-    reader = PdfReader(os.path.join(PDFS_DIR, "Probate-_NY_Court_Forms.pdf"))
+    """Fill all fields in Probate Petition + Oath.pdf; return (writer, reader)."""
+    reader = PdfReader(os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf"))
     writer = PdfWriter()
     writer.clone_reader_document_root(reader)
 
@@ -553,20 +553,43 @@ def _build_probate_writer(data):
     dec      = decedent_full(data)
     pet      = petitioner_full(data)
     lt       = data.get("lettersType", "")
+    letters_to = data.get("lettersTo", "") or pet
     witnesses = ", ".join(filter(None, [data.get("witness1", ""), data.get("witness2", "")]))
     pet_addr  = ", ".join(filter(None, [
         data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
         data.get("petitionerState", ""), data.get("petitionerZip", ""),
     ]))
 
+    # Surviving relatives → Dropdown 5a–5g (EPTL 4-1.1 order, 7 classes)
+    surv_keys = [
+        "survivingSpouse", "survivingChildren", "survivingParents",
+        "survivingSiblings", "survivingGrandparents", "survivingAuntsUncles",
+        "survivingFirstCousinsOnceRemoved",
+    ]
+    surv_vals = [bool(data.get(k)) for k in surv_keys]
+    first_surv = next((i for i, s in enumerate(surv_vals) if s), None)
+    last_surv  = (len(surv_vals) - 1 - next(
+                     (i for i, s in enumerate(reversed(surv_vals)) if s), -1)
+                 ) if first_surv is not None else None
+    dropdown_vals = []
+    for i, surv in enumerate(surv_vals):
+        if first_surv is None:
+            dropdown_vals.append("-")
+        elif i < first_surv:
+            dropdown_vals.append("No")
+        elif last_surv is not None and i > last_surv:
+            dropdown_vals.append("X")
+        else:
+            dropdown_vals.append("Yes" if surv else "No")
+
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
         "To the Surrogates Court County of": county,
-        "WILL OF": dec,
+        "decedent": dec,
         "a Name": dec,
         "aka": data.get("decedentAKA", ""),
-        "Name": pet,
+        "Name_petitioner": pet,
         "1": pet,
         "Domicile or Principal Office": data.get("petitionerStreet", ""),
         "City Village or Town": data.get("petitionerCity", ""),
@@ -590,9 +613,20 @@ def _build_probate_writer(data):
         "Estimated gross rents for a period of 18 months": data.get("grossRents18mo", ""),
         "the estate except as follows Enter NONE or specify": data.get("otherAssets", "NONE"),
         "but less than": data.get("personalPropertyValue", ""),
-        "Letters Testamentary to 1": data.get("lettersTo", ""),
-        "Letters Testamentary to 2": data.get("lettersTo", ""),
-        "Letters of Administration cta to": data.get("lettersTo", ""),
+        # Surviving relatives dropdowns
+        "Dropdown 5a": dropdown_vals[0],
+        "Dropdown 5b": dropdown_vals[1],
+        "Dropdown 5c": dropdown_vals[2],
+        "Dropdown 5d": dropdown_vals[3],
+        "Dropdown 5e": dropdown_vals[4],
+        "Dropdown 5f": dropdown_vals[5],
+        "Dropdown 5g": dropdown_vals[6],
+        # Prayer / letters (page 4)
+        "Petitioner_1": letters_to,
+        "Petitioner_2": letters_to,
+        "Letters of Trusteeship to 1": letters_to,
+        "Letters of Administration cta to": letters_to,
+        "Dated": today(),
         "Print Name": pet,
 
         # ── Oath and Designation (page 5) ───────────────────────────────────────
@@ -618,7 +652,7 @@ def _build_probate_writer(data):
         "COUNTY OF_8": county,
     }
 
-    # Letters type checkboxes
+    # Letters type checkboxes (text fields — fill with "X")
     if "Testamentary" in lt:
         fields["Letters Testamentary"] = "X"
         fields["EXECUTOR"] = "X"          # oath page 5
@@ -638,29 +672,15 @@ def _build_probate_writer(data):
     else:
         fields["is not an attorney"] = "X"
 
-    # Surviving relatives
-    surv_map = {
-        "survivingSpouse": "Spouse husbandwife",
-        "survivingChildren": "Child or children andor issue of predeceased child or children",
-        "survivingParents": "MotherFather",
-        "survivingSiblings": "Sisters andor brothers either of the whole or half blood and issue of predeceased sisters",
-        "survivingGrandparents": "Grandparents Include maternal and paternal",
-        "survivingAuntsUncles": "Aunts andor uncles and children of predeceased aunts andor uncles first cousins",
-        "survivingFirstCousinsOnceRemoved": "First cousins once removed children of predeceased first cousins Include maternal and",
-    }
-    for key, field in surv_map.items():
-        if data.get(key):
-            fields[field] = "X"
-
-    # Distributees
+    # Distributees (page 2, slots 1-7; name/addr column pairs)
     name_f = ["1_2", "3", "4", "5", "6", "7"]
     addr_f = ["2_2", "3_2", "4_2", "5_2", "6_2", "7_2"]
-    int_f = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 8)]
-    for i, dist in enumerate(data.get("distributees", [])[:7]):
+    int_f  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 7)]
+    for i, dist in enumerate(data.get("distributees", [])[:6]):
         if dist.get("name"):
             fields[name_f[i]] = f"{dist['name']} ({dist.get('relationship','')})"
             fields[addr_f[i]] = f"{dist.get('address','')} | {dist.get('citizenship','')}"
-            fields[int_f[i]] = dist.get("relationship", "Distributee")
+            fields[int_f[i]]  = dist.get("relationship", "Distributee")
 
     # Apply all fields across all pages
     all_fields = reader.get_fields() or {}
