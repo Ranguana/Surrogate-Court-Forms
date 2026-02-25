@@ -15,7 +15,7 @@ from generators import (
     generate_cover_letter, generate_805, generate_heirship,
     generate_waiver_cover, generate_attorney_cert,
     generate_probate_docs, fill_ancillary_pdf,
-    fill_administration_doc, generate_ft1,
+    fill_administration_pdf, generate_ft1,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
 
@@ -92,12 +92,12 @@ def generate_packet():
                 files.append((f"02_Petition_Ancillary_AA1_{last_name}.pdf", fill_ancillary_pdf(data)))
                 print("[OK] 02 Ancillary petition (AA-1)")
             elif proceeding == "Administration":
-                files.append((f"02_Petition_Administration_A1_{last_name}.docx",
-                               fill_administration_doc(data)))
+                files.append((f"02_Petition_Administration_A1_{last_name}.pdf",
+                               fill_administration_pdf(data)))
                 print("[OK] 02 Administration petition (A-1)")
             elif proceeding == "NonDomiciliary":
-                files.append((f"02_Petition_NonDomiciliary_A1_{last_name}.docx",
-                               fill_administration_doc(data)))
+                files.append((f"02_Petition_NonDomiciliary_A1_{last_name}.pdf",
+                               fill_administration_pdf(data)))
                 print("[OK] 02 NonDomiciliary petition (A-1)")
             else:
                 print(f"[WARN] 02 No petition — unrecognised proceedingType={proceeding!r}")

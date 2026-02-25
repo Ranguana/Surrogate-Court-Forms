@@ -880,193 +880,203 @@ def petitioner_full(data):
 
 # ─── ADMINISTRATION PETITION (A-1) ────────────────────────────────────────────
 
-def fill_administration_doc(data):
-    doc = Document(os.path.join(PDFS_DIR, "ADM_doc.docx"))
+def fill_administration_pdf(data):
+    """Fill the A-1 Administration Petition + Oath PDF form."""
+    from collections import defaultdict
 
-    county = data.get("county", "")
-    file_no = data.get("fileNo", "")
-    decedent = decedent_full(data)
-    petitioner = petitioner_full(data)
-    dod = data.get("decedentDOD", "")
-    pod = data.get("decedentPlaceOfDeath", "")
-    dec_citizenship = data.get("decedentCitizenship", "U.S.A.")
-    pet_citizenship = data.get("petitionerCitizenship", "U.S.A.")
-    lt = data.get("lettersType", "Letters of Administration")
-    letters_to = data.get("lettersTo", "") or petitioner
+    reader = PdfReader(os.path.join(TEMPLATES_DIR, "Admin Petition + Oath.pdf"))
+    writer = PdfWriter()
+    writer.clone_reader_document_root(reader)
+
+    county    = data.get("county", "")
+    dec       = decedent_full(data)
+    pet       = petitioner_full(data)
+    lt        = data.get("lettersType", "Letters of Administration")
+    lt_lower  = lt.lower()
+    letters_to = data.get("lettersTo", "") or pet
+
+    def v(key, default=""):
+        return str(data.get(key, "") or "").strip() or default
+
+    # Letters type flags
+    is_limited    = "limited" in lt_lower and "limitation" not in lt_lower
+    is_limitation = "limitation" in lt_lower
+    is_temporary  = "temporary" in lt_lower
+    is_standard   = not any([is_limited, is_limitation, is_temporary])
+
+    # Citizenship flags
+    pet_cit = v("petitionerCitizenship", "U.S.A.")
+    dec_cit = v("decedentCitizenship",   "U.S.A.")
+    pet_us  = "U.S.A" in pet_cit or "usa" in pet_cit.lower()
+    dec_us  = "U.S.A" in dec_cit or "usa" in dec_cit.lower()
+
+    is_attorney = data.get("petitionerIsAttorney") == "Yes"
+
+    # Surviving relatives → dropdowns 6a–6h (EPTL 4-1.1 order)
+    # Instructions: "No" for all prior classes, number/Yes for surviving classes, "X" for all subsequent
+    surv_keys = [
+        "survivingSpouse", "survivingChildren", "survivingIssue",
+        "survivingParents", "survivingSiblings", "survivingGrandparents",
+        "survivingAuntsUncles", "survivingFirstCousinsOnceRemoved",
+    ]
+    surv_vals = [bool(data.get(k)) for k in surv_keys]
+    first_surv = next((i for i, s in enumerate(surv_vals) if s), None)
+    last_surv  = (len(surv_vals) - 1 - next(
+                     (i for i, s in enumerate(reversed(surv_vals)) if s), -1)
+                 ) if first_surv is not None else None
+
+    dropdown_vals = []
+    for i, surv in enumerate(surv_vals):
+        if first_surv is None:
+            dropdown_vals.append("-")
+        elif i < first_surv:
+            dropdown_vals.append("No")
+        elif last_surv is not None and i > last_surv:
+            dropdown_vals.append("X")
+        else:
+            dropdown_vals.append("Yes" if surv else "No")
+
+    # Debts
+    debt_lines = []
+    for key, label in [("mortgageAmount",    "Outstanding Mortgage: ${}"),
+                       ("funeralPaid",        "Funeral Expenses Paid: ${}"),
+                       ("funeralOutstanding", "Funeral Expenses Outstanding: ${}"),
+                       ("miscDebts",          "Misc Debts: {}")]:
+        val = (data.get(key, "") or "").strip()
+        if val:
+            debt_lines.append(label.format(val))
+    if not debt_lines:
+        debt_lines = ["NONE"]
 
     pet_addr = ", ".join(filter(None, [
-        data.get("petitionerStreet", ""),
-        data.get("petitionerCity", ""),
-        data.get("petitionerState", ""),
-        data.get("petitionerZip", ""),
+        v("petitionerStreet"), v("petitionerCity"),
+        v("petitionerState"), v("petitionerZip"),
     ]))
 
-    def set_para(idx, text):
-        para = doc.paragraphs[idx]
-        for run in para.runs:
-            run.text = ""
-        if para.runs:
-            para.runs[0].text = text
-        else:
-            para.add_run(text)
+    fields = {
+        # ── PAGE 1: Caption ──────────────────────────────────────────
+        "COUNTY OF":                        county,
+        "Estate of 1":                      dec,
+        "aka":                              v("decedentAKA"),
+        "File No":                          v("fileNo"),
+        "TO THE SURROGATES COURT COUNTY OF": county,
 
-    set_para(9,  f"COUNTY OF {county}")
-    set_para(11, f"No:  {file_no}")
-    set_para(16, f"TO THE SURROGATE\u2019S COURT, COUNTY OF {county}")
-    set_para(19, f"Name:   {petitioner}")
-    # [22] = street address / city field; [24] = county/state/zip field
-    set_para(22, f"{data.get('petitionerStreet', '')}\t{data.get('petitionerCity', '')}")
-    set_para(24, f"\t{data.get('petitionerState', '')}\t{data.get('petitionerZip', '')}")
+        # Caption checkboxes (letters type)
+        "petition for letters of admin":    "/Yes" if is_standard   else "/Off",
+        "limited admin":                    "/Yes" if is_limited    else "/Off",
+        "limited admin with lim":           "/Yes" if is_limitation else "/Off",
+        "temp admin":                       "/Yes" if is_temporary  else "/Off",
 
-    # Para 29: citizenship — template uses "[   ] U.S.A." (3 spaces)
-    para29 = doc.paragraphs[29]
-    if "U.S.A." in pet_citizenship:
-        replace_para(para29, "[   ] U.S.A.", "[X] U.S.A.")
-    # Para 30: interest of petitioner — distributee checkbox is on para 30, not 29
-    para30 = doc.paragraphs[30]
-    pet_rel = data.get("petitionerRelationship", "")
-    if pet_rel:
-        replace_para(para30, "[ ] Distributee", f"[X] Distributee ({pet_rel})")
+        # ── PAGE 1: Petitioner ───────────────────────────────────────
+        "Name":                             pet,
+        "Domicile":                         v("petitionerStreet"),
+        "County":                           v("petitionerCity"),
+        "State":                            v("petitionerState"),
+        "Zip":                              v("petitionerZip"),
+        "Telephone Number":                 v("petitionerPhone"),
+        "yes us citizen":                   "/Yes" if pet_us  else "/Off",
+        "NO us citizen":                    "/Yes" if not pet_us else "/Off",
+        "Distributee of decedent state relationship": v("petitionerRelationship"),
+        "Otherspecify":                     v("petitionerInterest"),
+        "yes attorney":                     "/Yes" if is_attorney     else "/Off",
+        "NO not an attorney":               "/Yes" if not is_attorney else "/Off",
+        "not a convicted felon":            "/Yes",
 
-    # Para 32: attorney — "Yes" uses "[   ]" (3 spaces), "No" uses "[ ]" (1 space)
-    para32 = doc.paragraphs[32]
-    if data.get("petitionerIsAttorney") == "Yes":
-        replace_para(para32, "[   ] Yes", "[X] Yes")
-    else:
-        replace_para(para32, "[ ] No", "[X] No")
+        # ── PAGE 1: Decedent ─────────────────────────────────────────
+        "Name_2":                           dec,
+        "Domicile_2":                       v("decedentStreet"),
+        "State_2":                          v("decedentState"),
+        "Zip Code":                         v("decedentZip"),
+        "Township of":                      v("decedentCounty", v("decedentCity")),
+        "Date of Death":                    v("decedentDOD"),
+        "Place of Death":                   v("decedentPlaceOfDeath"),
+        "yes us citizen 1":                 "/Yes" if dec_us  else "/Off",
+        "NO not US Citizen 2":              "/Yes" if not dec_us else "/Off",
 
-    set_para(38, f"Name:   {decedent}")
-    # [41] = street address / city field; [43] = state/zip field
-    set_para(41, f"{data.get('decedentStreet', '')}\t{data.get('decedentCity', '')}")
-    set_para(43, f"{data.get('decedentState', '')}\t{data.get('decedentZip', '')}")
+        # ── PAGE 2: Property values ──────────────────────────────────
+        "undefined_4":                      v("personalPropertyValue", "0"),
+        "undefined_5":                      v("realPropertyValue", "0"),
+        "A brief description of each parcel is as follows":
+                                            v("realPropertyDescription"),
+        "c The estimated gross rent for a period of eighteen 18 months is the sum of":
+                                            v("grossRents18mo"),
 
-    # Para 44: date of death / place of death / citizenship
-    para44 = doc.paragraphs[44]
-    full44 = para44.text
-    full44 = re.sub(r'(Date of Death:)\s*\t?', f'\\1 {dod}  ', full44)
-    full44 = re.sub(r'(Place of Death:)\s*\t?', f'\\1 {pod}  ', full44)
-    if "U.S.A." in dec_citizenship:
-        full44 = full44.replace("[  ]      U.S.A.", "[X] U.S.A.")
-    replace_para(para44, para44.text, full44)
+        # Surviving relatives dropdowns
+        "Dropdown 6a": dropdown_vals[0],
+        "Dropdown 6b": dropdown_vals[1],
+        "Dropdown 6c": dropdown_vals[2],
+        "Dropdown 6d": dropdown_vals[3],
+        "Dropdown 6e": dropdown_vals[4],
+        "Dropdown 6f": dropdown_vals[5],
+        "Dropdown 6g": dropdown_vals[6],
+        "Dropdown 6h": dropdown_vals[7],
 
-    # Para 51: personal property value
-    pp = data.get("personalPropertyValue", "")
-    set_para(51, f"$ {pp}")
+        # ── PAGE 4: Prayer for relief ────────────────────────────────
+        "a-process issue letters":          "/Yes",
+        "c a decree award letters of":      "/Yes",
+        "9c1":                              "/Yes" if is_standard   else "/Off",
+        "9c2":                              "/Yes" if is_limited    else "/Off",
+        "9c3":                              "/Yes" if is_limitation else "/Off",
+        "9c4":                              "/Yes" if is_temporary  else "/Off",
+        "Administration to":                letters_to if is_standard   else "",
+        "Limited Administration to":        letters_to if is_limited    else "",
+        "Administration with Limitation to": letters_to if is_limitation else "",
+        "Temporary Administration to":      letters_to if is_temporary  else "",
+        "Dated":                            today(),
+        "Print Name":                       pet,
 
-    # Para 54: real property value
-    rp = data.get("realPropertyValue", "")
-    set_para(54, f"$ {rp}")
+        # ── PAGE 5: Combined Verification, Oath & Designation ────────
+        "ss":                               v("petitionerState", "New York"),
+        "My domicile is":                   pet_addr,
+        "before me personally came":        pet,
+        "Print Name_3":                     v("attorneyName"),
+        "Firm Name":                        v("attorneyFirm"),
+        "TelNo":                            v("attorneyPhone"),
+        "Address of Attorney":              v("attorneyAddress"),
+    }
 
-    # Para 57: real property description
-    rpd = data.get("realPropertyDescription", "")
-    if rpd:
-        set_para(57, rpd)
+    # ── PAGE 3: Distributees (full age / sound mind) — up to 8 rows ─
+    for i, dist in enumerate(data.get("distributees", [])[:8]):
+        if dist.get("name"):
+            n = str(i + 1)
+            fields[f"Name {n}"]                        = dist["name"]
+            fields[f"Relationship {n}"]                = dist.get("relationship", "")
+            fields[f"Domicile and Mailing Address {n}"] = dist.get("address", "")
+            fields[f"Citizenship {n}"]                 = dist.get("citizenship", "U.S.A.")
 
-    # Para 60: gross rents
-    gr = data.get("grossRents18mo", "")
-    if gr:
-        replace_para(doc.paragraphs[60], "$   \t", f"$ {gr}")
+    # ── PAGE 3: Debts ────────────────────────────────────────────────
+    debt_key = "8 There are no outstanding debts or funeral expenses except Write NONE or state same {}"
+    for i, line in enumerate(debt_lines[:9]):
+        fields[debt_key.format(i + 1)] = line
 
-    # Paras 72–86: surviving relatives checkboxes
-    surv_checks = [
-        (72, "survivingSpouse",                   "[ ] Spouse"),
-        (74, "survivingChildren",                 "[ ] Child or children"),
-        (76, "survivingIssue",                    "[ ] Any issue"),
-        (78, "survivingParents",                  "[ ] Mother/Father"),
-        (80, "survivingSiblings",                 "[ ] Sisters or brothers"),
-        (82, "survivingGrandparents",             "[ ] Grandmother/Grandfather"),
-        (84, "survivingAuntsUncles",              "[ ] Aunts or uncles"),
-        (86, "survivingFirstCousinsOnceRemoved",  "[ ] First cousins once removed"),
-    ]
-    for idx, key, old_str in surv_checks:
-        if data.get(key):
-            replace_para(doc.paragraphs[idx], old_str, old_str.replace("[ ]", "[X]"))
+    # Fill page-by-page using the same pattern as fill_ancillary_pdf
+    field_page_map = {}
+    for page_num, page in enumerate(reader.pages):
+        for annot in (page.get('/Annots') or []):
+            try:
+                obj = annot.get_object()
+                name = obj.get('/T', '')
+                if name:
+                    field_page_map[str(name)] = page_num
+            except Exception:
+                pass
 
-    # Paras 97–104: distributee rows
-    for i, dist_idx in enumerate(range(97, 105)):
-        dist_list = data.get("distributees", [])
-        if i < len(dist_list):
-            d = dist_list[i]
-            if d.get("name"):
-                line = "\t".join([
-                    d.get("name", ""),
-                    d.get("relationship", ""),
-                    d.get("address", ""),
-                    d.get("citizenship", "U.S.A."),
-                ])
-                set_para(dist_idx, line)
+    all_field_names = set(reader.get_fields().keys()) if reader.get_fields() else set()
+    by_page = defaultdict(dict)
+    for fid, val in fields.items():
+        if fid in all_field_names and fid in field_page_map and val not in ("", "/Off"):
+            by_page[field_page_map[fid]][fid] = val
 
-    # Paras 119–128: debt rows
-    debt_lines = []
-    mort = (data.get("mortgageAmount", "") or "").strip()
-    fp   = (data.get("funeralPaid", "") or "").strip()
-    fo   = (data.get("funeralOutstanding", "") or "").strip()
-    misc = (data.get("miscDebts", "") or "").strip()
-    if mort: debt_lines.append(f"Outstanding Mortgage: ${mort}")
-    if fp:   debt_lines.append(f"Funeral Expenses Paid: ${fp}")
-    if fo:   debt_lines.append(f"Funeral Expenses Outstanding: ${fo}")
-    if misc: debt_lines.append(f"Miscellaneous Debts: {misc}")
-    for i, debt_idx in enumerate(range(119, 129)):
-        if i < len(debt_lines):
-            set_para(debt_idx, debt_lines[i])
+    for page_num, page_fields in by_page.items():
+        try:
+            writer.update_page_form_field_values(writer.pages[page_num], page_fields)
+        except Exception:
+            pass
 
-    # Para 135: letters type — template uses "[    ]" (4 spaces) except Temporary uses "[ ]" (1 space)
-    para135 = doc.paragraphs[135]
-    lt_lower = lt.lower()
-    if "temporary" in lt_lower:
-        replace_para(para135, "[ ] Temporary Administration to", f"[X] Temporary Administration to {letters_to}")
-    elif "limited" in lt_lower:
-        replace_para(para135, "[    ] Limited Administration to", f"[X] Limited Administration to {letters_to}")
-    elif "limitation" in lt_lower:
-        replace_para(para135, "[    ] Administration with Limitation to", f"[X] Administration with Limitation to {letters_to}")
-    else:
-        replace_para(para135, "[    ] Administration to", f"[X] Administration to {letters_to}")
-
-    set_para(157, f"Dated:  {today()}")
-    set_para(166, f"COUNTY OF {county}\t)")
-    replace_para(doc.paragraphs[173], "________________ County", f"{county} County")
-    set_para(175, f"My domicile is: {pet_addr}")
-
-    # Table 0: "Estate of" caption + letters type checkboxes
-    table = doc.tables[0]
-    for row in table.rows:
-        for cell in row.cells:
-            for para in cell.paragraphs:
-                t = para.text.strip()
-                if t == "Estate of":
-                    replace_para(para, "Estate of", f"Estate of {decedent}")
-                elif t == "a/k/a":
-                    aka = data.get("decedentAKA", "")
-                    if aka:
-                        replace_para(para, "a/k/a", f"a/k/a {aka}")
-                # File No in table footer
-                elif "File No." in para.text and "\t" in para.text:
-                    replace_para(para, "File No.   \t", f"File No. {file_no}")
-
-    # Mark correct letters type checkbox in table col 2
-    # Table cells use "[   ]\t" format (3 spaces + tab)
-    lt_check_map = [
-        ("[   ]\tAdministration",              not any(x in lt_lower for x in ("limited", "limitation", "temporary"))),
-        ("[   ]\tLimited Administration",      "limited" in lt_lower),
-        ("[   ]\tAdministration with Limitations", "limitation" in lt_lower),
-        ("[   ]\tTemporary Administration",    "temporary" in lt_lower),
-    ]
-    for row in table.rows:
-        for cell in row.cells:
-            for para in cell.paragraphs:
-                for old_check, should_check in lt_check_map:
-                    if old_check in para.text and should_check:
-                        replace_para(para, old_check, old_check.replace("[   ]", "[X]"))
-
-    # Global pass for repeated schedule headers (paras 203+)
-    replace_in_doc(doc, {
-        "COUNTY OF \t":   f"COUNTY OF {county}",
-        "COUNTY OF  \t":  f"COUNTY OF {county}",
-        "Estate of \t":   f"Estate of {decedent}",
-        "Estate of  \t":  f"Estate of {decedent}",
-    })
-
-    return make_docx_bytes(doc)
+    buf = io.BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    return buf.read()
 
 
 # ─── FAMILY TREE WORKSHEET (FT-1) ─────────────────────────────────────────────
