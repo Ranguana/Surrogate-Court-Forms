@@ -1242,6 +1242,177 @@ def fill_administration_pdf(data):
     return fill_pdf(template, fields)
 
 
+def fill_nondom_pdf(data):
+    """Fill the Non-Domiciliary Administration Petition + Oath PDF form.
+
+    Uses the same field mapping as fill_administration_pdf but with the
+    Non Dom template which has additional non-domiciliary specific fields.
+    """
+    county    = data.get("county", "")
+    dec       = decedent_full(data)
+    pet       = petitioner_full(data)
+    lt        = data.get("lettersType", "Letters of Administration")
+    lt_lower  = lt.lower()
+    letters_to = data.get("lettersTo", "") or pet
+
+    def v(key, default=""):
+        return str(data.get(key, "") or "").strip() or default
+
+    is_limited    = "limited" in lt_lower and "limitation" not in lt_lower
+    is_limitation = "limitation" in lt_lower
+    is_temporary  = "temporary" in lt_lower
+    is_standard   = not any([is_limited, is_limitation, is_temporary])
+
+    pet_cit = v("petitionerCitizenship", "U.S.A.")
+    dec_cit = v("decedentCitizenship",   "U.S.A.")
+    pet_us  = "U.S.A" in pet_cit or "usa" in pet_cit.lower()
+    dec_us  = "U.S.A" in dec_cit or "usa" in dec_cit.lower()
+
+    is_attorney = data.get("petitionerIsAttorney") == "Yes"
+
+    surv_keys = [
+        "survivingSpouse", "survivingChildren", "survivingIssue",
+        "survivingParents", "survivingSiblings", "survivingGrandparents",
+        "survivingAuntsUncles", "survivingFirstCousinsOnceRemoved",
+    ]
+    first_surviving = None
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
+            first_surviving = idx
+            break
+    dropdown_vals = []
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if first_surviving is None:
+            dropdown_vals.append("No")
+        elif idx < first_surviving:
+            dropdown_vals.append("No")
+        elif idx == first_surviving:
+            s = str(raw).strip()
+            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
+        else:
+            dropdown_vals.append("X")
+
+    debt_lines = []
+    for key, label in [("mortgageAmount",    "Outstanding Mortgage: ${}"),
+                       ("funeralPaid",        "Funeral Expenses Paid: ${}"),
+                       ("funeralOutstanding", "Funeral Expenses Outstanding: ${}"),
+                       ("miscDebts",          "Misc Debts: {}")]:
+        val = (data.get(key, "") or "").strip()
+        if val:
+            debt_lines.append(label.format(val))
+    if not debt_lines:
+        debt_lines = ["NONE"]
+
+    pet_addr = ", ".join(filter(None, [
+        v("petitionerStreet"), v("petitionerCity"),
+        v("petitionerState"), v("petitionerZip"),
+    ]))
+
+    # Foreign letters info for non-domiciliary
+    foreign_state = v("foreignState", v("decedentState"))
+
+    fields = {
+        "COUNTY OF":                        county.upper(),
+        "Estate of 1":                      dec,
+        "aka":                              v("decedentAKA"),
+        "File No":                          v("fileNo"),
+        "TO THE SURROGATES COURT COUNTY OF": county.upper(),
+
+        "Name":                             pet,
+        "Domicile":                         v("petitionerStreet"),
+        "County":                           v("petitionerCity"),
+        "State":                            v("petitionerState"),
+        "Zip":                              v("petitionerZip"),
+        "Mailing address is":               pet_addr,
+        "yes us citizen":                   pet_us,
+        "NO us citizen":                    not pet_us,
+        "Distributee of decedent state relationship":
+            v("petitionerRelationship") if v("petitionerInterest", "").lower() in ("", "distributee") else "",
+        "Otherspecify":
+            "" if v("petitionerInterest", "").lower() in ("", "distributee") else v("petitionerInterest"),
+        "Mark if Distributee":
+            v("petitionerInterest", "").lower() in ("", "distributee"),
+        "Mark if other and then specifiy":
+            bool(v("petitionerInterest")) and v("petitionerInterest", "").lower() != "distributee",
+        "yes attorney":                     is_attorney,
+        "NO not an attorney":               not is_attorney,
+        "not a convicted felon":            True,
+
+        "Name_2":                           dec,
+        "Domicile_2":                       v("decedentStreet"),
+        "City/Town/Village":                v("decedentCity"),
+        "State_2":                          v("decedentState"),
+        "Zip Code":                         v("decedentZip"),
+        "Township of":                      v("decedentCounty", v("decedentCity")),
+        "Date of Death":                    v("decedentDOD"),
+        "Place of Death":                   v("decedentPlaceOfDeath"),
+        "yes us citizen 1":                 dec_us,
+        "NO not US Citizen 2":              not dec_us,
+
+        "gross value personal":             v("personalPropertyValue", "0"),
+        "gross value real property":        v("realPropertyValue", "0"),
+        "improved":                         bool(nonzero(data.get("improvedRealProperty"))),
+        "unimproved":                       bool(nonzero(data.get("unimprovedRealProperty"))),
+        "A brief description of each parcel is as follows":
+                                            v("realPropertyDescription"),
+        "c The estimated gross rent for a period of eighteen 18 months is the sum of":
+                                            v("grossRents18mo"),
+
+        "Dropdown 6a": dropdown_vals[0],
+        "Dropdown 6b": dropdown_vals[1],
+        "Dropdown 6c": dropdown_vals[2],
+        "Dropdown 6d": dropdown_vals[3],
+        "Dropdown 6e": dropdown_vals[4],
+        "Dropdown 6f": dropdown_vals[5],
+        "Dropdown 6g": dropdown_vals[6],
+        "Dropdown 6h": dropdown_vals[7],
+
+        "a-process issue letters":          True,
+        "c a decree award letters of":      True,
+        "9c1":                              is_standard,
+        "9c2":                              is_limited,
+        "9c3":                              is_limitation,
+        "9c4":                              is_temporary,
+        "Administration to":                letters_to if is_standard   else "",
+        "Limited Administration to":        letters_to if is_limited    else "",
+        "Administration with Limitation to": letters_to if is_limitation else "",
+        "Temporary Administration to":      letters_to if is_temporary  else "",
+        "Dated":                            "",
+        "Print Name":                       pet,
+
+        "Telephone Number":                 v("petitionerPhone", "(212) 739-1736"),
+
+        "ss":                               v("petitionerState", "New York"),
+        "My domicile is":                   pet_addr,
+        "before me personally came":        pet,
+        "Print Name_3":                     v("attorneyName", "Jessica Wilson, Esq."),
+        "Firm Name":                        v("attorneyFirm", "Law Office of Jessica Wilson"),
+        "TelNo":                            v("attorneyPhone", "(212) 739-1736"),
+        "Address of Attorney":              v("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
+
+        "yes wrongful death":               False,
+    }
+
+    # Distributees — full age / sound mind (rows 1-8)
+    for i, dist in enumerate(data.get("distributees", [])[:8]):
+        if dist.get("name"):
+            n = str(i + 1)
+            fields[f"Name {n}"]                        = dist["name"]
+            fields[f"Relationship {n}"]                = dist.get("relationship", "")
+            fields[f"Domicile and Mailing Address {n}"] = dist.get("address", "")
+            fields[f"Citizenship {n}"]                 = dist.get("citizenship", "U.S.A.")
+
+    # Debts
+    debt_key = "8 There are no outstanding debts or funeral expenses except Write NONE or state same {}"
+    for i, line in enumerate(debt_lines[:9]):
+        fields[debt_key.format(i + 1)] = line
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Non Dom Petition + Oath.pdf")
+    return fill_pdf(template, fields)
+
+
 # ─── FAMILY TREE WORKSHEET (FT-1) ─────────────────────────────────────────────
 
 def fill_ft1_pdf(data):
