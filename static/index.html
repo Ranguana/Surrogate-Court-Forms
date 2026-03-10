@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NY Surrogate's Court — Probate Assistant</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -251,6 +252,104 @@ body {
 /* ── SPINNER ── */
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(122,92,30,.2); border-top-color: var(--gold); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 5px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── CHECKLIST ── */
+.cl-item { display:flex; align-items:center; gap:12px; padding:10px 12px; margin-bottom:6px;
+  border:1px solid var(--border); border-radius:6px; cursor:pointer; transition:background .15s;
+  font-family:Arial,sans-serif; font-size:14px; color:var(--text); background:#fff; }
+.cl-item:hover { background:var(--surface2); }
+.cl-item.cl-done { background:#f0fdf4; border-color:#86efac; color:#166534; text-decoration:line-through; }
+.cl-check { width:20px; height:20px; border:2px solid var(--border); border-radius:4px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; }
+.cl-item.cl-done .cl-check { background:#22c55e; border-color:#22c55e; color:#fff; }
+
+/* ── ASSETS ── */
+.asset-tab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:16px; }
+.asset-tab-btn { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-2px;
+  padding:8px 16px; font-size:13px; font-family:Arial,sans-serif; color:var(--text3); cursor:pointer; }
+.asset-tab-btn.active { color:var(--gold); border-bottom-color:var(--gold); font-weight:bold; }
+.asset-tab-pane { display:none; }
+.asset-tab-pane.active { display:block; }
+.asset-card { border:1px solid var(--border); border-radius:6px; margin-bottom:10px; background:#fff; }
+.asset-card-head { display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; cursor:pointer; gap:8px; font-family:Arial,sans-serif; }
+.asset-card-head:hover { background:var(--surface2); border-radius:6px; }
+.asset-card-body { padding:12px 14px; border-top:1px solid var(--border); }
+.asset-badge { font-size:11px; padding:2px 8px; border-radius:10px; font-family:Arial,sans-serif; font-weight:bold; }
+.asset-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-bottom:8px; }
+.asset-grid.g3 { grid-template-columns:1fr 1fr 1fr; }
+.afield label { font-size:11px; color:var(--text3); display:block; margin-bottom:2px; }
+.afield input, .afield select, .afield textarea {
+  width:100%; padding:5px 8px; border:1px solid var(--border); border-radius:4px;
+  font-size:13px; font-family:Arial,sans-serif; background:#fff; color:var(--text); }
+.sched { border:1px solid var(--border); border-radius:6px; margin-bottom:10px; background:#fff; font-family:Arial,sans-serif; }
+.sched-h { background:var(--surface2); padding:8px 14px; font-size:12px; font-weight:bold;
+  border-radius:6px 6px 0 0; display:flex; justify-content:space-between; text-transform:uppercase;
+  letter-spacing:.04em; color:var(--text2); }
+.sched-b { padding:8px 14px; }
+.sched-row { display:flex; justify-content:space-between; align-items:center;
+  padding:4px 0; font-size:13px; border-bottom:1px solid var(--border); }
+.sched-row:last-child { border-bottom:none; }
+.sched-foot { background:var(--gold-bg); padding:7px 14px; border-radius:0 0 6px 6px;
+  display:flex; justify-content:space-between; font-size:13px; font-weight:bold; color:var(--gold); }
+.sched-amt { font-family:'Courier New',monospace; color:var(--text2); }
+.letter-card { border:1px solid var(--border); border-radius:6px; padding:14px 16px;
+  margin-bottom:12px; background:#fff; font-family:Arial,sans-serif; }
+.letter-card h4 { font-size:14px; margin-bottom:3px; }
+.letter-card p { font-size:12px; color:var(--text3); margin-bottom:10px; line-height:1.5; }
+/* ── SMART INTAKE ── */
+.si-dropzone { border:2px dashed var(--border); border-radius:10px; padding:36px 24px;
+  text-align:center; cursor:pointer; transition:border-color .2s, background .2s;
+  font-family:Arial,sans-serif; color:var(--text3); }
+.si-dropzone:hover, .si-dropzone.drag { border-color:var(--gold); background:var(--gold-bg); }
+.si-dropzone input[type=file] { display:none; }
+.si-file-list { margin:12px 0; font-family:Arial,sans-serif; font-size:13px; }
+.si-file-chip { display:inline-flex; align-items:center; gap:6px; background:var(--surface2);
+  border:1px solid var(--border); border-radius:14px; padding:3px 10px 3px 8px;
+  margin:3px; font-size:12px; }
+.si-file-chip button { background:none; border:none; cursor:pointer; color:var(--text3); font-size:11px; padding:0 2px; }
+.si-preview { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:16px; }
+.si-preview-head { background:var(--gold-bg); padding:10px 14px; font-size:13px; font-weight:bold;
+  font-family:Arial,sans-serif; color:var(--gold); display:flex; justify-content:space-between; align-items:center; }
+.si-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+.si-field { display:flex; justify-content:space-between; align-items:center;
+  padding:7px 14px; border-bottom:1px solid var(--border); font-family:Arial,sans-serif; font-size:13px; }
+.si-field:nth-child(odd) { background:#fff; }
+.si-field:nth-child(even) { background:var(--surface2); }
+.si-field-label { color:var(--text3); font-size:12px; min-width:140px; }
+.si-field-val { color:var(--text); font-weight:500; text-align:right; max-width:200px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.si-section-head { background:var(--surface2); padding:6px 14px; font-size:11px; font-weight:bold;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--text3);
+  border-bottom:1px solid var(--border); grid-column:1/-1; }
+/* ── CONTACTS ── */
+.con-tab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:18px; }
+.con-tab-btn { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-2px;
+  padding:8px 16px; font-size:13px; font-family:Arial,sans-serif; color:var(--text3); cursor:pointer; }
+.con-tab-btn.active { color:var(--gold); border-bottom-color:var(--gold); font-weight:bold; }
+.con-tab-pane { display:none; }
+.con-tab-pane.active { display:block; }
+.con-toolbar { display:flex; gap:8px; margin-bottom:14px; align-items:center; }
+.con-toolbar input { flex:1; padding:7px 10px; border:1px solid var(--border); border-radius:6px;
+  font-size:13px; font-family:Arial,sans-serif; }
+.con-table { width:100%; border-collapse:collapse; font-size:13px; font-family:Arial,sans-serif; }
+.con-table th { background:var(--surface2); padding:7px 10px; text-align:left; font-size:11px;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--text3); border-bottom:2px solid var(--border); }
+.con-table td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+.con-table tr:last-child td { border-bottom:none; }
+.con-table tr:hover td { background:var(--surface2); }
+.con-actions { display:flex; gap:6px; }
+.con-form { background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  padding:16px; margin-bottom:18px; }
+.con-form h4 { font-size:13px; font-weight:bold; font-family:Arial,sans-serif;
+  color:var(--gold); margin-bottom:12px; }
+.con-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; margin-bottom:12px; }
+.con-grid.g3 { grid-template-columns:1fr 1fr 1fr; }
+.con-field label { font-size:11px; color:var(--text3); display:block; margin-bottom:3px; font-family:Arial,sans-serif; }
+.con-field input, .con-field select, .con-field textarea {
+  width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:4px;
+  font-size:13px; font-family:Arial,sans-serif; background:#fff; }
+.con-empty { text-align:center; padding:30px; color:var(--text3); font-size:13px; font-family:Arial,sans-serif; }
 </style>
 </head>
 <body>
@@ -265,6 +364,7 @@ body {
     <button class="btn btn-outline" onclick="toggleIntake()">📄 Intake PDF</button>
     <button class="btn btn-outline" onclick="openSave()">💾 Save Case</button>
     <button class="btn btn-outline" onclick="openDashboard()">📂 Cases</button>
+    <button class="btn btn-outline" onclick="openOutputSettings()">⚙️ Output Folder</button>
     <button class="btn btn-primary" id="gen-btn" onclick="generatePacket()">📦 Generate Packet</button>
   </div>
 </div>
@@ -304,6 +404,7 @@ body {
   <!-- SIDEBAR -->
   <div id="sidebar">
     <div class="nav-section">Intake</div>
+    <button class="nav-btn" onclick="nav('smartintake',this)">🤖 Smart Intake</button>
     <button class="nav-btn active" onclick="nav('intake',this)">🗂 Proceeding Type</button>
     <div class="nav-section">Case Details</div>
     <button class="nav-btn" onclick="nav('decedent',this)">📋 Decedent</button>
@@ -313,7 +414,11 @@ body {
     <button class="nav-btn" id="nav-will" onclick="nav('will',this)">📜 Will &amp; Letters</button>
     <div class="nav-section">Filing</div>
     <button class="nav-btn" onclick="nav('filing',this)">📬 Filing Details</button>
-    <button class="nav-btn" onclick="nav('enclosures',this)">📎 Enclosures</button>
+    <div class="nav-section">Status</div>
+    <button class="nav-btn" id="nav-checklist" onclick="nav('checklist',this)">📋 Checklist</button>
+    <button class="nav-btn" onclick="nav('assets',this)">🏦 Assets</button>
+    <div class="nav-section">Office</div>
+    <button class="nav-btn" onclick="nav('contacts',this)">👥 Contacts</button>
   </div>
 
   <!-- FORM AREA -->
@@ -582,29 +687,124 @@ body {
         <div class="field"><label>E-File Date</label><input id="efileDate" placeholder="Leave blank for today's date"></div>
         <div class="field"><label>File No. (if known)</label><input id="fileNo"></div>
       </div>
-      <div class="sub-head">Letter of Instruction / Authorization</div>
-      <div class="grid2">
-        <div class="field"><label>Institution Name</label><input id="institutionName" placeholder="e.g. Chase Bank"></div>
-        <div class="field"><label>Account Number(s)</label><input id="accountNumbers"></div>
-      </div>
     </div>
 
-    <!-- ENCLOSURES -->
-    <div class="section" id="sec-enclosures">
-      <h2>📎 Enclosures</h2><div class="divider"></div>
-      <p style="font-size:14px;color:var(--text2);margin-bottom:13px">Check everything being physically mailed with the cover letter:</p>
-      <div class="check-group">
-        <div class="check-item" onclick="toggleCheck('encWill')"><div class="cbox" id="cb-encWill"><span class="tick">✓</span></div><span class="clabel">Original Last Will and Testament</span></div>
-        <div class="check-item" onclick="toggleCheck('encDeathCert')"><div class="cbox on" id="cb-encDeathCert"><span class="tick">✓</span></div><span class="clabel">Death Certificate</span></div>
-        <div class="check-item" onclick="toggleCheck('encDivorceDegree')"><div class="cbox" id="cb-encDivorceDegree"><span class="tick">✓</span></div><span class="clabel">Original Divorce Decree with translation</span></div>
-        <div class="check-item" onclick="toggleCheck('encSpouseDeathCert')"><div class="cbox" id="cb-encSpouseDeathCert"><span class="tick">✓</span></div><span class="clabel">Death Certificate of Spouse</span></div>
-        <div class="check-item" onclick="toggleCheck('encAffidavitComparison')"><div class="cbox" id="cb-encAffidavitComparison"><span class="tick">✓</span></div><span class="clabel">Affidavit of Comparison</span></div>
-        <div class="check-item" onclick="toggleCheck('encForeignLetters')"><div class="cbox" id="cb-encForeignLetters"><span class="tick">✓</span></div><span class="clabel">Exemplified copy of foreign Letters / Decree</span></div>
-      </div>
-      <div class="field" style="margin-top:10px"><label>Additional Enclosures (one per line)</label>
-        <textarea id="additionalEnclosures" rows="3"></textarea>
-      </div>
+  <!-- DOCUMENT CHECKLIST -->
+  <div class="section" id="sec-checklist">
+    <h2>📋 Document Checklist</h2><div class="divider"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <span id="checklist-progress" style="font-size:13px;color:var(--text2);font-family:Arial,sans-serif"></span>
+      <button class="btn btn-outline btn-sm" onclick="clearChecklist()">Clear All</button>
     </div>
+    <div id="checklist-items"></div>
+  </div>
+
+  <!-- ASSETS -->
+  <div class="section" id="sec-assets">
+    <h2>🏦 Assets</h2><div class="divider"></div>
+    <div class="asset-tab-bar">
+      <button class="asset-tab-btn active" onclick="switchAssetTab('list',this)">Asset List</button>
+      <button class="asset-tab-btn" onclick="switchAssetTab('letters',this)">Cover Letters</button>
+    </div>
+    <div class="asset-tab-pane active" id="atab-list">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <button class="btn btn-outline btn-sm" onclick="exportAccountingExcel()">📊 Export to Excel</button>
+        <button class="btn btn-primary btn-sm" onclick="addAsset()">+ Add Asset</button>
+      </div>
+      <div id="asset-list"></div>
+    </div>
+    <div class="asset-tab-pane" id="atab-letters">
+      <div id="letters-view"></div>
+    </div>
+  </div>
+
+  <!-- SMART INTAKE -->
+  <div class="section" id="sec-smartintake">
+    <h2>🤖 Smart Intake</h2><div class="divider"></div>
+    <p style="font-family:Arial,sans-serif;font-size:13px;color:var(--text3);margin-bottom:18px;line-height:1.6">
+      Drop in any case documents — death certificate, existing petition, intake questionnaire, prior court filings —
+      and Claude will extract the relevant fields to pre-fill the form. Review before applying.
+    </p>
+
+    <div class="si-dropzone" id="si-dropzone" onclick="document.getElementById('si-file-input').click()"
+         ondragover="siDragOver(event)" ondragleave="siDragLeave(event)" ondrop="siDrop(event)">
+      <input type="file" id="si-file-input" multiple accept=".pdf" onchange="siFilesAdded(this.files)">
+      <div style="font-size:28px;margin-bottom:8px">📄</div>
+      <div style="font-size:14px;font-weight:bold;margin-bottom:4px">Drop PDFs here or click to browse</div>
+      <div style="font-size:12px">Death certificate, existing petition, intake questionnaire, will…</div>
+    </div>
+
+    <div class="si-file-list" id="si-file-list"></div>
+
+    <div style="display:flex;gap:10px;margin-top:14px;align-items:center">
+      <button class="btn btn-primary" id="si-analyze-btn" onclick="siAnalyze()" disabled>🤖 Analyze Documents</button>
+      <button class="btn btn-sm" onclick="siClear()">Clear</button>
+      <span id="si-status" style="font-size:13px;font-family:Arial,sans-serif;color:var(--text3)"></span>
+    </div>
+
+    <div id="si-preview"></div>
+  </div><!-- /sec-smartintake -->
+
+  <!-- CONTACTS -->
+  <div class="section" id="sec-contacts">
+    <h2>👥 Contacts</h2><div class="divider"></div>
+
+    <div class="con-tab-bar">
+      <button class="con-tab-btn active" onclick="conTab('clients',this)">Clients</button>
+      <button class="con-tab-btn" onclick="conTab('distributees',this)">Distributees</button>
+      <button class="con-tab-btn" onclick="conTab('professionals',this)">Professionals</button>
+      <button class="con-tab-btn" onclick="conTab('courts',this)">Courts</button>
+    </div>
+
+    <!-- CLIENTS -->
+    <div class="con-tab-pane active" id="ctab-clients">
+      <div id="con-form-clients"></div>
+      <div class="con-toolbar">
+        <input type="text" placeholder="Search clients…" oninput="renderContacts('client',this.value)">
+        <button class="btn btn-primary btn-sm" onclick="startAddContact('client')">+ Add Client</button>
+      </div>
+      <table class="con-table"><thead><tr>
+        <th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Notes</th><th></th>
+      </tr></thead><tbody id="con-body-clients"></tbody></table>
+    </div>
+
+    <!-- DISTRIBUTEES -->
+    <div class="con-tab-pane" id="ctab-distributees">
+      <div id="con-form-distributees"></div>
+      <div class="con-toolbar">
+        <input type="text" placeholder="Search distributees…" oninput="renderContacts('distributee',this.value)">
+        <button class="btn btn-primary btn-sm" onclick="startAddContact('distributee')">+ Add Distributee</button>
+      </div>
+      <table class="con-table"><thead><tr>
+        <th>Name</th><th>Relationship</th><th>Phone</th><th>Address</th><th>Notes</th><th></th>
+      </tr></thead><tbody id="con-body-distributees"></tbody></table>
+    </div>
+
+    <!-- PROFESSIONALS -->
+    <div class="con-tab-pane" id="ctab-professionals">
+      <div id="con-form-professionals"></div>
+      <div class="con-toolbar">
+        <input type="text" placeholder="Search professionals…" oninput="renderContacts('professional',this.value)">
+        <button class="btn btn-primary btn-sm" onclick="startAddContact('professional')">+ Add Professional</button>
+      </div>
+      <table class="con-table"><thead><tr>
+        <th>Name</th><th>Company</th><th>Specialty</th><th>Phone</th><th>Email</th><th></th>
+      </tr></thead><tbody id="con-body-professionals"></tbody></table>
+    </div>
+
+    <!-- COURTS -->
+    <div class="con-tab-pane" id="ctab-courts">
+      <div id="con-form-courts"></div>
+      <div class="con-toolbar">
+        <input type="text" placeholder="Search courts…" oninput="renderContacts('court',this.value)">
+        <button class="btn btn-primary btn-sm" onclick="startAddContact('court')">+ Add Court</button>
+      </div>
+      <table class="con-table"><thead><tr>
+        <th>County</th><th>Department</th><th>Clerk</th><th>Phone</th><th>Email</th><th></th>
+      </tr></thead><tbody id="con-body-courts"></tbody></table>
+    </div>
+
+  </div><!-- /sec-contacts -->
 
   </div><!-- /form-area -->
 
@@ -614,6 +814,7 @@ body {
     <div id="sum-content"><p style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif">Fill in fields to see summary</p></div>
     <div class="sum-title">Documents in Packet</div>
     <div id="doc-list" class="doc-list"></div>
+    <div id="checklist-summary" style="margin-top:10px;font-size:12px;color:var(--text3);font-family:Arial,sans-serif"></div>
     <div class="disclaimer">⚠️ Always verify completed documents with a licensed NY attorney before filing.</div>
   </div>
 
@@ -682,8 +883,6 @@ body {
 let proceeding = "Probate";
 const checks = {
   selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
-  encWill:false, encDeathCert:true, encDivorceDegree:false,
-  encSpouseDeathCert:false, encAffidavitComparison:false, encForeignLetters:false,
 };
 let distributees = [{name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"}];
 
@@ -691,6 +890,74 @@ let distributees = [{name:"",relationship:"",address:"",citizenship:"",dispositi
 // null=unanswered, true=yes, false=no
 const ft = { spouse:null, children:null, parents:null, siblings:null, grandparents:null, auntsUncles:null, firstCousins:null };
 const FT_ORDER = ["spouse","children","parents","siblings","grandparents","auntsUncles","firstCousins"];
+
+// Proceeding checklist state: arrays of booleans per proceeding type
+const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[] };
+
+// ── ASSETS STATE ──────────────────────────────────────────────────────────────
+let assets = [];
+let assetIdCtr = 0;
+
+const ASSET_CATEGORIES = ['Bank','Stock','Life Insurance','Real Estate','Annuity/IRA','Other'];
+const ASSET_STATUSES = [
+  { v:'pending',          l:'Pending',                 color:'#9a8c6e', bg:'#fdf8ee' },
+  { v:'auth-sent',        l:'Auth Letter Sent',        color:'#1a3f6e', bg:'#eef3fb' },
+  { v:'awaiting',         l:'Awaiting Response',       color:'#6a3f1a', bg:'#fdf3eb' },
+  { v:'instruction-sent', l:'Instruction Letter Sent', color:'#2d6a4f', bg:'#eaf5ef' },
+  { v:'paid-closed',      l:'Paid / Closed',           color:'#166534', bg:'#f0fdf4' },
+  { v:'transferred',      l:'Transferred',             color:'#5a1a6a', bg:'#f5ebfd' },
+];
+
+const CHECKLIST_ITEMS = {
+  Probate: [
+    "Original executed Will (wet-ink signature)",
+    "Certified death certificate — 4+ copies recommended",
+    "Codicil (if any)",
+    "Photo ID of petitioner",
+    "Petitioner's address and phone number",
+    "Names, addresses, and relationships of all distributees",
+    "Will witnesses' full names and addresses",
+    "Estate asset inventory (accounts, real estate, investments)",
+    "Real estate deed(s) — if applicable",
+    "Recent account statements for all financial accounts",
+    "Death Certificate of spouse — if widowed",
+    "Divorce decree — if previously divorced",
+  ],
+  Administration: [
+    "Certified death certificate — 4+ copies recommended",
+    "Photo ID of petitioner",
+    "Petitioner's address and phone number",
+    "Proof of relationship to decedent",
+    "Names, addresses, and relationships of all distributees",
+    "Estate asset inventory (accounts, real estate, investments)",
+    "Real estate deed(s) — if applicable",
+    "Recent account statements for all financial accounts",
+    "Marriage certificate — if applicable",
+    "Death Certificate of spouse — if widowed",
+    "Divorce decree — if previously divorced",
+    "Social Security number of decedent",
+  ],
+  NonDomiciliary: [
+    "Certified death certificate — 4+ copies recommended",
+    "Proof of out-of-state domicile",
+    "Photo ID of petitioner",
+    "Petitioner's address and phone number",
+    "Inventory of all NY property (real and personal)",
+    "Real estate deed(s) for NY property",
+    "Names, addresses, and relationships of all NY distributees",
+    "Recent account statements for NY financial accounts",
+    "Social Security number of decedent",
+  ],
+  Ancillary: [
+    "Exemplified copy of foreign Letters / Decree",
+    "Certified death certificate — 4+ copies recommended",
+    "Photo ID of petitioner",
+    "Inventory of all NY property (real and personal)",
+    "Real estate deed(s) for NY property",
+    "Names and addresses of all NY distributees",
+    "Recent account statements for NY financial accounts",
+  ],
+};
 const FT_STEPS = [
   { key:"spouse",       q:"Is there a surviving spouse (husband/wife)?",
     desc:"EPTL 4-1.1(a)(1) — spouse takes all or majority of estate",
@@ -744,7 +1011,7 @@ function setProceeding(type, btn) {
   if(type==="Probate")           lt.value = "Letters Testamentary";
   else if(type==="Ancillary")    lt.value = "Ancillary Letters of Administration";
   else                           lt.value = "Letters of Administration";
-  updateSummary(); updateDocList();
+  updateSummary(); updateDocList(); renderChecklist();
 }
 
 // ── CHECKBOXES ────────────────────────────────────────────────────────────────
@@ -826,15 +1093,20 @@ function setDisp(i,v)  { distributees[i].disposition=v; renderDists(); updateDoc
 // ── FORM DATA ─────────────────────────────────────────────────────────────────
 function g(id){const el=document.getElementById(id);return el?el.value:"";}
 
+function buildEnclosures() {
+  const enc = [];
+  enc.push("Death Certificate");
+  if (proceeding === "Probate") {
+    enc.push("Original Last Will and Testament");
+    if (g("codicilDate")) enc.push("Codicil dated " + g("codicilDate"));
+  }
+  if (g("maritalStatus") === "widowed")  enc.push("Death Certificate of Spouse");
+  if (g("maritalStatus") === "divorced") enc.push("Divorce Decree");
+  if (proceeding === "Ancillary")        enc.push("Exemplified Copy of Foreign Letters / Decree");
+  return enc;
+}
+
 function getFormData() {
-  const enclosures=[];
-  if(checks.encWill)               enclosures.push("Original Last Will and Testament");
-  if(checks.encDeathCert)          enclosures.push("Death Certificate");
-  if(checks.encDivorceDegree)      enclosures.push("Original Divorce Decree with translation");
-  if(checks.encSpouseDeathCert)    enclosures.push("Death Certificate of Spouse");
-  if(checks.encAffidavitComparison)enclosures.push("Affidavit of Comparison");
-  if(checks.encForeignLetters)     enclosures.push("Exemplified copy of foreign Letters/Decree");
-  g("additionalEnclosures").split("\n").map(s=>s.trim()).filter(Boolean).forEach(s=>enclosures.push(s));
   return {
     proceedingType:proceeding, signer:g("signer"), county:g("county"), ...checks,
     decedentFirstName:g("decedentFirstName"), decedentMiddleName:g("decedentMiddleName"),
@@ -868,8 +1140,7 @@ function getFormData() {
     foreignCourtName:g("foreignCourtName"), foreignBondAmount:g("foreignBondAmount"),
     lettersType:g("lettersType"), lettersTo:g("lettersTo"),
     efileDate:g("efileDate"), fileNo:g("fileNo"),
-    institutionName:g("institutionName"), accountNumbers:g("accountNumbers"),
-    enclosures, distributees,
+    enclosures:buildEnclosures(), distributees,
   };
 }
 
@@ -877,13 +1148,16 @@ function getFormData() {
 function getDocList(){
   const d=[];
   d.push({name:"Court Cover Letter",on:true});
-  if(proceeding==="Probate")         d.push({name:"Petition for Probate (P-1)",on:true});
+  if(proceeding==="Probate"){
+    d.push({name:"Petition for Probate (P-1)",on:true});
+    d.push({name:"Oath & Designation",on:true});
+    d.push({name:"Attesting Witness Affidavit",on:!checks.selfProvingAffidavit});
+  }
   if(proceeding==="Administration")  d.push({name:"Administration Petition (A-1)",on:true});
   if(proceeding==="NonDomiciliary")  d.push({name:"Non-Domiciliary Petition (A-1)",on:true});
   if(proceeding==="Ancillary")       d.push({name:"Ancillary Petition (AA-1)",on:true});
   d.push({name:"805 Affidavit",on:checks.dispenseBond});
-  if(proceeding!=="Probate"){d.push({name:"Affidavit of Heirship",on:true});d.push({name:"Family Tree (FT-1)",on:false,note:"fill manually"});}
-  if(proceeding==="Probate") d.push({name:"Witness Affidavit",on:!checks.selfProvingAffidavit});
+  if(proceeding!=="Probate"){d.push({name:"Affidavit of Heirship",on:true});d.push({name:"Family Tree (FT-1)",on:true});}
   d.push({name:"Attorney Certification",on:true});
   if(checks.corporateExecutor)  d.push({name:"Corporate Verification",on:true});
   if(checks.preliminaryLetters) d.push({name:"Preliminary Letters",on:true});
@@ -927,6 +1201,38 @@ function updateSummary(){
   }
   document.getElementById("sum-content").innerHTML=html||`<p style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif">Fill in fields to see summary</p>`;
   updateDocList();
+}
+
+// ── PROCEEDING CHECKLIST ──────────────────────────────────────────────────────
+function renderChecklist() {
+  const items = CHECKLIST_ITEMS[proceeding] || [];
+  const state = proceedingChecklist[proceeding];
+  while (state.length < items.length) state.push(false);
+  const done = state.filter(Boolean).length;
+  document.getElementById('checklist-progress').textContent =
+    `${done} of ${items.length} steps complete`;
+  document.getElementById('checklist-items').innerHTML = items.map((item, i) =>
+    `<div class="cl-item${state[i] ? ' cl-done' : ''}" onclick="toggleChecklistItem(${i})">
+      <div class="cl-check">${state[i] ? '✓' : ''}</div>
+      <span>${item}</span>
+    </div>`
+  ).join('');
+  const el = document.getElementById('checklist-summary');
+  if (el) el.textContent = done === items.length && items.length > 0
+    ? '✅ All checklist steps complete'
+    : `Checklist: ${done}/${items.length} steps`;
+}
+
+function toggleChecklistItem(index) {
+  const state = proceedingChecklist[proceeding];
+  state[index] = !state[index];
+  renderChecklist();
+}
+
+function clearChecklist() {
+  const items = CHECKLIST_ITEMS[proceeding] || [];
+  proceedingChecklist[proceeding] = new Array(items.length).fill(false);
+  renderChecklist();
 }
 
 // ── INTAKE PANEL ──────────────────────────────────────────────────────────────
@@ -1040,14 +1346,301 @@ Return raw JSON only — no markdown, no backticks, no explanation.`,
   document.getElementById("ai-btn").textContent="Extract & Fill";
 }
 
+// ── ASSETS ────────────────────────────────────────────────────────────────────
+function switchAssetTab(tab, btn) {
+  document.querySelectorAll('.asset-tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.asset-tab-pane').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('atab-'+tab).classList.add('active');
+}
+
+function addAsset() {
+  assets.push({ id:assetIdCtr++, category:'Bank', institution:'', accountNumber:'',
+    value:'', phone:'', ownership:'', beneficiary:'', notes:'', status:'pending', expanded:true });
+  renderAssets();
+}
+
+function categoryBadgeStyle(cat) {
+  if(cat==='Bank')         return 'background:var(--blue-bg);color:var(--blue)';
+  if(cat==='Stock')        return 'background:var(--green-bg);color:var(--green)';
+  if(cat==='Life Insurance'||cat==='Annuity/IRA') return 'background:var(--gold-bg);color:var(--gold)';
+  if(cat==='Real Estate')  return 'background:#fdf3eb;color:#6a3f1a';
+  return 'background:var(--surface2);color:var(--text3)';
+}
+
+function renderAssets() {
+  const c = document.getElementById('asset-list');
+  if(!c) return;
+  if(!assets.length) {
+    c.innerHTML = '<div style="text-align:center;padding:30px;font-size:14px;color:var(--text3);font-family:Arial,sans-serif">No assets added yet.</div>';
+    return;
+  }
+  c.innerHTML = assets.map(a => {
+    const st = ASSET_STATUSES.find(s=>s.v===a.status) || ASSET_STATUSES[0];
+    const valFmt = a.value ? fmt(a.value) : '';
+    const title = a.institution || 'New Asset';
+    const catStyle = categoryBadgeStyle(a.category);
+    const head = `<div class="asset-card-head" onclick="toggleAssetCard(${a.id})">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+        <span class="asset-badge" style="${catStyle}">${a.category}</span>
+        <span style="font-size:14px;color:var(--text);font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>
+        ${valFmt?`<span style="font-size:13px;color:var(--text2);font-family:'Courier New',monospace">${valFmt}</span>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span class="asset-badge" style="background:${st.bg};color:${st.color}">${st.l}</span>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteAsset(${a.id})">✕</button>
+      </div>
+    </div>`;
+    const catOpts = ASSET_CATEGORIES.map(c=>`<option${c===a.category?' selected':''}>${c}</option>`).join('');
+    const stOpts  = ASSET_STATUSES.map(s=>`<option value="${s.v}"${s.v===a.status?' selected':''}>${s.l}</option>`).join('');
+    const body = a.expanded ? `<div class="asset-card-body">
+      <div class="asset-grid">
+        <div class="afield"><label>Category</label><select onchange="updateAsset(${a.id},'category',this.value)">${catOpts}</select></div>
+        <div class="afield"><label>Institution</label><input value="${escHtml(a.institution)}" oninput="updateAsset(${a.id},'institution',this.value)"></div>
+        <div class="afield"><label>Account No.</label><input value="${escHtml(a.accountNumber)}" oninput="updateAsset(${a.id},'accountNumber',this.value)"></div>
+        <div class="afield"><label>Value ($)</label><input value="${escHtml(a.value)}" oninput="updateAsset(${a.id},'value',this.value)"></div>
+        <div class="afield"><label>Phone</label><input value="${escHtml(a.phone)}" oninput="updateAsset(${a.id},'phone',this.value)"></div>
+        <div class="afield"><label>Ownership</label><input value="${escHtml(a.ownership)}" oninput="updateAsset(${a.id},'ownership',this.value)"></div>
+        <div class="afield"><label>Beneficiary</label><input value="${escHtml(a.beneficiary)}" oninput="updateAsset(${a.id},'beneficiary',this.value)"></div>
+        <div class="afield"><label>Status</label><select onchange="updateAsset(${a.id},'status',this.value)">${stOpts}</select></div>
+      </div>
+      <div class="afield"><label>Notes</label><textarea rows="2" oninput="updateAsset(${a.id},'notes',this.value)">${escHtml(a.notes)}</textarea></div>
+    </div>` : '';
+    return `<div class="asset-card">${head}${body}</div>`;
+  }).join('');
+}
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function updateAsset(id, field, value) {
+  const a = assets.find(x=>x.id===id);
+  if(!a) return;
+  a[field] = value;
+}
+
+function deleteAsset(id) {
+  assets = assets.filter(a=>a.id!==id);
+  renderAssets();
+  renderAccountingView();
+}
+
+function toggleAssetCard(id) {
+  const a = assets.find(x=>x.id===id);
+  if(a) { a.expanded = !a.expanded; renderAssets(); }
+}
+
+// ── ACCOUNTING ────────────────────────────────────────────────────────────────
+function fmt(n) {
+  const num = parseFloat(String(n).replace(/[^0-9.-]/g,'')) || 0;
+  return '$' + num.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function fmtNum(n) {
+  return parseFloat(String(n).replace(/[^0-9.-]/g,'')) || 0;
+}
+
+function calcCommission(total) {
+  const t1 = Math.min(total, 100000);
+  const t2 = Math.min(Math.max(total - 100000, 0), 200000);
+  const t3 = Math.min(Math.max(total - 300000, 0), 700000);
+  const t4 = Math.max(total - 1000000, 0);
+  return t1*0.05 + t2*0.04 + t3*0.03 + t4*0.025;
+}
+
+async function exportAccountingExcel() {
+  if(!assets.length) { showStatus('Add at least one asset before exporting.','err'); return; }
+  showStatus('Generating Excel...','info');
+  try {
+    const res = await fetch('/generate-accounting-excel', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ data: getFormData(), assets })
+    });
+    if(!res.ok) throw new Error('Server error ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.headers.get('X-Filename') || 'Accounting.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    showStatus('✓ Accounting exported to Excel','ok');
+  } catch(e) { showStatus('⚠ ' + e.message,'err'); }
+}
+
+// ── COVER LETTERS ─────────────────────────────────────────────────────────────
+function renderLettersView() {
+  const c = document.getElementById('letters-view');
+  if(!c) return;
+
+  const assetCheckboxes = (prefix) => assets.length
+    ? assets.map(a=>`
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-family:Arial,sans-serif;font-size:13px">
+        <input type="checkbox" id="${prefix}-${a.id}" style="width:16px;height:16px;cursor:pointer">
+        <span class="asset-badge" style="${categoryBadgeStyle(a.category)}">${a.category}</span>
+        <span>${escHtml(a.institution||'(unnamed)')}${a.accountNumber?' — Acct: '+escHtml(a.accountNumber):''}</span>
+      </label>`).join('')
+    : '<div style="color:var(--text3);font-size:13px;font-family:Arial,sans-serif">No assets added yet. Add assets in the Asset List tab.</div>';
+
+  c.innerHTML = `
+    <div class="letter-card">
+      <h4>✉️ Letter of Authorization</h4>
+      <p>Sent <em>before</em> Letters are issued. Signed by the nominated executor/administrator, authorizing your office to speak with the institution.</p>
+      ${assetCheckboxes('auth')}
+      <div style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" onclick="generateAuthLetters()">Generate Auth Letter(s)</button>
+      </div>
+    </div>
+    <div class="letter-card">
+      <h4>📋 Letter of Instruction</h4>
+      <p>Sent <em>after</em> Letters are issued. Requests that the institution marshal assets and remit or transfer funds to the estate.</p>
+      ${assetCheckboxes('inst')}
+      <div style="margin-top:10px;font-family:Arial,sans-serif;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px;cursor:pointer">
+          <input type="radio" name="marshal-action" value="check" checked style="cursor:pointer"> Remit by check payable to estate
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer">
+          <input type="radio" name="marshal-action" value="transfer" style="cursor:pointer"> Transfer to estate account
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="generateInstructionLetters()">Generate Instruction Letter(s)</button>
+      </div>
+    </div>
+  `;
+}
+
+function getCheckedAssets(prefix) {
+  return assets.filter(a => {
+    const el = document.getElementById(`${prefix}-${a.id}`);
+    return el && el.checked;
+  });
+}
+
+async function generateAuthLetters() {
+  const checked = getCheckedAssets('auth');
+  if(!checked.length) { showStatus('Select at least one asset.','err'); return; }
+  let downloaded = 0;
+  for(const asset of checked) {
+    try {
+      const res = await fetch('/generate-auth-letter', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ data: getFormData(), asset })
+      });
+      if(!res.ok) { showStatus('Error generating letter','err'); continue; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.headers.get('X-Filename') || 'auth_letter.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+      downloaded++;
+    } catch(e) { showStatus('Error: '+e.message,'err'); }
+  }
+  if(downloaded) showStatus(`✓ ${downloaded} auth letter(s) downloaded`, 'ok');
+}
+
+async function generateInstructionLetters() {
+  const checked = getCheckedAssets('inst');
+  if(!checked.length) { showStatus('Select at least one asset.','err'); return; }
+  const marshalAction = document.querySelector('input[name="marshal-action"]:checked')?.value || 'check';
+  let downloaded = 0;
+  for(const asset of checked) {
+    try {
+      const res = await fetch('/generate-instruction-letter', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ data: getFormData(), asset, marshalAction })
+      });
+      if(!res.ok) { showStatus('Error generating letter','err'); continue; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.headers.get('X-Filename') || 'instruction_letter.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+      downloaded++;
+    } catch(e) { showStatus('Error: '+e.message,'err'); }
+  }
+  if(downloaded) showStatus(`✓ ${downloaded} instruction letter(s) downloaded`, 'ok');
+}
+
 // ── SAVE / LOAD ────────────────────────────────────────────────────────────────
 const STORAGE_KEY = "probate_cases_v2";
 
-function getSavedCases(){
-  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); }
-  catch{ return {}; }
+// Server-backed case storage with localStorage merge
+let _casesCache = null;
+
+function _getLocal(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); } catch{ return {}; }
 }
-function saveCases(cases){ localStorage.setItem(STORAGE_KEY,JSON.stringify(cases)); }
+
+async function _migrateLocalStorage(serverCases){
+  // Push any localStorage-only cases to server, then clear localStorage
+  const local = _getLocal();
+  const localNames = Object.keys(local);
+  if(!localNames.length) return serverCases;
+  let migrated = 0;
+  for(const name of localNames){
+    if(!serverCases[name]){
+      // Case only in localStorage — push to server
+      try {
+        const res = await fetch('/cases', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({name, data: local[name]})
+        });
+        if(res.ok){ serverCases[name] = local[name]; migrated++; }
+      } catch(e){}
+    }
+  }
+  if(migrated) console.log(`Migrated ${migrated} case(s) to server.`);
+  localStorage.removeItem(STORAGE_KEY);
+  return serverCases;
+}
+
+async function getSavedCasesAsync(){
+  let server = {};
+  try {
+    const res = await fetch('/cases');
+    if(res.ok) server = await res.json();
+  } catch(e) { console.warn('Server unreachable'); }
+  // Merge any localStorage leftovers
+  const local = _getLocal();
+  if(Object.keys(local).length){
+    server = await _migrateLocalStorage(server);
+    // If migration failed, at least show them
+    const stillLocal = _getLocal();
+    if(Object.keys(stillLocal).length){
+      for(const k of Object.keys(stillLocal)){
+        if(!server[k]) server[k] = stillLocal[k];
+      }
+    }
+  }
+  _casesCache = server;
+  return _casesCache;
+}
+
+function getSavedCases(){
+  if(_casesCache) return _casesCache;
+  return _getLocal();
+}
+
+async function saveCaseToServer(name, data){
+  try {
+    const res = await fetch('/cases', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, data})
+    });
+    if(res.ok){ _casesCache = null; return true; }
+  } catch(e) { console.warn('Server save failed:', e); }
+  return false;
+}
+
+async function deleteCaseFromServer(name){
+  try {
+    const res = await fetch('/cases/'+encodeURIComponent(name), {method:'DELETE'});
+    if(res.ok){ _casesCache = null; return true; }
+  } catch(e) { console.warn('Server delete failed:', e); }
+  return false;
+}
 
 function openSave(){
   const data=getFormData();
@@ -1064,12 +1657,11 @@ function openSave(){
   setTimeout(()=>{ const i=document.getElementById("save-name"); if(i){i.focus();i.select();} },50);
 }
 
-function modalAction(){
+async function modalAction(){
   const name=(document.getElementById("save-name")?.value||"").trim();
   if(!name){ document.getElementById("save-name").style.borderColor="var(--red)"; return; }
-  const cases=getSavedCases();
-  cases[name]={savedAt:Date.now(),proceeding,checks:{...checks},distributees:JSON.parse(JSON.stringify(distributees)),ft:{...ft},data:getFormData()};
-  saveCases(cases);
+  const caseData={savedAt:Date.now(),proceeding,checks:{...checks},distributees:JSON.parse(JSON.stringify(distributees)),ft:{...ft},data:getFormData(),proceedingChecklist:JSON.parse(JSON.stringify(proceedingChecklist)),assets:JSON.parse(JSON.stringify(assets)),assetIdCtr,contacts:JSON.parse(JSON.stringify(allContacts))};
+  await saveCaseToServer(name, caseData);
   closeModal();
   showStatus(`✓ Saved: "${name}"`, "ok");
 }
@@ -1088,8 +1680,8 @@ function closeDashboard(){
   document.getElementById("dashboard-overlay").style.display="none";
 }
 
-function renderDashboard(){
-  const cases=getSavedCases();
+async function renderDashboard(){
+  const cases=await getSavedCasesAsync();
   const search=(document.getElementById("dash-search")?.value||"").toLowerCase();
   const filterType=document.getElementById("dash-filter")?.value||"";
   const filterCounty=document.getElementById("dash-county")?.value||"";
@@ -1176,8 +1768,8 @@ function renderDashboard(){
   document.getElementById("dash-table").innerHTML=html;
 }
 
-function loadCaseFromDash(name){
-  const cases=getSavedCases();
+async function loadCaseFromDash(name){
+  const cases=await getSavedCasesAsync();
   const saved=cases[name];
   if(!saved) return;
   const data=saved.data||{};
@@ -1196,10 +1788,26 @@ function loadCaseFromDash(name){
   // Restore distributees
   if(saved.distributees){ distributees=saved.distributees; renderDists(); }
 
+  // Restore checklist
+  if(saved.proceedingChecklist){ Object.assign(proceedingChecklist, saved.proceedingChecklist); }
+  renderChecklist();
+
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","institutionName","accountNumbers","ssn","additionalEnclosures"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","ssn"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   updateMaritalFields();
+
+  // Restore assets
+  if(saved.assets){ assets = saved.assets; assetIdCtr = saved.assetIdCtr || assets.length; }
+  renderAssets();
+  renderLettersView();
+
+  // Restore contacts
+  allContacts = saved.contacts || [];
+  renderContacts('client');
+  renderContacts('distributee');
+  renderContacts('professional');
+  renderContacts('court');
 
   updateSummary();
   closeDashboard();
@@ -1211,11 +1819,9 @@ function openNewCase(){
   location.reload();
 }
 
-function deleteCaseFromDash(name){
+async function deleteCaseFromDash(name){
   if(!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-  const cases=getSavedCases();
-  delete cases[name];
-  saveCases(cases);
+  await deleteCaseFromServer(name);
   renderDashboard();
 }
 
@@ -1245,15 +1851,17 @@ async function generatePacket(){
     const res=await fetch("/generate-packet",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
     if(!res.ok) throw new Error(`Server error ${res.status}`);
     const errCount=parseInt(res.headers.get('X-Generation-Errors')||'0');
+    const savedTo=res.headers.get('X-Saved-To')||'';
     const blob=await res.blob();
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url; a.download=`${data.decedentLastName}_packet.zip`; a.click();
     URL.revokeObjectURL(url);
+    const savedMsg=savedTo ? ` Also saved to: ${savedTo}` : '';
     if(errCount>0){
-      showStatus(`⚠ Packet downloaded but ${errCount} document(s) failed — see MISSING files in ZIP.`,"err");
+      showStatus(`⚠ Packet downloaded but ${errCount} document(s) failed — see MISSING files in ZIP.${savedMsg}`,"err");
     } else {
-      showStatus("✓ Packet downloaded. Review all documents before filing.","ok");
+      showStatus(`✓ Packet downloaded.${savedMsg} Review all documents before filing.`,"ok");
     }
   }catch(e){ showStatus(`⚠ ${e.message}`,"err"); }
   btn.textContent="📦 Generate Packet"; btn.disabled=false;
@@ -1263,10 +1871,563 @@ async function generatePacket(){
 renderDists();
 updateSummary();
 updateDocList();
+renderChecklist();
+renderAssets();
+renderLettersView();
 fetch("/check").then(r=>r.json()).then(d=>{
   const missing=[...Object.entries(d.pdfs||{}),...Object.entries(d.templates||{})].filter(([,v])=>!v).map(([k])=>k);
   if(missing.length) showStatus("⚠ Missing template files: "+missing.join(", "),"err");
 }).catch(()=>{});
+
+// ── SMART INTAKE ──────────────────────────────────────────────────────────────
+let siFiles = [];
+let siExtracted = null;
+
+function siDragOver(e) { e.preventDefault(); document.getElementById('si-dropzone').classList.add('drag'); }
+function siDragLeave(e) { document.getElementById('si-dropzone').classList.remove('drag'); }
+function siDrop(e) {
+  e.preventDefault();
+  document.getElementById('si-dropzone').classList.remove('drag');
+  siFilesAdded(e.dataTransfer.files);
+}
+function siFilesAdded(fileList) {
+  for(const f of fileList) {
+    if(f.type === 'application/pdf' && !siFiles.find(x=>x.name===f.name)) siFiles.push(f);
+  }
+  siRenderFiles();
+}
+function siRenderFiles() {
+  const list = document.getElementById('si-file-list');
+  const btn = document.getElementById('si-analyze-btn');
+  if(!siFiles.length) { list.innerHTML=''; btn.disabled=true; return; }
+  list.innerHTML = siFiles.map((f,i)=>`
+    <span class="si-file-chip">📄 ${f.name}
+      <button onclick="siRemoveFile(${i})" title="Remove">✕</button>
+    </span>`).join('');
+  btn.disabled = false;
+}
+function siRemoveFile(i) { siFiles.splice(i,1); siRenderFiles(); }
+function siClear() {
+  siFiles=[]; siExtracted=null;
+  siRenderFiles();
+  document.getElementById('si-preview').innerHTML='';
+  document.getElementById('si-status').textContent='';
+}
+
+async function siAnalyze() {
+  if(!siFiles.length) return;
+  const btn = document.getElementById('si-analyze-btn');
+  const status = document.getElementById('si-status');
+  btn.disabled=true; btn.textContent='⏳ Analyzing…';
+  status.textContent='Sending to Claude…';
+  document.getElementById('si-preview').innerHTML='';
+
+  const fd = new FormData();
+  siFiles.forEach((f,i) => fd.append(`file${i}`, f));
+
+  try {
+    const res = await fetch('/smart-intake', {method:'POST', body:fd});
+    const json = await res.json();
+    if(!res.ok || json.error) throw new Error(json.error||'Unknown error');
+    siExtracted = json.data;
+    status.textContent='';
+    siRenderPreview(siExtracted);
+  } catch(e) {
+    status.textContent='⚠ '+e.message;
+  }
+  btn.disabled=false; btn.textContent='🤖 Analyze Documents';
+}
+
+const SI_FIELD_LABELS = {
+  proceedingType:'Proceeding Type', decedentFirstName:'First Name', decedentMiddleName:'Middle Name',
+  decedentLastName:'Last Name', decedentAKA:'A/K/A', decedentDOB:'Date of Birth',
+  decedentDOD:'Date of Death', decedentPlaceOfDeath:'Place of Death', decedentStreet:'Street',
+  decedentCity:'City', decedentState:'State', decedentZip:'Zip', decedentCitizenship:'Citizenship',
+  ssn:'SSN', maritalStatus:'Marital Status', spouseName:'Spouse Name', divorceYear:'Divorce Year',
+  priorSpouseDeathDate:'Prior Spouse Death', motherName:'Mother', motherDOD:'Mother DOD',
+  fatherName:'Father', fatherDOD:'Father DOD', childrenNote:'Children',
+  petitionerFirstName:'Petitioner First', petitionerMiddleName:'Petitioner Middle',
+  petitionerLastName:'Petitioner Last', petitionerStreet:'Petitioner Street',
+  petitionerCity:'Petitioner City', petitionerState:'Petitioner State',
+  petitionerZip:'Petitioner Zip', petitionerRelationship:'Petitioner Relationship',
+  petitionerCitizenship:'Petitioner Citizenship', personalPropertyValue:'Personal Property ($)',
+  realPropertyValue:'Real Property ($)', willDate:'Will Date', codicilDate:'Codicil Date',
+  witness1:'Witness 1', witness2:'Witness 2', lettersTo:'Letters To',
+  survivingSpouse:'Surviving Spouse', survivingChildren:'Surviving Children',
+  survivingParents:'Surviving Parents', survivingSiblings:'Surviving Siblings',
+  survivingGrandparents:'Surviving Grandparents', survivingAuntsUncles:'Surviving Aunts/Uncles',
+  survivingFirstCousinsOnceRemoved:'1st Cousins Once Removed',
+};
+
+function siRenderPreview(d) {
+  const nonNull = Object.entries(d).filter(([k,v]) => k!=='distributees' && v!==null && v!=='');
+  const dists = d.distributees||[];
+
+  let html = `<div class="si-preview">
+    <div class="si-preview-head">
+      <span>Extracted Fields (${nonNull.length} found)</span>
+      <button class="btn btn-primary btn-sm" onclick="siApply()">✓ Apply to Form</button>
+    </div>
+    <div class="si-field-grid">`;
+
+  // Decedent section
+  const decFields = ['proceedingType','decedentFirstName','decedentMiddleName','decedentLastName',
+    'decedentAKA','decedentDOB','decedentDOD','decedentPlaceOfDeath','decedentStreet',
+    'decedentCity','decedentState','decedentZip','decedentCitizenship','ssn',
+    'maritalStatus','spouseName','divorceYear','priorSpouseDeathDate',
+    'motherName','motherDOD','fatherName','fatherDOD','childrenNote'];
+  const petFields = ['petitionerFirstName','petitionerMiddleName','petitionerLastName',
+    'petitionerStreet','petitionerCity','petitionerState','petitionerZip',
+    'petitionerRelationship','petitionerCitizenship'];
+  const estateFields = ['personalPropertyValue','realPropertyValue','willDate','codicilDate',
+    'witness1','witness2','lettersTo'];
+  const relFields = ['survivingSpouse','survivingChildren','survivingParents','survivingSiblings',
+    'survivingGrandparents','survivingAuntsUncles','survivingFirstCousinsOnceRemoved'];
+
+  function renderGroup(label, keys) {
+    const visible = keys.filter(k => d[k]!==null && d[k]!==undefined && d[k]!=='');
+    if(!visible.length) return '';
+    let s = `<div class="si-section-head">${label}</div>`;
+    s += visible.map(k=>`<div class="si-field">
+      <span class="si-field-label">${SI_FIELD_LABELS[k]||k}</span>
+      <span class="si-field-val" title="${d[k]}">${d[k]}</span>
+    </div>`).join('');
+    return s;
+  }
+
+  html += renderGroup('Decedent', decFields);
+  html += renderGroup('Petitioner', petFields);
+  html += renderGroup('Estate & Will', estateFields);
+  html += renderGroup('Surviving Relatives', relFields);
+
+  if(dists.length) {
+    html += `<div class="si-section-head">Distributees (${dists.length})</div>`;
+    html += dists.map(dist=>`<div class="si-field" style="flex-direction:column;align-items:flex-start;gap:2px">
+      <span style="font-weight:500">${dist.name||'Unknown'}</span>
+      <span style="font-size:11px;color:var(--text3)">${dist.relationship||''} ${dist.address ? '· '+dist.address : ''}</span>
+    </div>`).join('');
+  }
+
+  html += `</div></div>`;
+  document.getElementById('si-preview').innerHTML = html;
+}
+
+function siApply() {
+  const d = siExtracted;
+  if(!d) return;
+  const set = (id,v) => { if(v===null||v===undefined||v==='') return; const el=document.getElementById(id); if(el) el.value=v; };
+
+  // Proceeding type
+  if(d.proceedingType) {
+    const map = {Probate:'Probate',Administration:'Administration',Ancillary:'Ancillary',NonDomiciliary:'NonDomiciliary'};
+    const t = map[d.proceedingType];
+    if(t) {
+      const btn = [...document.querySelectorAll('.proc-btn')].find(b=>b.dataset.type===t||b.textContent.includes(t));
+      if(btn) setProceeding(t, btn);
+    }
+  }
+
+  // Decedent fields
+  set('decedentFirstName', d.decedentFirstName);
+  set('decedentMiddleName', d.decedentMiddleName);
+  set('decedentLastName', d.decedentLastName);
+  set('decedentAKA', d.decedentAKA);
+  set('decedentDOB', d.decedentDOB);
+  set('decedentDOD', d.decedentDOD);
+  set('decedentPlaceOfDeath', d.decedentPlaceOfDeath);
+  set('decedentStreet', d.decedentStreet);
+  set('decedentCity', d.decedentCity);
+  set('decedentState', d.decedentState);
+  set('decedentZip', d.decedentZip);
+  set('decedentCitizenship', d.decedentCitizenship);
+  set('ssn', d.ssn);
+  set('motherName', d.motherName);
+  set('motherDOD', d.motherDOD);
+  set('fatherName', d.fatherName);
+  set('fatherDOD', d.fatherDOD);
+  set('childrenNote', d.childrenNote);
+  set('spouseName', d.spouseName);
+  set('divorceYear', d.divorceYear);
+  set('priorSpouseDeathDate', d.priorSpouseDeathDate);
+  if(d.maritalStatus) {
+    set('maritalStatus', d.maritalStatus);
+    updateMaritalFields();
+  }
+
+  // Petitioner fields
+  set('petitionerFirstName', d.petitionerFirstName);
+  set('petitionerMiddleName', d.petitionerMiddleName);
+  set('petitionerLastName', d.petitionerLastName);
+  set('petitionerStreet', d.petitionerStreet);
+  set('petitionerCity', d.petitionerCity);
+  set('petitionerState', d.petitionerState);
+  set('petitionerZip', d.petitionerZip);
+  set('petitionerRelationship', d.petitionerRelationship);
+  set('petitionerCitizenship', d.petitionerCitizenship);
+
+  // Estate & will
+  set('personalPropertyValue', d.personalPropertyValue);
+  set('realPropertyValue', d.realPropertyValue);
+  set('willDate', d.willDate);
+  set('codicilDate', d.codicilDate);
+  set('witness1', d.witness1);
+  set('witness2', d.witness2);
+  set('lettersTo', d.lettersTo);
+
+  // Distributees — replace the default empty list
+  if(d.distributees && d.distributees.length) {
+    const incoming = d.distributees.filter(dist => dist.name).map(dist => ({
+      name: dist.name, relationship: dist.relationship||'',
+      address: dist.address||'', citizenship: dist.citizenship||'US Citizen',
+      disposition: 'tbd'
+    }));
+    if(incoming.length) {
+      // Keep only non-empty existing entries, then add incoming
+      const existing = distributees.filter(x => x.name);
+      distributees = existing.length ? [...existing, ...incoming] : incoming;
+      renderDists();
+    }
+  }
+
+  updateSummary();
+  showStatus('✓ Fields applied from Smart Intake. Please review before generating.', 'ok');
+
+  // Navigate to first populated section
+  const firstBtn = [...document.querySelectorAll('.nav-btn')].find(b=>b.textContent.includes('Proceeding'));
+  if(firstBtn) nav('intake', firstBtn);
+}
+
+// ── CONTACTS ──────────────────────────────────────────────────────────────────
+let allContacts = [];
+
+const CON_TYPE_TAB = { client:'clients', distributee:'distributees', professional:'professionals', court:'courts' };
+const CON_SPECIALTIES = ['Accountant','Appraiser','Bank','Financial Advisor','Funeral Home','Realtor','Other'];
+
+function loadContacts() {
+  renderContacts('client');
+  renderContacts('distributee');
+  renderContacts('professional');
+  renderContacts('court');
+}
+
+function conTab(name, btn) {
+  document.querySelectorAll('.con-tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.con-tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('ctab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function renderContacts(type, filter='') {
+  const tab = CON_TYPE_TAB[type];
+  const tbody = document.getElementById('con-body-'+tab);
+  if(!tbody) return;
+  const q = filter.toLowerCase();
+  const rows = allContacts.filter(c=>c.type===type && (!q || JSON.stringify(c).toLowerCase().includes(q)));
+  if(!rows.length) {
+    tbody.innerHTML=`<tr><td colspan="6"><div class="con-empty">No ${tab} yet. Click + Add to create one.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(c => {
+    const actions = `<div class="con-actions">
+      <button class="btn btn-sm" style="font-size:11px" onclick="startEditContact('${c.id}')">Edit</button>
+      <button class="btn btn-sm" style="font-size:11px;color:#c00" onclick="deleteContact('${c.id}')">✕</button>
+      ${type==='client'    ? `<button class="btn btn-sm" style="font-size:11px;color:var(--gold)" onclick="fillPetitioner('${c.id}')">→ Petitioner</button>`:''}
+      ${type==='distributee' ? `<button class="btn btn-sm" style="font-size:11px;color:var(--gold)" onclick="fillDistributee('${c.id}')">→ Case</button>`:''}
+    </div>`;
+    if(type==='client')
+      return `<tr><td>${c.name||''}</td><td>${c.phone||''}</td><td>${c.email||''}</td><td>${c.address||''}</td><td>${c.notes||''}</td><td>${actions}</td></tr>`;
+    if(type==='distributee')
+      return `<tr><td>${c.name||''}</td><td>${c.relationship||''}</td><td>${c.phone||''}</td><td>${c.address||''}</td><td>${c.notes||''}</td><td>${actions}</td></tr>`;
+    if(type==='professional')
+      return `<tr><td>${c.name||''}</td><td>${c.company||''}</td><td>${c.specialty||''}</td><td>${c.phone||''}</td><td>${c.email||''}</td><td>${actions}</td></tr>`;
+    if(type==='court')
+      return `<tr><td>${c.county||''}</td><td>${c.department||''}</td><td>${c.clerk||''}</td><td>${c.phone||''}</td><td>${c.email||''}</td><td>${actions}</td></tr>`;
+    return '';
+  }).join('');
+}
+
+function conFormHTML(type, c={}) {
+  const isEdit = !!c.id;
+  const title = isEdit ? 'Edit' : 'New';
+  const save = `saveContact('${type}','${c.id||''}')`;
+  const cancel = `cancelConForm('${CON_TYPE_TAB[type]}')`;
+  let fields = '';
+  if(type==='client') {
+    fields = `<div class="con-grid">
+      <div class="con-field"><label>Full Name *</label><input id="cf-name" value="${c.name||''}"></div>
+      <div class="con-field"><label>Phone</label><input id="cf-phone" value="${c.phone||''}"></div>
+      <div class="con-field"><label>Email</label><input id="cf-email" value="${c.email||''}"></div>
+      <div class="con-field"><label>Address</label><input id="cf-address" value="${c.address||''}"></div>
+    </div>
+    <div class="con-field" style="margin-bottom:10px"><label>Notes</label><textarea id="cf-notes" rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:Arial,sans-serif">${c.notes||''}</textarea></div>`;
+  } else if(type==='distributee') {
+    fields = `<div class="con-grid">
+      <div class="con-field"><label>Full Name *</label><input id="cf-name" value="${c.name||''}"></div>
+      <div class="con-field"><label>Relationship</label><input id="cf-relationship" value="${c.relationship||''}"></div>
+      <div class="con-field"><label>Phone</label><input id="cf-phone" value="${c.phone||''}"></div>
+      <div class="con-field"><label>Address</label><input id="cf-address" value="${c.address||''}"></div>
+      <div class="con-field"><label>Citizenship</label><input id="cf-citizenship" value="${c.citizenship||''}"></div>
+    </div>
+    <div class="con-field" style="margin-bottom:10px"><label>Notes</label><textarea id="cf-notes" rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:Arial,sans-serif">${c.notes||''}</textarea></div>`;
+  } else if(type==='professional') {
+    const opts = CON_SPECIALTIES.map(s=>`<option${c.specialty===s?' selected':''}>${s}</option>`).join('');
+    fields = `<div class="con-grid g3">
+      <div class="con-field"><label>Full Name *</label><input id="cf-name" value="${c.name||''}"></div>
+      <div class="con-field"><label>Company</label><input id="cf-company" value="${c.company||''}"></div>
+      <div class="con-field"><label>Specialty</label><select id="cf-specialty"><option value="">— select —</option>${opts}</select></div>
+      <div class="con-field"><label>Phone</label><input id="cf-phone" value="${c.phone||''}"></div>
+      <div class="con-field"><label>Email</label><input id="cf-email" value="${c.email||''}"></div>
+      <div class="con-field"><label>Address</label><input id="cf-address" value="${c.address||''}"></div>
+    </div>
+    <div class="con-field" style="margin-bottom:10px"><label>Notes</label><textarea id="cf-notes" rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:Arial,sans-serif">${c.notes||''}</textarea></div>`;
+  } else if(type==='court') {
+    fields = `<div class="con-grid">
+      <div class="con-field"><label>County *</label><input id="cf-county" value="${c.county||''}"></div>
+      <div class="con-field"><label>Department</label><input id="cf-department" value="${c.department||''}"></div>
+      <div class="con-field"><label>Clerk Name</label><input id="cf-clerk" value="${c.clerk||''}"></div>
+      <div class="con-field"><label>Phone</label><input id="cf-phone" value="${c.phone||''}"></div>
+      <div class="con-field"><label>Email</label><input id="cf-email" value="${c.email||''}"></div>
+    </div>
+    <div class="con-field" style="margin-bottom:10px"><label>Notes</label><textarea id="cf-notes" rows="2" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:Arial,sans-serif">${c.notes||''}</textarea></div>`;
+  }
+  return `<div class="con-form">
+    <h4>${title} ${type.charAt(0).toUpperCase()+type.slice(1)}</h4>
+    ${fields}
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="${save}">Save</button>
+      <button class="btn btn-sm" onclick="${cancel}">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function startAddContact(type) {
+  document.getElementById('con-form-'+CON_TYPE_TAB[type]).innerHTML = conFormHTML(type);
+}
+
+function startEditContact(id) {
+  const c = allContacts.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('con-form-'+CON_TYPE_TAB[c.type]).innerHTML = conFormHTML(c.type, c);
+}
+
+function cancelConForm(tab) {
+  document.getElementById('con-form-'+tab).innerHTML = '';
+}
+
+function readConForm(type, id) {
+  const g = id => { const el=document.getElementById(id); return el ? el.value.trim() : ''; };
+  const c = { type, id: id||undefined };
+  c.name        = g('cf-name');
+  c.phone       = g('cf-phone');
+  c.email       = g('cf-email');
+  c.address     = g('cf-address');
+  c.notes       = g('cf-notes');
+  if(type==='distributee') { c.relationship=g('cf-relationship'); c.citizenship=g('cf-citizenship'); }
+  if(type==='professional') { c.company=g('cf-company'); c.specialty=g('cf-specialty'); }
+  if(type==='court') { c.county=g('cf-county'); c.department=g('cf-department'); c.clerk=g('cf-clerk'); c.name=c.clerk||c.county; }
+  return c;
+}
+
+function saveContact(type, id) {
+  const c = readConForm(type, id||null);
+  const nameField = type==='court' ? c.county : c.name;
+  if(!nameField) { alert('Please fill in the required field.'); return; }
+  if(id) {
+    c.id = id;
+    const i = allContacts.findIndex(x=>x.id===id);
+    if(i>=0) allContacts[i] = c;
+  } else {
+    c.id = Date.now().toString();
+    allContacts.push(c);
+  }
+  cancelConForm(CON_TYPE_TAB[type]);
+  renderContacts(type);
+}
+
+function deleteContact(id) {
+  const c = allContacts.find(x=>x.id===id);
+  if(!c || !confirm(`Delete "${c.name||c.county}"?`)) return;
+  allContacts = allContacts.filter(x=>x.id!==id);
+  renderContacts(c.type);
+}
+
+function fillPetitioner(id) {
+  const c = allContacts.find(x=>x.id===id);
+  if(!c) return;
+  const parts = (c.name||'').trim().split(/\s+/);
+  const last = parts.pop()||'';
+  const first = parts.shift()||'';
+  const mid = parts.join(' ');
+  const addr = (c.address||'').split(',');
+  const set = (id,v) => { const el=document.getElementById(id); if(el && v) el.value=v.trim(); };
+  set('petitioner-first', first);
+  set('petitioner-middle', mid);
+  set('petitioner-last', last);
+  if(addr[0]) set('petitioner-street', addr[0]);
+  if(addr[1]) set('petitioner-city', addr[1]);
+  if(addr[2]) set('petitioner-state', addr[2]);
+  if(addr[3]) set('petitioner-zip', addr[3]);
+  updateSummary();
+  // Navigate to petitioner section
+  const btn = [...document.querySelectorAll('.nav-btn')].find(b=>b.textContent.includes('Petitioner'));
+  if(btn) nav('petitioner', btn);
+}
+
+function fillDistributee(id) {
+  const c = allContacts.find(x=>x.id===id);
+  if(!c) return;
+  distributees.push({
+    name: c.name||'', relationship: c.relationship||'',
+    address: c.address||'', citizenship: c.citizenship||'US Citizen', disposition:'tbd'
+  });
+  renderDists();
+  updateSummary();
+  const btn = [...document.querySelectorAll('.nav-btn')].find(b=>b.textContent.includes('Distributees'));
+  if(btn) nav('distributees', btn);
+}
+
+loadContacts();
+
+// ── OUTPUT FOLDER SETTINGS ─────────────────────────────────────────────────
+let _browseCurrentPath = '';
+
+async function openOutputSettings() {
+  const modal = document.getElementById('modal-overlay');
+  const title = document.getElementById('modal-title');
+  const body = document.getElementById('modal-body');
+  const actionBtn = document.getElementById('modal-action-btn');
+
+  title.textContent = 'Output Folder';
+  actionBtn.style.display = 'none';
+
+  body.innerHTML = '<p style="font-family:Arial,sans-serif;font-size:13px;color:var(--text3)">Loading...</p>';
+  modal.classList.add('open');
+
+  // Get decedent name for estate folder search
+  const first = (document.getElementById('decedentFirstName').value || '').trim();
+  const last = (document.getElementById('decedentLastName').value || '').trim();
+  const decName = [first, last].filter(Boolean).join(' ');
+
+  try {
+    // Fetch settings and search for estate folder in parallel
+    const [settingsRes, searchRes] = await Promise.all([
+      fetch('/settings'),
+      decName.length >= 2 ? fetch('/find-estate-folder?name=' + encodeURIComponent(decName)) : null
+    ]);
+    const settings = await settingsRes.json();
+    const searchData = searchRes ? await searchRes.json() : null;
+    const current = settings.output_folder || 'Not set';
+    const options = settings.folder_options || [];
+
+    // Build estate folder search result
+    let searchHtml = '';
+    if (decName.length >= 2) {
+      if (searchData && searchData.matches && searchData.matches.length > 0) {
+        searchHtml = `
+          <div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:12px;margin-bottom:16px">
+            <p style="font-weight:bold;color:var(--green);margin-bottom:6px">📂 Found "Estate of ${decName}"</p>
+            ${searchData.matches.map(m => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--green-border);margin-top:6px">
+                <span style="word-break:break-all;font-size:12px;color:var(--green)">${m}</span>
+                <button class="btn btn-primary btn-sm" style="flex-shrink:0;margin-left:8px" onclick="setOutputFolder('${m.replace(/'/g,"\\'")}')">Use This</button>
+              </div>
+            `).join('')}
+            <p style="font-size:11px;color:var(--text3);margin-top:8px">Documents will save to Drafts/ inside this folder</p>
+          </div>`;
+      } else {
+        searchHtml = `
+          <div style="background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:6px;padding:12px;margin-bottom:16px">
+            <p style="color:var(--gold)">📁 No existing "Estate of ${decName}" folder found on any connected drive.</p>
+            <p style="font-size:11px;color:var(--text3);margin-top:4px">A new folder will be created in the output directory below when you generate.</p>
+          </div>`;
+      }
+    } else {
+      searchHtml = `
+        <div style="background:var(--blue-bg);border:1px solid var(--blue-border);border-radius:6px;padding:12px;margin-bottom:16px">
+          <p style="color:var(--blue)">🔍 Enter a decedent name in the form to auto-search for their estate folder across all drives.</p>
+          <p style="font-size:11px;color:var(--text3);margin-top:4px">Searches: Documents, Dropbox, Google Drive, OneDrive, iCloud, Desktop</p>
+        </div>`;
+    }
+
+    let optionsHtml = options.map(o =>
+      `<button class="btn btn-outline btn-sm" style="margin:3px;text-align:left" onclick="setOutputFolder('${o.path.replace(/'/g,"\\'")}')">
+        ${o.label}<br><span style="font-size:11px;color:var(--text3)">${o.path}</span>
+      </button>`
+    ).join('');
+
+    body.innerHTML = `
+      <div style="font-family:Arial,sans-serif;font-size:13px">
+        ${searchHtml}
+        <p style="margin-bottom:8px"><strong>Default output folder:</strong></p>
+        <p id="current-output" style="background:var(--gold-bg);padding:8px 12px;border-radius:6px;border:1px solid var(--gold-border);word-break:break-all;margin-bottom:16px;font-size:13px">${current}</p>
+        <p style="margin-bottom:8px"><strong>Quick select:</strong></p>
+        <div style="display:flex;flex-wrap:wrap;margin-bottom:16px">${optionsHtml || '<span style="color:var(--text3)">No common folders detected</span>'}</div>
+        <p style="margin-bottom:8px"><strong>Or browse to a folder:</strong></p>
+        <div id="folder-browser" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;padding:4px"></div>
+        <div style="margin-top:8px">
+          <input type="text" id="custom-folder-input" placeholder="Or paste a full path..." style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;font-family:Arial,sans-serif">
+          <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="setOutputFromInput()">Set Folder</button>
+        </div>
+      </div>
+    `;
+    browseFolder(current !== 'Not set' ? current : '~');
+  } catch(e) {
+    body.innerHTML = `<p style="color:var(--red)">Failed to load settings: ${e.message}</p>`;
+  }
+}
+
+async function browseFolder(folderPath) {
+  const browser = document.getElementById('folder-browser');
+  if (!browser) return;
+  browser.innerHTML = '<span style="padding:8px;font-size:12px;color:var(--text3)">Loading...</span>';
+  try {
+    const res = await fetch('/browse-folders?path=' + encodeURIComponent(folderPath));
+    const data = await res.json();
+    if (data.error) { browser.innerHTML = `<span style="padding:8px;color:var(--red);font-size:12px">${data.error}</span>`; return; }
+    _browseCurrentPath = data.current;
+    let html = `<div style="padding:6px 10px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span style="word-break:break-all">${data.current}</span>
+      <button class="btn btn-primary btn-sm" style="flex-shrink:0;margin-left:8px" onclick="setOutputFolder('${data.current.replace(/'/g,"\\'")}')">Use This Folder</button>
+    </div>`;
+    if (data.parent && data.parent !== data.current) {
+      html += `<div style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)" onclick="browseFolder('${data.parent.replace(/'/g,"\\'")}')">📁 ..</div>`;
+    }
+    for (const f of data.folders) {
+      html += `<div style="padding:5px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--gold-bg)'" onmouseout="this.style.background=''" onclick="browseFolder('${f.path.replace(/'/g,"\\'")}')">📁 ${f.name}</div>`;
+    }
+    if (!data.folders.length) html += '<div style="padding:8px 10px;font-size:12px;color:var(--text3)">No subfolders</div>';
+    browser.innerHTML = html;
+  } catch(e) {
+    browser.innerHTML = `<span style="padding:8px;color:var(--red);font-size:12px">${e.message}</span>`;
+  }
+}
+
+async function setOutputFolder(folderPath) {
+  try {
+    const res = await fetch('/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ output_folder: folderPath })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('current-output').textContent = folderPath;
+      showStatus('✓ Output folder set to: ' + folderPath, 'ok');
+      document.getElementById('modal-overlay').classList.remove('open');
+    } else {
+      showStatus('⚠ ' + (data.error || 'Failed to set folder'), 'err');
+    }
+  } catch(e) {
+    showStatus('⚠ ' + e.message, 'err');
+  }
+}
+
+function setOutputFromInput() {
+  const input = document.getElementById('custom-folder-input');
+  if (input && input.value.trim()) {
+    setOutputFolder(input.value.trim());
+  }
+}
 </script>
 </body>
 </html>

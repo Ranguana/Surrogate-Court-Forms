@@ -6,3 +6,9 @@ __pycache__/
 *.egg-info/
 .env
 venv/
+python_env/
+python_bundle/
+node_modules/
+dist/
+test_output/
+settings.json

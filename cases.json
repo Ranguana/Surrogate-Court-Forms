@@ -1,0 +1,173 @@
+{
+  "Michael Froggatt \u2014 Kings (NonDomiciliary)": {
+    "savedAt": 1772062003185,
+    "proceeding": "NonDomiciliary",
+    "checks": {
+      "selfProvingAffidavit": false,
+      "corporateExecutor": false,
+      "preliminaryLetters": false,
+      "dispenseBond": true
+    },
+    "distributees": [
+      {
+        "address": "6677 Santa Monica Blvd, Apt 3502, Los Angeles, CA 90038",
+        "citizenship": "US Citizen",
+        "disposition": "tbd",
+        "name": "Juan Banqueth Avila",
+        "relationship": "Spouse"
+      }
+    ],
+    "ft": {
+      "spouse": null,
+      "children": null,
+      "parents": null,
+      "siblings": null,
+      "grandparents": null,
+      "auntsUncles": null,
+      "firstCousins": null
+    },
+    "data": {
+      "proceedingType": "NonDomiciliary",
+      "signer": "Jessica Wilson",
+      "county": "Kings",
+      "selfProvingAffidavit": false,
+      "corporateExecutor": false,
+      "preliminaryLetters": false,
+      "dispenseBond": true,
+      "decedentFirstName": "Michael",
+      "decedentMiddleName": "Patrick",
+      "decedentLastName": "Froggatt",
+      "decedentAKA": "Michael Froggatt",
+      "decedentDOB": "05/18/1983",
+      "decedentDOD": "01/03/2025",
+      "decedentPlaceOfDeath": "Venustiano Carranza 268 Colonia Emiliano Zapata, Puerto Vallarta, Jalisco, Mexico",
+      "ssn": "173-68-9666",
+      "decedentStreet": "6677 Santa Monica Boulevard Apt. 3502",
+      "decedentCity": "Los Angeles",
+      "decedentCounty": "Los Angeles",
+      "decedentState": "CA",
+      "decedentZip": "90038",
+      "decedentCitizenship": "U.S.A.",
+      "foreignState": "California",
+      "motherName": "Patricia Ann Kerrigan",
+      "motherDOD": "Living",
+      "fatherName": "Charles Albert Froggat",
+      "fatherDOD": "Living",
+      "maritalStatus": "married",
+      "spouseName": "Juan Banqueth Avila",
+      "divorceYear": "",
+      "priorSpouseDeathDate": "",
+      "childrenNote": "NONE",
+      "petitionerFirstName": "Juan",
+      "petitionerMiddleName": "",
+      "petitionerLastName": "Banqueth Avila",
+      "petitionerStreet": "6677 Santa Monica Blvd, Apt 3502",
+      "petitionerCity": "Los Angeles",
+      "petitionerState": "CA",
+      "petitionerZip": "90038",
+      "petitionerCitizenship": "U.S.A.",
+      "petitionerInterest": "Administrator",
+      "petitionerIsAttorney": "No",
+      "petitionerRelationship": "Spouse",
+      "deponentName": "",
+      "deponentRelationship": "",
+      "deponentAddress": "",
+      "yearsKnown": "",
+      "soleDistributee": "",
+      "personalPropertyValue": "0",
+      "realPropertyValue": "850000",
+      "improvedRealProperty": "850000",
+      "unimprovedRealProperty": "0",
+      "realPropertyDescription": "264 Webster Avenue, Apt 611, Brooklyn, NY 11230, Single residential condominium apartment (Block 5421 Lot 1051)",
+      "grossRents18mo": "$77, 760",
+      "otherAssets": "NONE",
+      "mortgageAmount": "$729,020.95",
+      "funeralPaid": "$3097.00",
+      "funeralOutstanding": "0.00",
+      "miscDebts": "NONE",
+      "willDate": "",
+      "codicilDate": "",
+      "witness1": "",
+      "witness2": "",
+      "noOtherWill": "NONE",
+      "foreignLettersDate": "",
+      "foreignLettersIssuedTo": "",
+      "foreignCourtName": "",
+      "foreignBondAmount": "",
+      "lettersType": "Letters of Administration",
+      "lettersTo": "Juan Banqueth Avila",
+      "efileDate": "",
+      "fileNo": "",
+      "enclosures": [
+        "Death Certificate"
+      ],
+      "distributees": [
+        {
+          "address": "6677 Santa Monica Blvd, Apt 3502, Los Angeles, CA 90038",
+          "citizenship": "US Citizen",
+          "disposition": "tbd",
+          "name": "Juan Banqueth Avila",
+          "relationship": "Spouse"
+        }
+      ]
+    },
+    "proceedingChecklist": {
+      "Probate": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "Administration": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "NonDomiciliary": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "Ancillary": []
+    },
+    "assets": [
+      {
+        "accountNumber": "",
+        "beneficiary": "Juan Banqueth Avila",
+        "category": "Real Estate",
+        "expanded": true,
+        "id": 0,
+        "institution": "",
+        "notes": "264 Webster Ave, Apt 611, Brooklyn, NY 11230, condo",
+        "ownership": "deceased",
+        "phone": "",
+        "status": "pending",
+        "value": "$850,000"
+      }
+    ],
+    "assetIdCtr": 2
+  }
+}

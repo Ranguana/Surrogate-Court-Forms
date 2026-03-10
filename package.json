@@ -1,0 +1,73 @@
+{
+  "name": "probate-assistant",
+  "version": "1.0.0",
+  "description": "NY Surrogate's Court Probate Assistant",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Jessica Wilson",
+  "license": "ISC",
+  "build": {
+    "appId": "com.probateassistant.app",
+    "productName": "Probate Assistant",
+    "mac": {
+      "category": "public.app-category.business",
+      "target": "dmg"
+    },
+    "dmg": {
+      "title": "Probate Assistant",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "login.html",
+      "setup-password.html",
+      "app.py",
+      "generators.py",
+      "cases.json",
+      "contacts.json",
+      "static/**/*",
+      "templates/**/*",
+      "Accounting/**/*",
+      "Probate-_NY_Court_Forms.pdf",
+      "admin_ancil.pdf",
+      "Petition_for_Non-Domciliary_Letters_of_Admin.pdf",
+      "favicon.svg"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "app",
+        "filter": [
+          "app.py",
+          "generators.py",
+          "cases.json",
+          "contacts.json",
+          "requirements.txt",
+          "static/**/*",
+          "templates/**/*",
+          "Accounting/**/*",
+          "*.pdf",
+          "favicon.svg"
+        ]
+      },
+      {
+        "from": "python_bundle",
+        "to": "python_bundle"
+      }
+    ],
+    "asar": false
+  },
+  "devDependencies": {
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1"
+  }
+}

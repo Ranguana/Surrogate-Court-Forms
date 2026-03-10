@@ -9,8 +9,8 @@ import re
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from pypdf import PdfReader, PdfWriter
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+import fitz
 
 TEMPLATES_DIR       = os.path.join(os.path.dirname(__file__), "templates")
 ADMIN_TEMPLATES_DIR = os.path.join(TEMPLATES_DIR, "Admin")
@@ -68,9 +68,81 @@ SIGNERS = {
     "Robyn Foresta": "Robyn Foresta, Legal Assistant",
 }
 
+# Relationship keywords that trigger Rule 207.16(c) on their own
+# (grandparents, aunts/uncles, first cousins, first cousins once removed)
+_DISTANT_REL_KEYWORDS = [
+    "grandparent", "grandfather", "grandmother",
+    "aunt", "uncle",
+    "cousin",
+]
+
+
+def needs_family_tree_affidavit(data):
+    """Return True if Rule 207.16(c) requires an Affidavit of Family Tree.
+
+    Triggers when:
+      - 0 or 1 distributee survives, OR
+      - any distributee's relationship is grandparents, aunts/uncles,
+        first cousins, or first cousins once removed.
+    """
+    dists = [d for d in data.get("distributees", []) if d.get("name")]
+    if len(dists) <= 1:
+        return True
+    for d in dists:
+        rel = (d.get("relationship") or "").lower()
+        if any(k in rel for k in _DISTANT_REL_KEYWORDS):
+            return True
+    return False
+
+
+def needs_family_tree_diagram(data):
+    """Return True if the FT-1 diagram is also required (Rule 207.16(c)).
+
+    The diagram is NOT required when the sole distributee is the spouse
+    or only child of the decedent.
+    """
+    if not needs_family_tree_affidavit(data):
+        return False
+    dists = [d for d in data.get("distributees", []) if d.get("name")]
+    if len(dists) == 1:
+        rel = (dists[0].get("relationship") or "").lower()
+        if any(k in rel for k in ["spouse", "child", "son", "daughter"]):
+            return False
+    return True
+
+
+def family_tree_trigger_reason(data):
+    """Return a short human-readable string explaining why 207.16(c) fired
+    (used in the case summary).  Returns empty string if not triggered."""
+    dists = [d for d in data.get("distributees", []) if d.get("name")]
+    if len(dists) == 0:
+        return "no distributees"
+    if len(dists) == 1:
+        return f"only one distributee ({dists[0].get('name', '')})"
+    for d in dists:
+        rel = (d.get("relationship") or "").lower()
+        if any(k in rel for k in _DISTANT_REL_KEYWORDS):
+            return f"distributee relationship: {d.get('relationship', '')}"
+    return ""
+
 
 def today():
     return datetime.now().strftime("%B %d, %Y")
+
+
+def format_date_long(date_str):
+    """Convert MM/DD/YYYY to 'Month DD, YYYY' (e.g. '03/15/1945' → 'March 15, 1945')."""
+    try:
+        dt = datetime.strptime(date_str, "%m/%d/%Y")
+        return dt.strftime("%B %d, %Y")
+    except Exception:
+        return date_str
+
+
+def nonzero(v):
+    """Return v only if it's a non-empty, non-zero value."""
+    s = str(v or "").strip()
+    return s if s and s not in ("0", "0.0", "0.00") else ""
 
 
 def replace_in_doc(doc, replacements):
@@ -147,44 +219,55 @@ def generate_cover_letter(data):
 
     doc = Document()
 
+    # Set default style to single-spaced
+    style = doc.styles['Normal']
+    style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.space_before = Pt(0)
+
+    def _para(text="", space_after=0):
+        p = doc.add_paragraph(text)
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p.paragraph_format.space_after = Pt(space_after)
+        p.paragraph_format.space_before = Pt(0)
+        return p
+
     # Date
-    p = doc.add_paragraph(today())
-    p.paragraph_format.space_after = Pt(12)
+    _para(today(), space_after=12)
 
     # Addressee
-    doc.add_paragraph(f"Surrogate's Court, {county} County")
-    doc.add_paragraph(f"Attn: {dept}")
-    doc.add_paragraph(address)
-    doc.add_paragraph(city_state_zip)
-    doc.add_paragraph("")
+    _para(f"Surrogate's Court, {county} County")
+    _para(f"Attn: {dept}")
+    _para(address)
+    _para(city_state_zip, space_after=12)
 
     # RE line
-    re_p = doc.add_paragraph(f"RE: Estate of {decedent}")
-    re_p.paragraph_format.space_after = Pt(12)
+    _para(f"RE: Estate of {decedent}", space_after=12)
 
-    doc.add_paragraph("Greetings,")
-    doc.add_paragraph("")
+    _para("Greetings,", space_after=6)
 
     proc_word = proceeding.lower()
-    body = doc.add_paragraph(
+    _para(
         f"Our office efiled the above referenced petition for {proc_word} on {efile_date}. "
-        f"Please find enclosed the following documents:"
+        f"Please find enclosed the following original documents required by the Court:",
+        space_after=6
     )
-    body.paragraph_format.space_after = Pt(6)
 
     # Enclosures as bullet list
     for enc in enclosures:
         p = doc.add_paragraph(style="List Bullet")
         p.text = enc
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p.paragraph_format.space_after = Pt(0)
 
-    doc.add_paragraph("")
-    doc.add_paragraph("Please do not hesitate to call our office if you have concerns and questions.")
-    doc.add_paragraph("")
-    doc.add_paragraph("Sincerely,")
-    doc.add_paragraph("")
-    doc.add_paragraph("")
-    doc.add_paragraph(signer)
-    doc.add_paragraph("Enc.")
+    _para("", space_after=6)
+    _para("Please do not hesitate to call our office if you have concerns and questions.")
+    _para("", space_after=6)
+    _para("Sincerely,")
+    _para("")
+    _para("")
+    _para(signer)
+    _para("Enc.")
 
     return make_docx_bytes(doc)
 
@@ -238,21 +321,20 @@ def generate_805(data):
         for _ in range(n):
             line()
 
-    def nonzero(v):
-        """Return v only if it's a non-empty, non-zero value."""
-        s = str(v or "").strip()
-        return s if s and s not in ("0", "0.0", "0.00") else ""
+    # ── Caption ──────────────────────────────────────────────────────────────
+    proceeding = data.get("proceedingType", "Administration")
+    letters_type = data.get("lettersType", "Letters of Administration")
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    line(f"SURROGATE\u2019S COURT \u2014 {county.upper()} COUNTY",
-         bold=True, center=True, space_after=2)
+    line("SURROGATE\u2019S COURT OF THE STATE OF NEW YORK", bold=True)
+    line(f"COUNTY OF {county.upper()}", bold=True, space_after=2)
 
-    # Two-column row using a borderless table
-    hdr_tbl = doc.add_table(rows=2, cols=2)
-    hdr_tbl.style = "Table Grid"
-    # Remove all borders
+    divider = "\u2500" * 43 + "x"
+    line(divider, space_after=0)
+
+    # Two-column caption using a borderless table
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+
     def _no_border(cell):
         tc = cell._tc
         tcPr = tc.get_or_add_tcPr()
@@ -260,39 +342,80 @@ def generate_805(data):
         for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
             el = OxmlElement(f"w:{side}")
             el.set(qn("w:val"), "none")
+            el.set(qn("w:sz"), "0")
+            el.set(qn("w:space"), "0")
+            el.set(qn("w:color"), "auto")
             tcBorders.append(el)
         tcPr.append(tcBorders)
 
-    for row in hdr_tbl.rows:
-        for cell in row.cells:
+    # Build caption rows — left column has matter text, right has doc title
+    aka_line = f"    a/k/a {aka}," if aka else ""
+    left_lines = [
+        "In the Matter of the Application for",
+        "",
+        f"{letters_type} of the Estate of",
+        "",
+        f"    {decedent.upper()},",
+    ]
+    if aka_line:
+        left_lines.append(aka_line)
+    left_lines += [
+        "",
+        "                Deceased.",
+    ]
+
+    right_lines = [
+        ("AFFIDAVIT OF ASSETS", True),
+        ("& LIABILITIES", True),
+        ("(SCPA 805)", True),
+        ("", False),
+        (f"File No. {file_no}" if file_no else "", False),
+    ]
+    # Pad right column to match left
+    while len(right_lines) < len(left_lines):
+        right_lines.append(("", False))
+
+    cap_tbl = doc.add_table(rows=len(left_lines), cols=2)
+    cap_tbl.style = "Table Grid"
+
+    # Set table width and column widths
+    tbl_el = cap_tbl._tbl
+    tblPr = tbl_el.tblPr if tbl_el.tblPr is not None else OxmlElement("w:tblPr")
+    tblW = OxmlElement("w:tblW")
+    tblW.set(qn("w:w"), "0")
+    tblW.set(qn("w:type"), "auto")
+    tblPr.append(tblW)
+    # Remove table borders at the table level too
+    tblBorders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"), "none")
+        el.set(qn("w:sz"), "0")
+        el.set(qn("w:space"), "0")
+        el.set(qn("w:color"), "auto")
+        tblBorders.append(el)
+    tblPr.append(tblBorders)
+
+    for row_i, row in enumerate(cap_tbl.rows):
+        for col_i, cell in enumerate(row.cells):
             _no_border(cell)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+            if col_i == 0:
+                _run(p, left_lines[row_i])
+            else:
+                # Add vertical bar separator before right-column text
+                txt, bld = right_lines[row_i]
+                cell_text = f"\u2502  {txt}" if txt else "\u2502"
+                _run(p, cell_text, bold=bld)
 
-    def _cell(row_i, col_i, text, bold=False):
-        cell = hdr_tbl.rows[row_i].cells[col_i]
-        p = cell.paragraphs[0]
-        _run(p, text, bold=bold)
-
-    _cell(0, 0, "Administration Proceeding", bold=True)
-    _cell(0, 1, "AFFIDAVIT OF ASSETS & LIABILITIES", bold=True)
-    _cell(1, 0, f"Estate of {decedent}", bold=True)
-    _cell(1, 1, "(To dispense with filing of bond / SCPA 805)")
-
-    if aka:
-        line(f"a/k/a {aka}")
-    line("")  # blank
-
-    # Deceased / File No
-    p = line()
-    _run(p, "Deceased", bold=True)
-    if file_no:
-        _run(p, f"\t\t\t\t\tFile No. {file_no}")
-
-    blank()
+    line(divider, space_after=4)
 
     # ── Venue block ───────────────────────────────────────────────────────────
     line("STATE OF NEW YORK\t\t\t\t)")
     line("\t\t\t\t\t\t) ss:")
-    line(f"COUNTY OF {county}\t\t\t\t)")
+    line(f"COUNTY OF {county.upper()}\t\t\t\t)")
     blank()
 
     # ── Oath paragraph ────────────────────────────────────────────────────────
@@ -384,7 +507,14 @@ def generate_805(data):
 # ─── AFFIDAVIT OF HEIRSHIP ────────────────────────────────────────────────────
 
 def generate_heirship(data):
-    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Affidavit_of_Heirship_Full_Admin.docx"))
+    proceeding = data.get("proceedingType", "Administration")
+    if proceeding == "Probate":
+        template = "Affidavit_of_Heirship_Full_Probate.docx"
+        letters_phrase = "Letters Testamentary"
+    else:
+        template = "Affidavit_of_Heirship_Full_Admin.docx"
+        letters_phrase = "Letters of Administration"
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, template))
     decedent = decedent_full(data)
     county = data.get("county", "")
     petitioner = petitioner_full(data)
@@ -469,21 +599,26 @@ def generate_heirship(data):
         p = doc.paragraphs[i]._element
         p.getparent().remove(p)
 
+    # Format dates as written-out (e.g. "March 15, 1945")
+    dob_long = format_date_long(dob)
+    dod_long = format_date_long(dod)
+
     replace_in_doc(doc, {
-        "COUNTY OF _____________": f"COUNTY OF {county}",
+        "COUNTY OF _____________": f"COUNTY OF {county.upper()}",
         "___________________\t\t\t\t\tAFFIDAVIT OF HEIRSHIP": f"{decedent}\t\t\t\t\tAFFIDAVIT OF HEIRSHIP",
         "A/K/A ___________________": f"A/K/A {data.get('decedentAKA', '')}",
-        "COUNTY OF \t\t\t)": f"COUNTY OF {county}\t\t\t)",
+        "COUNTY OF \t\t\t)": f"COUNTY OF {county.upper()}\t\t\t)",
         "\tI, ______________, being duly sworn, deposes and says:": f"\tI, {deponent}, being duly sworn, deposes and says:",
-        "I reside at _________________________.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent's family tree, as I am the ______________of the Decedent and have known the Decedent for over _____ years.":
-            f"I reside at {deponent_address}.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent's family tree, as I am the {deponent_rel} of the Decedent and have known the Decedent for over {years_known} years.",
-        "The Decedent was born on ___________ and died on __________________.": f"The Decedent was born on {dob} and died on {dod}.",
+        "I reside at _________________________.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent\u2019s family tree, as I am the ______________of the Decedent and have known the Decedent for over _____ years.":
+            f"I reside at {deponent_address}.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent\u2019s family tree, as I am the {deponent_rel} of the Decedent and have known the Decedent for over {years_known} years.",
+        "The Decedent was born on ___________ and died on __________________.": f"The Decedent was born on {dob_long} and died on {dod_long}.",
         "Mother: ": f"Mother: {mother_name}",
         "Father: ": f"Father: {father_name}",
         f"Therefore, ______________ is the sole distributee of the Estate of ______________":
             f"Therefore, {sole_distributee} is the sole distributee of the Estate of {decedent}",
-        f"This affidavit is made with my personal knowledge knowing the ______________ County Surrogate's Court will rely thereon in issuing Letters of Administration to _________________, the petitioner.":
-            f"This affidavit is made with my personal knowledge knowing the {county} County Surrogate's Court will rely thereon in issuing Letters of Administration to {petitioner}, the petitioner.",
+        f"This affidavit is made with my personal knowledge knowing the ______________ County Surrogate\u2019s Court will rely thereon in issuing Letters Testamentary to _________________, the petitioner." if proceeding == "Probate" else
+        f"This affidavit is made with my personal knowledge knowing the ______________ County Surrogate\u2019s Court will rely thereon in issuing Letters of Administration to _________________, the petitioner.":
+            f"This affidavit is made with my personal knowledge knowing the {county} County Surrogate\u2019s Court will rely thereon in issuing {letters_phrase} to {petitioner}, the petitioner.",
     })
 
     mother_dod_filled = False
@@ -530,25 +665,61 @@ def generate_attorney_cert(data):
     return make_docx_bytes(doc)
 
 
-# ─── PROBATE PDF (P-1 + OATH + WITNESS) ──────────────────────────────────────
+# ─── PDF FILLING (pymupdf/fitz) ──────────────────────────────────────────────
 
-def _extract_pdf_pages(writer, page_indices):
-    """Extract specific page indices from a PdfWriter into new PDF bytes."""
-    out = PdfWriter()
-    for idx in page_indices:
-        out.add_page(writer.pages[idx])
+def fill_pdf(template_path, fields):
+    """Universal PDF form filler using pymupdf/fitz.
+
+    Handles text, checkboxes (True/False), radio buttons (export value like '/0'),
+    and combo/dropdown fields. Calls widget.update() on every filled field to bake
+    in appearance streams so fields render in any viewer including macOS Preview.
+    """
+    doc = fitz.open(template_path)
+    for page in doc:
+        for widget in page.widgets():
+            name = widget.field_name
+            if name not in fields:
+                continue
+            value = fields[name]
+            if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
+                widget.field_value = bool(value)
+            elif widget.field_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
+                widget.field_value = str(value).lstrip("/")
+            else:
+                s = str(value) if value is not None else ""
+                widget.field_value = s
+                if s == "X":
+                    widget.text_fontsize = 10
+            widget.update()
     buf = io.BytesIO()
-    out.write(buf)
+    doc.save(buf)
+    doc.close()
     buf.seek(0)
     return buf.read()
 
 
-def _build_probate_writer(data):
-    """Fill all fields in Probate Petition + Oath.pdf; return (writer, reader)."""
-    reader = PdfReader(os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf"))
-    writer = PdfWriter()
-    writer.clone_reader_document_root(reader)
+def _extract_pages(pdf_bytes, page_indices):
+    """Extract specific pages from PDF bytes, preserving form widgets."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    doc.select(page_indices)
+    buf = io.BytesIO()
+    doc.save(buf, garbage=4, deflate=True)
+    doc.close()
+    buf.seek(0)
+    return buf.read()
 
+
+def extract_pdf_pages(template_path, fields, page_indices):
+    """Fill a PDF template and extract specific pages."""
+    filled = fill_pdf(template_path, fields)
+    return _extract_pages(filled, page_indices)
+
+
+# ─── PROBATE PDF (P-1 + OATH + WITNESS) ──────────────────────────────────────
+
+
+def _build_probate_fields(data):
+    """Build field name→value dict for Probate Petition + Oath.pdf."""
     county   = data.get("county", "")
     dec      = decedent_full(data)
     pet      = petitioner_full(data)
@@ -561,26 +732,31 @@ def _build_probate_writer(data):
     ]))
 
     # Surviving relatives → Dropdown 5a–5g (EPTL 4-1.1 order, 7 classes)
+    # Logic: "No" for prior classes, number/Yes for first surviving class, "X" for all after
     surv_keys = [
         "survivingSpouse", "survivingChildren", "survivingParents",
         "survivingSiblings", "survivingGrandparents", "survivingAuntsUncles",
         "survivingFirstCousinsOnceRemoved",
     ]
-    surv_vals = [bool(data.get(k)) for k in surv_keys]
-    first_surv = next((i for i, s in enumerate(surv_vals) if s), None)
-    last_surv  = (len(surv_vals) - 1 - next(
-                     (i for i, s in enumerate(reversed(surv_vals)) if s), -1)
-                 ) if first_surv is not None else None
+    # Find first surviving class
+    first_surviving = None
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
+            first_surviving = idx
+            break
     dropdown_vals = []
-    for i, surv in enumerate(surv_vals):
-        if first_surv is None:
-            dropdown_vals.append("-")
-        elif i < first_surv:
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if first_surviving is None:
             dropdown_vals.append("No")
-        elif last_surv is not None and i > last_surv:
-            dropdown_vals.append("X")
+        elif idx < first_surviving:
+            dropdown_vals.append("No")
+        elif idx == first_surviving:
+            s = str(raw).strip()
+            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
         else:
-            dropdown_vals.append("Yes" if surv else "No")
+            dropdown_vals.append("X")
 
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
@@ -621,46 +797,54 @@ def _build_probate_writer(data):
         "Dropdown 5e": dropdown_vals[4],
         "Dropdown 5f": dropdown_vals[5],
         "Dropdown 5g": dropdown_vals[6],
-        # Prayer / letters (page 4)
-        "Petitioner_1": letters_to,
-        "Petitioner_2": letters_to,
-        "Letters of Trusteeship to 1": letters_to,
-        "Letters of Administration cta to": letters_to,
-        "Dated": today(),
+        # Prayer / letters (page 4) — only fill the matching "to" field
+        "Petitioner_1": letters_to if "Testamentary" in lt else "",
+        "Petitioner_2": letters_to if "Testamentary" in lt else "",
+        "Letters of Trusteeship to 1": letters_to if "Trusteeship" in lt else "",
+        "Letters of Administration cta to": letters_to if "c.t.a" in lt else "",
+        "Dated": "",
         "Print Name": pet,
 
         # ── Oath and Designation (page 5) ───────────────────────────────────────
+        "STATE OF NEW YORK": "New York",
         "COUNTY OF_2": county,
+        "ss": county,
         "OATH OF": pet,
         "Surrogates Court of": county,
         "My domicile is": pet_addr,
         "Street Address": data.get("petitionerStreet", ""),
-        "Print Name_3": pet,
-        "Signature of Attorney": data.get("attorneyName", ""),
-        "Print Name_4": data.get("attorneyName", ""),
-        "Firm Name": data.get("firmName", ""),
-        "Tel No": data.get("attorneyPhone", ""),
+        "Print Name_3": data.get("attorneyName") or "Jessica Wilson, Esq.",
+        "Signature of Attorney": data.get("attorneyName") or "Jessica Wilson, Esq.",
+        "Print Name_4": data.get("attorneyName") or "Jessica Wilson, Esq.",
+        "Firm Name": data.get("firmName") or "Law Office of Jessica Wilson",
+        "Tel No": data.get("attorneyPhone") or "(212) 739-1736",
         "Email": data.get("attorneyEmail", ""),
-        "Address of Attorney": data.get("firmAddress", ""),
+        "Address of Attorney": data.get("firmAddress") or "221 Columbia Street, Brooklyn NY 11231",
 
         # ── Attesting Witness (page 10) ─────────────────────────────────────────
         "COUNTY OF_7": county,
         "WILL OF 1": data.get("decedentFirstName", ""),
         "WILL OF 2": data.get("decedentLastName", ""),
         "aka 1": data.get("decedentAKA", ""),
+        "File_2": data.get("fileNo", ""),
         "STATE OF NEW YORK_5": "New York",
         "COUNTY OF_8": county,
+        "I have been shown check one": "X",
+        "the original instrument dated": data.get("willDate", ""),
+        "purporting to be the last Will and TestamentCodicil of the abovenamed decedent": "X",
+        "and I saw the other witness es": witnesses,
+        "I am making this affidavit at the request of 1": pet,
     }
 
     # Letters type checkboxes (text fields — fill with "X")
     if "Testamentary" in lt:
         fields["Letters Testamentary"] = "X"
-        fields["EXECUTOR"] = "X"          # oath page 5
+        fields["EXECUTOR"] = "X"
     elif "Trusteeship" in lt:
         fields["Letters of Trusteeship"] = "X"
     elif "c.t.a" in lt:
         fields["Letters of Administration cta"] = "X"
-        fields["ADMINISTRATOR cta"] = "X"  # oath page 5
+        fields["ADMINISTRATOR cta"] = "X"
     elif "Temporary" in lt:
         fields["Temporary Administration"] = "X"
 
@@ -672,27 +856,17 @@ def _build_probate_writer(data):
     else:
         fields["is not an attorney"] = "X"
 
-    # Distributees (page 2, slots 1-7; name/addr column pairs)
-    name_f = ["1_2", "3", "4", "5", "6", "7"]
-    addr_f = ["2_2", "3_2", "4_2", "5_2", "6_2", "7_2"]
-    int_f  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 7)]
-    for i, dist in enumerate(data.get("distributees", [])[:6]):
+    # Distributees (page 2, section 6a — 3 columns: name / address / interest)
+    name_f = ["1_2", "2_2", "3", "4", "5", "6", "7"]
+    addr_f = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
+    int_f  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 8)]
+    for i, dist in enumerate(data.get("distributees", [])[:7]):
         if dist.get("name"):
-            fields[name_f[i]] = f"{dist['name']} ({dist.get('relationship','')})"
-            fields[addr_f[i]] = f"{dist.get('address','')} | {dist.get('citizenship','')}"
+            fields[name_f[i]] = dist["name"]
+            fields[addr_f[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
             fields[int_f[i]]  = dist.get("relationship", "Distributee")
 
-    # Apply all fields across all pages
-    all_fields = reader.get_fields() or {}
-    for fid, val in fields.items():
-        if fid in all_fields and val:
-            for page in writer.pages:
-                try:
-                    writer.update_page_form_field_values(page, {fid: val})
-                except Exception:
-                    pass
-
-    return writer, reader
+    return fields
 
 
 def generate_probate_docs(data):
@@ -703,32 +877,41 @@ def generate_probate_docs(data):
       - Affidavit of Attesting Witness (page 10) — omitted if self-proving will
     Fills the source PDF only once for efficiency.
     """
-    writer, _ = _build_probate_writer(data)
+    template = os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf")
+    fields = _build_probate_fields(data)
+    filled = fill_pdf(template, fields)
     last = data.get("decedentLastName", "estate").replace(" ", "_")
     docs = [
-        (f"02_Petition_P1_{last}.pdf",        _extract_pdf_pages(writer, [0, 1, 2, 3])),
-        (f"03_Oath_Designation_{last}.pdf",   _extract_pdf_pages(writer, [4])),
+        (f"02_Petition_P1_{last}.pdf",        _extract_pages(filled, [0, 1, 2, 3])),
+        (f"03_Oath_Designation_{last}.pdf",   _extract_pages(filled, [4])),
     ]
     if not data.get("selfProvingAffidavit"):
         docs.append(
-            (f"04_Affidavit_Attesting_Witness_{last}.pdf", _extract_pdf_pages(writer, [9]))
+            (f"04_Affidavit_Attesting_Witness_{last}.pdf", _extract_pages(filled, [9]))
         )
     return docs
 
 
-# Keep for backward compatibility (ancillary PDF still uses its own function)
 def fill_probate_pdf(data):
-    writer, _ = _build_probate_writer(data)
-    return _extract_pdf_pages(writer, [0, 1, 2, 3])
+    template = os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf")
+    return extract_pdf_pages(template, _build_probate_fields(data), [0, 1, 2, 3])
 
 
 # ─── ANCILLARY ADMIN PDF (AA-1) ───────────────────────────────────────────────
 
 def fill_ancillary_pdf(data):
-    reader = PdfReader(os.path.join(PDFS_DIR, "admin_ancil.pdf"))
-    writer = PdfWriter()
-    writer.clone_reader_document_root(reader)
+    """Fill the AA-1 Ancillary Administration Petition PDF form.
 
+    Field mappings verified against admin_ancil.pdf template:
+    - Text Field 19 = Mailing Address (NOT citizenship)
+    - Text Field 20 = Citizen of (petitioner 1)
+    - Radio Button 2 = Interest of petitioner (/0=Admin, /1=Distributee, /2=Creditor, /3=Other)
+    - Text Field 28 = Distributee relationship text
+    - Text Field 29 = Other/specify text for interest
+    - Text Field 76 = WHEREFORE "Letters to" name (parent-child field)
+    - Radio Button 3 = WHEREFORE prayer type (/0=Ancillary Letters, /1=d.b.n.)
+    - Text Field 75 = "No other persons interested" paragraph (NOT WHEREFORE)
+    """
     dec = decedent_full(data)
     pet = petitioner_full(data)
     letters_to = data.get("lettersTo", "") or pet
@@ -736,7 +919,6 @@ def fill_ancillary_pdf(data):
     foreign_state = data.get("foreignState", "")
 
     def v(key, default=""):
-        """Get value or default."""
         val = str(data.get(key, "") or "").strip()
         return val if val else default
 
@@ -757,90 +939,87 @@ def fill_ancillary_pdf(data):
         data.get("petitionerZip", "")
     ]))
 
+    # Petitioner interest logic
+    pet_interest = v("petitionerInterest", "Distributee")
+    is_distributee = pet_interest.lower() == "distributee"
+
+    # Radio button values
+    radio_interest_val = "/1" if is_distributee else "/3"
+    if pet_interest.lower() == "administrator":
+        radio_interest_val = "/0"
+    elif pet_interest.lower() == "creditor":
+        radio_interest_val = "/2"
+
     fields = {
         # ── PAGE 1 ────────────────────────────────────────────────
-        # Header
-        "Text Field 8":  county,                        # COUNTY OF
-        "Text Field 9":  dec,                           # ESTATE OF
-        "Text Field 10": v("decedentAKA"),              # a/k/a
-        "Text Field 11": foreign_state,                 # domiciliary of State of
-        "Text Field 12": v("fileNo"),                   # File No.
-        "Text Field 13": county,                        # To the Surrogate's Court, County of
+        "Text Field 8":  county,
+        "Text Field 9":  dec,
+        "Text Field 10": v("decedentAKA"),
+        "Text Field 11": foreign_state,
+        "Text Field 12": v("fileNo"),
+        "Text Field 13": county,
 
-        # Para 1 — Petitioner
-        "Text Field 14": pet,                           # Name
-        "Text Field 15": v("petitionerStreet"),         # Street
-        "Text Field 16": v("petitionerCity"),           # City/Village/Town
-        "Text Field 17": v("petitionerState"),          # State
-        "Text Field 18": v("petitionerZip"),            # Zip
-        "Text Field 19": v("petitionerCitizenship", "U.S.A."),  # Citizen of
+        "Text Field 14": pet,
+        "Text Field 15": v("petitionerStreet"),
+        "Text Field 16": v("petitionerCity"),
+        "Text Field 17": v("petitionerState"),
+        "Text Field 18": v("petitionerZip"),
+        "Text Field 19": petitioner_address,
+        "Text Field 20": v("petitionerCitizenship", "U.S.A."),
 
-        # Para 1 — Interest of petitioner (other field for "Other/Designee" text)
-        "Text Field 27": v("petitionerRelationship"),   # relationship if distributee
-        "Text Field 28": v("petitionerInterest"),       # Other/specify
+        # Interest of petitioner (radio + text)
+        "Radio Button 2": radio_interest_val,
+        "Text Field 28": v("petitionerRelationship") if is_distributee else "",
+        "Text Field 29": "" if is_distributee else pet_interest,
 
         # Para 2 — Decedent
-        "Text Field 29": dec,                           # (a) Name
-        "Text Field 30": v("decedentDOD"),              # (b) Date of Death
-        "Text Field 31": v("decedentPlaceOfDeath"),     # (c) Place of death
-        "Text Field 32": v("decedentStreet"),           # (d) Street
-        "Text Field 33": v("decedentCity"),             # City/Town/Village
-        "Text Field 34": v("decedentCounty"),           # County
-        "Text Field 35": foreign_state,                 # State (foreign domicile)
-        "Text Field 36": v("decedentZip"),              # Zip
-        "Text Field 37": v("decedentCitizenship", "U.S.A."),  # (e) Citizen of
+        "Text Field 30": v("decedentDOD"),
+        "Text Field 31": v("decedentPlaceOfDeath"),
+        "Text Field 32": v("decedentStreet"),
+        "Text Field 33": v("decedentCity"),
+        "Text Field 34": v("decedentCounty"),
+        "Text Field 35": foreign_state,
+        "Text Field 36": v("decedentZip"),
+        "Text Field 37": v("decedentCitizenship", "U.S.A."),
 
         # ── PAGE 2 ────────────────────────────────────────────────
-        # Para 3 — Foreign letters info
-        "Text Field 38": v("foreignLettersDate"),       # date letters issued
-        "Text Field 39": v("foreignLettersIssuedTo", letters_to),  # issued to
-        "Text Field 40": v("foreignCourtName"),         # by [Court name]
-        "Text Field 41": foreign_state,                 # State of
-        "Text Field 42": v("foreignBondAmount", "0"),   # security/bond amount $
+        "Text Field 38": v("foreignLettersDate"),
+        "Text Field 39": v("foreignLettersIssuedTo", letters_to),
+        "Text Field 40": v("foreignCourtName"),
+        "Text Field 41": foreign_state,
+        "Text Field 42": v("foreignBondAmount", "0"),
 
-        # Para 4(a) — NY property values
-        "Text Field 43": v("personalPropertyValue", "0.00"),      # Personal Property $
-        "Text Field 44": v("improvedRealProperty", "0.00"),       # Improved real property $
-        "Text Field 45": v("unimprovedRealProperty", "0.00"),     # Unimproved real property $
-        "Text Field 46": v("grossRents18mo", "0.00"),             # Gross rents 18mo $
-        "Text Field 47": total_str,                               # Total $
+        "Text Field 43": v("personalPropertyValue", "0.00"),
+        "Text Field 44": v("improvedRealProperty", "0.00"),
+        "Text Field 45": v("unimprovedRealProperty", "0.00"),
+        "Text Field 46": v("grossRents18mo", "0.00"),
+        "Text Field 47": total_str,
 
-        # Para 4(b) — Other assets
-        "Text Field 48": v("otherAssets", "NONE"),      # [NONE or specify] line 1
-        "Text Field 49": "",                            # line 2
+        "Text Field 48": v("otherAssets", "NONE"),
+        "Text Field 49": "",
 
-        # Para 5 — NY Dept of Tax always required, others if applicable
-        "Text Field 50": "N/A",                         # Amount of claim for Dept of Tax
+        "Text Field 50": "N/A",
 
         # ── PAGE 3 ────────────────────────────────────────────────
-        # Para 6(a) — Distributees of full age (3 rows: name / address / interest)
-        # Rows at y≈715, 699, 684 → field sets (57,58,59), (60,61,62), (63,64,65)
-
-        # Para 7 — no other persons / no previous application (boilerplate, no fill)
-
         # WHEREFORE clause
-        # "Ancillary Letters of Administration to:" → Text Field 75 (y=503, wide)
-        # "Ancillary Letters of Administration d.b.n. to:" → Text Field 1065 (y=443)
-        # Para (d) limitation → Text Field 77 (y=441) — leave blank
-        # Para (e) limitation → Text Field 79 (y=410) — NONE
-        # Para (f) other relief → Text Field 1067 (y=412) — leave blank
-        "Text Field 75":   letters_to,                  # Ancillary Letters of Admin to: [NAME]
-        "Text Field 1065": "",                          # d.b.n. to (leave blank unless needed)
-        "Text Field 77":   "",                          # para (d) no limitation
-        "Text Field 79":   "NONE",                      # para (e) -> NONE
-        "Text Field 80":   today(),                     # Dated
+        "Text Field 76": letters_to,
+        "Radio Button 3": "/0",
+        "Text Field 1065": "",
+        "Text Field 77":   "",
+        "Text Field 79":   "NONE",
+        "Text Field 80":   "",
 
         # ── PAGE 4 — Combined Verification, Oath and Designation ──────────────
-        "Text Field 85": v("petitionerState", "New York"),  # STATE OF
-        "Text Field 87": county,                        # COUNTY OF
-        "Text Field 89": county,                        # designate Clerk of ... County
-        "Text Field 91": petitioner_address,            # My domicile is
-        "Text Field 97": pet,                           # Print Name (petitioner)
+        "Text Field 85": v("petitionerState", "New York"),
+        "Text Field 87": county,
+        "Text Field 89": county,
+        "Text Field 91": petitioner_address,
+        "Text Field 97": pet,
     }
 
-    # Para 6(a) distributees — 3 rows
+    # Para 6(a) distributees — 3 rows (name / address / interest)
     dist_rows = [
-        ("Text Field 57", "Text Field 58", "Text Field 59"),   # name, address, interest
+        ("Text Field 57", "Text Field 58", "Text Field 59"),
         ("Text Field 60", "Text Field 61", "Text Field 62"),
         ("Text Field 63", "Text Field 64", "Text Field 65"),
     ]
@@ -851,40 +1030,12 @@ def fill_ancillary_pdf(data):
             fields[af] = dist.get("address", "")
             fields[rf] = dist.get("relationship", "")
 
-    # Build page->field map so we update each field on the correct page
-    field_page_map = {}
-    for page_num, page in enumerate(reader.pages):
-        annots = page.get('/Annots', [])
-        for annot in annots:
-            try:
-                obj = annot.get_object()
-                name = obj.get('/T', '')
-                if name:
-                    field_page_map[name] = page_num
-            except Exception:
-                pass
-
-    # Group fields by page and fill each page once
-    from collections import defaultdict
-    by_page = defaultdict(dict)
-    all_field_names = set(reader.get_fields().keys()) if reader.get_fields() else set()
-    for fid, val in fields.items():
-        if fid in all_field_names and val and fid in field_page_map:
-            by_page[field_page_map[fid]][fid] = val
-
-    for page_num, page_fields in by_page.items():
-        try:
-            writer.update_page_form_field_values(writer.pages[page_num], page_fields)
-        except Exception:
-            pass
-
-    buf = io.BytesIO()
-    writer.write(buf)
-    buf.seek(0)
-    return buf.read()
+    template = os.path.join(PDFS_DIR, "admin_ancil.pdf")
+    return fill_pdf(template, fields)
 
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
+
 
 def decedent_full(data):
     return " ".join(filter(None, [
@@ -904,13 +1055,11 @@ def petitioner_full(data):
 # ─── ADMINISTRATION PETITION (A-1) ────────────────────────────────────────────
 
 def fill_administration_pdf(data):
-    """Fill the A-1 Administration Petition + Oath PDF form."""
-    from collections import defaultdict
+    """Fill the A-1 Administration Petition + Oath PDF form.
 
-    reader = PdfReader(os.path.join(ADMIN_TEMPLATES_DIR, "Admin Petition + Oath.pdf"))
-    writer = PdfWriter()
-    writer.clone_reader_document_root(reader)
-
+    NOTE: The notary block on page 5 has mixed fonts in the PDF template.
+    This must be fixed in the PDF template itself (Adobe Acrobat), not in code.
+    """
     county    = data.get("county", "")
     dec       = decedent_full(data)
     pet       = petitioner_full(data)
@@ -936,28 +1085,30 @@ def fill_administration_pdf(data):
     is_attorney = data.get("petitionerIsAttorney") == "Yes"
 
     # Surviving relatives → dropdowns 6a–6h (EPTL 4-1.1 order)
-    # Instructions: "No" for all prior classes, number/Yes for surviving classes, "X" for all subsequent
+    # Logic: "No" for prior classes, number/Yes for first surviving class, "X" for all after
     surv_keys = [
         "survivingSpouse", "survivingChildren", "survivingIssue",
         "survivingParents", "survivingSiblings", "survivingGrandparents",
         "survivingAuntsUncles", "survivingFirstCousinsOnceRemoved",
     ]
-    surv_vals = [bool(data.get(k)) for k in surv_keys]
-    first_surv = next((i for i, s in enumerate(surv_vals) if s), None)
-    last_surv  = (len(surv_vals) - 1 - next(
-                     (i for i, s in enumerate(reversed(surv_vals)) if s), -1)
-                 ) if first_surv is not None else None
-
+    first_surviving = None
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
+            first_surviving = idx
+            break
     dropdown_vals = []
-    for i, surv in enumerate(surv_vals):
-        if first_surv is None:
-            dropdown_vals.append("-")
-        elif i < first_surv:
+    for idx, key in enumerate(surv_keys):
+        raw = data.get(key)
+        if first_surviving is None:
             dropdown_vals.append("No")
-        elif last_surv is not None and i > last_surv:
-            dropdown_vals.append("X")
+        elif idx < first_surviving:
+            dropdown_vals.append("No")
+        elif idx == first_surviving:
+            s = str(raw).strip()
+            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
         else:
-            dropdown_vals.append("Yes" if surv else "No")
+            dropdown_vals.append("X")
 
     # Debts
     debt_lines = []
@@ -978,17 +1129,17 @@ def fill_administration_pdf(data):
 
     fields = {
         # ── PAGE 1: Caption ──────────────────────────────────────────
-        "COUNTY OF":                        county,
+        "COUNTY OF":                        county.upper(),
         "Estate of 1":                      dec,
         "aka":                              v("decedentAKA"),
         "File No":                          v("fileNo"),
-        "TO THE SURROGATES COURT COUNTY OF": county,
+        "TO THE SURROGATES COURT COUNTY OF": county.upper(),
 
         # Caption checkboxes (letters type)
-        "petition for letters of admin":    "/Yes" if is_standard   else "/Off",
-        "limited admin":                    "/Yes" if is_limited    else "/Off",
-        "limited admin with lim":           "/Yes" if is_limitation else "/Off",
-        "temp admin":                       "/Yes" if is_temporary  else "/Off",
+        "petition for letters of admin":    is_standard,
+        "limited admin":                    is_limited,
+        "limited admin with lim":           is_limitation,
+        "temp admin":                       is_temporary,
 
         # ── PAGE 1: Petitioner ───────────────────────────────────────
         "Name":                             pet,
@@ -996,29 +1147,37 @@ def fill_administration_pdf(data):
         "County":                           v("petitionerCity"),
         "State":                            v("petitionerState"),
         "Zip":                              v("petitionerZip"),
-        "Telephone Number":                 v("petitionerPhone"),
-        "yes us citizen":                   "/Yes" if pet_us  else "/Off",
-        "NO us citizen":                    "/Yes" if not pet_us else "/Off",
-        "Distributee of decedent state relationship": v("petitionerRelationship"),
-        "Otherspecify":                     v("petitionerInterest"),
-        "yes attorney":                     "/Yes" if is_attorney     else "/Off",
-        "NO not an attorney":               "/Yes" if not is_attorney else "/Off",
-        "not a convicted felon":            "/Yes",
+        "yes us citizen":                   pet_us,
+        "NO us citizen":                    not pet_us,
+        "Distributee of decedent state relationship":
+            v("petitionerRelationship") if v("petitionerInterest", "").lower() in ("", "distributee") else "",
+        "Otherspecify":
+            "" if v("petitionerInterest", "").lower() in ("", "distributee") else v("petitionerInterest"),
+        "Mark if Distributee":
+            v("petitionerInterest", "").lower() in ("", "distributee"),
+        "Mark if other and then specifiy":
+            bool(v("petitionerInterest")) and v("petitionerInterest", "").lower() != "distributee",
+        "yes attorney":                     is_attorney,
+        "NO not an attorney":               not is_attorney,
+        "not a convicted felon":            True,
 
         # ── PAGE 1: Decedent ─────────────────────────────────────────
         "Name_2":                           dec,
         "Domicile_2":                       v("decedentStreet"),
+        "City/Town/Village":                v("decedentCity"),
         "State_2":                          v("decedentState"),
         "Zip Code":                         v("decedentZip"),
         "Township of":                      v("decedentCounty", v("decedentCity")),
         "Date of Death":                    v("decedentDOD"),
         "Place of Death":                   v("decedentPlaceOfDeath"),
-        "yes us citizen 1":                 "/Yes" if dec_us  else "/Off",
-        "NO not US Citizen 2":              "/Yes" if not dec_us else "/Off",
+        "yes us citizen 1":                 dec_us,
+        "NO not US Citizen 2":              not dec_us,
 
         # ── PAGE 2: Property values ──────────────────────────────────
-        "undefined_4":                      v("personalPropertyValue", "0"),
-        "undefined_5":                      v("realPropertyValue", "0"),
+        "gross value personal":             v("personalPropertyValue", "0"),
+        "gross value real property":        v("realPropertyValue", "0"),
+        "improved":                         bool(nonzero(data.get("improvedRealProperty"))),
+        "unimproved":                       bool(nonzero(data.get("unimprovedRealProperty"))),
         "A brief description of each parcel is as follows":
                                             v("realPropertyDescription"),
         "c The estimated gross rent for a period of eighteen 18 months is the sum of":
@@ -1035,27 +1194,34 @@ def fill_administration_pdf(data):
         "Dropdown 6h": dropdown_vals[7],
 
         # ── PAGE 4: Prayer for relief ────────────────────────────────
-        "a-process issue letters":          "/Yes",
-        "c a decree award letters of":      "/Yes",
-        "9c1":                              "/Yes" if is_standard   else "/Off",
-        "9c2":                              "/Yes" if is_limited    else "/Off",
-        "9c3":                              "/Yes" if is_limitation else "/Off",
-        "9c4":                              "/Yes" if is_temporary  else "/Off",
+        "a-process issue letters":          True,
+        "c a decree award letters of":      True,
+        "9c1":                              is_standard,
+        "9c2":                              is_limited,
+        "9c3":                              is_limitation,
+        "9c4":                              is_temporary,
         "Administration to":                letters_to if is_standard   else "",
         "Limited Administration to":        letters_to if is_limited    else "",
         "Administration with Limitation to": letters_to if is_limitation else "",
         "Temporary Administration to":      letters_to if is_temporary  else "",
-        "Dated":                            today(),
+        "Dated":                            "",
         "Print Name":                       pet,
+
+        # ── PAGE 1: Petitioner phone (also used on page 5) ───────────
+        "Telephone Number":                 v("petitionerPhone", "(212) 739-1736"),
 
         # ── PAGE 5: Combined Verification, Oath & Designation ────────
         "ss":                               v("petitionerState", "New York"),
+        "County of":                        county.upper(),
         "My domicile is":                   pet_addr,
         "before me personally came":        pet,
-        "Print Name_3":                     v("attorneyName"),
-        "Firm Name":                        v("attorneyFirm"),
-        "TelNo":                            v("attorneyPhone"),
-        "Address of Attorney":              v("attorneyAddress"),
+        "Print Name_3":                     v("attorneyName", "Jessica Wilson, Esq."),
+        "Firm Name":                        v("attorneyFirm", "Law Office of Jessica Wilson"),
+        "TelNo":                            v("attorneyPhone", "(212) 739-1736"),
+        "Address of Attorney":              v("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
+
+        # Wrongful death (always No for standard admin)
+        "yes wrongful death":               False,
     }
 
     # ── PAGE 3: Distributees (full age / sound mind) — up to 8 rows ─
@@ -1072,44 +1238,14 @@ def fill_administration_pdf(data):
     for i, line in enumerate(debt_lines[:9]):
         fields[debt_key.format(i + 1)] = line
 
-    # Fill page-by-page using the same pattern as fill_ancillary_pdf
-    field_page_map = {}
-    for page_num, page in enumerate(reader.pages):
-        for annot in (page.get('/Annots') or []):
-            try:
-                obj = annot.get_object()
-                name = obj.get('/T', '')
-                if name:
-                    field_page_map[str(name)] = page_num
-            except Exception:
-                pass
-
-    all_field_names = set(reader.get_fields().keys()) if reader.get_fields() else set()
-    by_page = defaultdict(dict)
-    for fid, val in fields.items():
-        if fid in all_field_names and fid in field_page_map and val not in ("", "/Off"):
-            by_page[field_page_map[fid]][fid] = val
-
-    for page_num, page_fields in by_page.items():
-        try:
-            writer.update_page_form_field_values(writer.pages[page_num], page_fields)
-        except Exception:
-            pass
-
-    buf = io.BytesIO()
-    writer.write(buf)
-    buf.seek(0)
-    return buf.read()
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Admin Petition + Oath.pdf")
+    return fill_pdf(template, fields)
 
 
 # ─── FAMILY TREE WORKSHEET (FT-1) ─────────────────────────────────────────────
 
 def fill_ft1_pdf(data):
     """Fill the actual FT-1 Family Tree Affidavit court form PDF."""
-    reader = PdfReader(os.path.join(ADMIN_TEMPLATES_DIR, "Family_Tree_Affidavit_Fill-In.pdf"))
-    writer = PdfWriter()
-    writer.clone_reader_document_root(reader)
-
     dec_name    = decedent_full(data)
     aka         = data.get("decedentAKA", "")
     file_no     = data.get("fileNo", "")
@@ -1141,54 +1277,45 @@ def fill_ft1_pdf(data):
     fields = {}
 
     # ── Header ──────────────────────────────────────────────────────────────────
-    fields["128"]         = dec_name          # Estate of
-    fields["230"]         = aka               # a/k/a
-    fields["331"]         = dec_name          # repeated on "Deceased" line
-    fields["412"]         = file_no           # File No.
-    fields["Combo Box00"] = "LETTERS OF ADMINISTRATION"
+    fields["128"]         = dec_name
+    fields["230"]         = aka
+    fields["412"]         = file_no
+    letters_type = (data.get("lettersType") or "Letters of Administration").upper()
+    fields["Combo Box00"] = letters_type
 
     # ── Deponent (petitioner) ───────────────────────────────────────────────────
-    fields["5a5"] = pet_name   # I, ___
-    fields["5b6"] = pet_addr   # reside at
-    fields["5c7"] = pet_rel    # relationship to decedent
+    fields["5a5"] = pet_name
+    fields["5b6"] = pet_rel
+    fields["5c7"] = pet_addr
 
     # ── Section 1a: Marriages ───────────────────────────────────────────────────
     if marital == "never_married":
-        fields["Check Box01h"] = "/Yes"
+        fields["Check Box01h"] = True
     elif marital == "married" and spouse_name:
-        fields["6a9"] = spouse_name            # surviving spouse
+        fields["6a9"] = spouse_name
     elif marital == "divorced" and spouse_name:
-        fields["6b10"] = spouse_name           # ex-spouse name
-        fields["Check Box01a"] = "/Yes"        # divorced
+        fields["6b10"] = spouse_name
+        fields["Check Box01a"] = True
         if divorce_yr:
             fields["6a9"] = f"divorced {divorce_yr}"
     elif marital == "widowed" and spouse_name:
-        # Spouse predeceased — list as ex-spouse who died while married
         fields["6b10"] = spouse_name
-        fields["Check Box01b"] = "/Yes"        # died while married to decedent
+        fields["Check Box01b"] = True
 
     # ── Section 1b: Children (6 slots) ─────────────────────────────────────────
     child_name_f = ["816",  "917",  "1018",  "1119",  "1220",  "1321"]
-    child_dod_f  = ["8a22", "9a23", "10a24", "11a25", "12a26", "13a27"]
     for i, c in enumerate(children[:6]):
         if c.get("name"):
             fields[child_name_f[i]] = c["name"]
 
-    # ── Section 2: Parents (page 2, fields 25/26) ───────────────────────────────
-    # Not in our data model — left blank for manual completion
-
     # ── Section 3a: Siblings (6 slots, page 2) ─────────────────────────────────
     sib_name_f = ["27", "28", "29", "30", "31", "32"]
-    sib_dod_f  = ["27a","28a","29a","30a","31a","32a"]
     for i, s in enumerate(siblings[:6]):
         if s.get("name"):
             fields[sib_name_f[i]] = s["name"]
 
     # ── Section 3b: Nieces/Nephews (7 slots, page 2) ───────────────────────────
-    # fields: name / child-of / DOD
     nie_name_f = ["33","34","35","36","37","38","39"]
-    nie_cof_f  = ["33a","34a","35a","36a","37a","38a","39a"]
-    nie_dod_f  = ["33b","34b","35b","36b","37b","38b","39b"]
     for i, n in enumerate(nieces[:7]):
         if n.get("name"):
             fields[nie_name_f[i]] = n["name"]
@@ -1205,21 +1332,337 @@ def fill_ft1_pdf(data):
         if a.get("name"):
             fields[pat_name_f[i]] = a["name"]
 
-    # ── Apply fields across all pages ───────────────────────────────────────────
-    all_form_fields = reader.get_fields() or {}
-    for fid, val in fields.items():
-        if fid in all_form_fields and val:
-            for page in writer.pages:
-                try:
-                    writer.update_page_form_field_values(page, {fid: val})
-                except Exception:
-                    pass
-
-    buf = io.BytesIO()
-    writer.write(buf)
-    buf.seek(0)
-    return buf.read()
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Family_Tree_Affidavit_Fill-In.pdf")
+    return fill_pdf(template, fields)
 
 
 def generate_ft1(data):
     return fill_ft1_pdf(data)
+
+
+# ─── ACCOUNTING EXCEL ─────────────────────────────────────────────────────────
+
+def _calc_commission(total):
+    t1 = min(total, 100000)
+    t2 = min(max(total - 100000, 0), 200000)
+    t3 = min(max(total - 300000, 0), 700000)
+    t4 = max(total - 1000000, 0)
+    return t1 * 0.05 + t2 * 0.04 + t3 * 0.03 + t4 * 0.025
+
+
+def generate_accounting_excel(form_data, assets_data):
+    """Generate a full Schedules A–H accounting workbook from asset list data."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    decedent = decedent_full(form_data)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Accounting"
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    GOLD_FILL   = PatternFill("solid", fgColor="7A5C1E")
+    LIGHT_FILL  = PatternFill("solid", fgColor="FDF8EE")
+    TOTAL_FILL  = PatternFill("solid", fgColor="F4F1EB")
+    HDR_FONT    = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    BOLD        = Font(name="Arial", bold=True, size=11)
+    NORMAL      = Font(name="Arial", size=11)
+    MONEY       = Font(name="Courier New", size=11)
+    LABEL_FONT  = Font(name="Arial", bold=True, size=11)
+    thin = Side(style="thin", color="DDDDDD")
+    BORDER = Border(bottom=Side(style="thin", color="DDDDDD"))
+
+    def money_fmt(cell):
+        cell.number_format = '#,##0.00'
+        cell.font = MONEY
+
+    def section_header(row, title):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        c = ws.cell(row=row, column=1, value=title)
+        c.font = HDR_FONT
+        c.fill = GOLD_FILL
+        c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        ws.row_dimensions[row].height = 22
+
+    def col_headers(row, *headers):
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=row, column=i, value=h)
+            c.font = BOLD
+            c.fill = LIGHT_FILL
+            c.alignment = Alignment(horizontal="left" if i < len(headers) else "right")
+
+    def total_row(row, label, value):
+        c1 = ws.cell(row=row, column=1, value=label)
+        c1.font = BOLD
+        c1.fill = TOTAL_FILL
+        c3 = ws.cell(row=row, column=3, value=value)
+        c3.font = Font(name="Courier New", bold=True, size=11)
+        c3.fill = TOTAL_FILL
+        c3.number_format = '#,##0.00'
+        c3.alignment = Alignment(horizontal="right")
+
+    def blank_rows(start_row, count):
+        for r in range(start_row, start_row + count):
+            ws.cell(row=r, column=1).border = BORDER
+            ws.cell(row=r, column=3).border = BORDER
+            ws.cell(row=r, column=3).number_format = '#,##0.00'
+            ws.cell(row=r, column=3).alignment = Alignment(horizontal="right")
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    ws.column_dimensions['A'].width = 40
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 16
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    r = 1
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
+    title_cell = ws.cell(row=r, column=1,
+        value=f"Estate of {decedent} — Informal Accounting")
+    title_cell.font = Font(name="Arial", bold=True, size=13)
+    title_cell.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[r].height = 24
+    r += 1
+
+    date_cell = ws.cell(row=r, column=1, value=f"Generated: {today()}")
+    date_cell.font = NORMAL
+    r += 2
+
+    # ── Schedule A — Estate Assets ────────────────────────────────────────────
+    section_header(r, "Schedule A — Estate Assets"); r += 1
+    col_headers(r, "Institution / Description", "Category", "Value ($)"); r += 1
+
+    sched_a_total = 0.0
+    for a in assets_data:
+        val = 0.0
+        try:
+            val = float(str(a.get("value", "0")).replace(",", "").replace("$", "").strip() or 0)
+        except Exception:
+            pass
+        sched_a_total += val
+        c1 = ws.cell(row=r, column=1, value=a.get("institution") or a.get("category", ""))
+        c1.font = NORMAL
+        c2 = ws.cell(row=r, column=2, value=a.get("category", ""))
+        c2.font = NORMAL
+        c3 = ws.cell(row=r, column=3, value=val)
+        money_fmt(c3)
+        c3.alignment = Alignment(horizontal="right")
+        r += 1
+    total_row(r, "Schedule A Total", sched_a_total); r += 2
+
+    # ── Schedule B — Income / Receipts ────────────────────────────────────────
+    section_header(r, "Schedule B — Income / Receipts"); r += 1
+    col_headers(r, "Description", "", "Amount ($)"); r += 1
+    b_start = r
+    blank_rows(r, 10); r += 10
+    total_row(r, "Schedule B Subtotal", 0); r += 2
+
+    # ── Schedule C — Disbursements ────────────────────────────────────────────
+    section_header(r, "Schedule C — Disbursements"); r += 1
+    col_headers(r, "Description", "", "Amount ($)"); r += 1
+    blank_rows(r, 10); r += 10
+    total_row(r, "Schedule C Subtotal", 0); r += 2
+
+    # ── Schedule D — Prior Distributions ─────────────────────────────────────
+    section_header(r, "Schedule D — Prior Distributions"); r += 1
+    ws.cell(row=r, column=1, value="Prior Distributions").font = NORMAL
+    d_cell = ws.cell(row=r, column=3)
+    d_cell.number_format = '#,##0.00'
+    d_cell.alignment = Alignment(horizontal="right")
+    d_cell.border = BORDER
+    r += 1
+    total_row(r, "Schedule D Total", 0); r += 2
+
+    # ── Schedule E — Commission ───────────────────────────────────────────────
+    section_header(r, "Schedule E — Executor/Administrator Commission (NY SCPA)"); r += 1
+    commission = _calc_commission(sched_a_total)
+    tiers = [
+        ("First $100,000 × 5%",       min(sched_a_total, 100000),         0.05),
+        ("Next $200,000 × 4%",         min(max(sched_a_total - 100000, 0), 200000), 0.04),
+        ("Next $700,000 × 3%",         min(max(sched_a_total - 300000, 0), 700000), 0.03),
+        ("Balance over $1,000,000 × 2.5%", max(sched_a_total - 1000000, 0), 0.025),
+    ]
+    note = ws.cell(row=r, column=1,
+        value=f"Commission base (Schedule A total): ${sched_a_total:,.2f}")
+    note.font = Font(name="Arial", italic=True, size=10, color="888888")
+    r += 1
+    for label, base, rate in tiers:
+        if base > 0:
+            c1 = ws.cell(row=r, column=1, value=label)
+            c1.font = NORMAL
+            c3 = ws.cell(row=r, column=3, value=base * rate)
+            money_fmt(c3)
+            c3.alignment = Alignment(horizontal="right")
+            r += 1
+    total_row(r, "Total Commission", commission); r += 2
+
+    # ── Schedule F — Estate Account Balance ───────────────────────────────────
+    section_header(r, "Schedule F — Balance in Estate Account"); r += 1
+    ws.cell(row=r, column=1, value="Current balance in estate account").font = NORMAL
+    f_cell = ws.cell(row=r, column=3)
+    f_cell.number_format = '#,##0.00'
+    f_cell.alignment = Alignment(horizontal="right")
+    f_cell.border = BORDER
+    r += 1
+    total_row(r, "Schedule F Balance", 0); r += 2
+
+    # ── Schedule G — Reconciliation ───────────────────────────────────────────
+    section_header(r, "Schedule G — Reconciliation"); r += 1
+    rows_g = [
+        ("Schedule A + B (Total Receipts)", sched_a_total),
+        ("Less: Schedule C (Disbursements)", 0),
+        ("Less: Schedule D (Prior Distributions)", 0),
+        ("Net Balance", sched_a_total),
+        ("Schedule F (Estate Account Balance)", 0),
+        ("Difference (should be zero)", sched_a_total),
+    ]
+    for label, val in rows_g:
+        c1 = ws.cell(row=r, column=1, value=label)
+        c1.font = BOLD if "Net Balance" in label or "Difference" in label else NORMAL
+        c3 = ws.cell(row=r, column=3, value=val)
+        money_fmt(c3)
+        c3.alignment = Alignment(horizontal="right")
+        r += 1
+    r += 1
+
+    # ── Schedule H — Distribution Plan ────────────────────────────────────────
+    section_header(r, "Schedule H — Distribution Plan"); r += 1
+    col_headers(r, "Beneficiary / Purpose", "", "Amount ($)"); r += 1
+    c1 = ws.cell(row=r, column=1, value="Executor/Administrator Commission (from Sched E)")
+    c1.font = NORMAL
+    c3 = ws.cell(row=r, column=3, value=commission)
+    money_fmt(c3)
+    c3.alignment = Alignment(horizontal="right")
+    r += 1
+    blank_rows(r, 10); r += 10
+    total_row(r, "Schedule H Total", 0); r += 1
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+# ─── LETTER OF AUTHORIZATION ──────────────────────────────────────────────────
+
+def generate_auth_letter(data, asset):
+    """Pre-letters letter from nominated executor/administrator authorizing the
+    law office to speak with the institution."""
+    lt = data.get("lettersType", "")
+    role = "executor" if "Testamentary" in lt else "administrator"
+    decedent = decedent_full(data)
+    petitioner = petitioner_full(data)
+    institution = asset.get("institution", "").strip() or "Financial Institution"
+    account_no = asset.get("accountNumber", "").strip() or "N/A"
+
+    doc = Document()
+
+    FONT = "Times New Roman"
+    SIZE = Pt(12)
+
+    def _run(para, text, bold=False):
+        r = para.add_run(text)
+        r.font.name = FONT
+        r.font.size = SIZE
+        r.bold = bold
+        return r
+
+    def line(text="", bold=False, space_after=6):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(space_after)
+        if text:
+            _run(p, text, bold=bold)
+        return p
+
+    line(today(), space_after=12)
+    line("")
+    line(institution, bold=True)
+    line(f"Re: Estate of {decedent}")
+    line(f"    Account No.: {account_no}", space_after=12)
+    line("")
+    line("To Whom It May Concern:", space_after=12)
+    line("")
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(12)
+    _run(p, f"I, {petitioner}, am the nominated {role} of the Estate of "
+         f"{decedent}, deceased. I hereby authorize the Law Office of Jessica Wilson "
+         f"to discuss, obtain information about, and act on my behalf with respect to "
+         f"the above-referenced account and any other accounts held by the above-named estate.")
+    line("Please extend your full cooperation to our office upon request.", space_after=24)
+    line("")
+    line("Sincerely,", space_after=48)
+    line("")
+    line("")
+    line(petitioner)
+
+    return make_docx_bytes(doc)
+
+
+# ─── LETTER OF INSTRUCTION ────────────────────────────────────────────────────
+
+def generate_instruction_letter(data, asset, marshal_action="check"):
+    """Post-letters letter requesting the institution marshal assets."""
+    lt = data.get("lettersType", "")
+    role = "executor" if "Testamentary" in lt else "administrator"
+    letters_label = "Letters Testamentary" if "Testamentary" in lt else "Letters of Administration"
+    decedent = decedent_full(data)
+    petitioner = petitioner_full(data)
+    county = data.get("county", "")
+    dod = data.get("decedentDOD", "")
+    institution = asset.get("institution", "").strip() or "Financial Institution"
+    account_no = asset.get("accountNumber", "").strip() or "N/A"
+    signer_key = data.get("signer", "Jessica Wilson")
+    signer = SIGNERS.get(signer_key, signer_key)
+
+    if marshal_action == "transfer":
+        marshal_text = "transfer all funds to the estate account"
+    else:
+        marshal_text = f"remit payment by check payable to 'Estate of {decedent}'"
+
+    doc = Document()
+
+    FONT = "Times New Roman"
+    SIZE = Pt(12)
+
+    def _run(para, text, bold=False):
+        r = para.add_run(text)
+        r.font.name = FONT
+        r.font.size = SIZE
+        r.bold = bold
+        return r
+
+    def line(text="", bold=False, space_after=6):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(space_after)
+        if text:
+            _run(p, text, bold=bold)
+        return p
+
+    line(today(), space_after=12)
+    line("")
+    line(institution, bold=True)
+    line(f"Re: Estate of {decedent}")
+    line(f"    Account No.: {account_no}", space_after=12)
+    line("")
+    line("Dear Sir or Madam:", space_after=12)
+    line("")
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(12)
+    _run(p, f"Our office represents {petitioner}, the duly appointed {role} of the "
+         f"Estate of {decedent}, who died on {dod}. "
+         f"{letters_label} were issued by the Surrogate's Court, {county} County.")
+    p2 = doc.add_paragraph()
+    p2.paragraph_format.space_after = Pt(12)
+    _run(p2, f"Please marshal all assets held in the above-referenced account and "
+         f"{marshal_text} at your earliest convenience. "
+         f"Please find enclosed a certified copy of the Letters.")
+    line("Please do not hesitate to contact our office should you require any additional "
+         "information or documentation.", space_after=24)
+    line("")
+    line("Very truly yours,", space_after=48)
+    line("")
+    line("")
+    line(signer)
+
+    return make_docx_bytes(doc)
