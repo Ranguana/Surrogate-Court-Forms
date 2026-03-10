@@ -779,6 +779,48 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
+APP_VERSION = "1.1.0"
+GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
+
+
+@app.route("/check-update")
+def check_update():
+    """Check GitHub Releases for a newer version."""
+    import urllib.request
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        req = urllib.request.Request(url, headers={"User-Agent": "ProbateAssistant"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            release = json.loads(resp.read().decode())
+        latest = release.get("tag_name", "").lstrip("v")
+        if not latest:
+            return jsonify({"update": False, "current": APP_VERSION})
+        if latest != APP_VERSION:
+            # Find DMG download URL
+            download_url = ""
+            for asset in release.get("assets", []):
+                if asset["name"].endswith(".dmg"):
+                    download_url = asset["browser_download_url"]
+                    break
+            return jsonify({
+                "update": True,
+                "current": APP_VERSION,
+                "latest": latest,
+                "download_url": download_url,
+                "release_notes": release.get("body", ""),
+                "html_url": release.get("html_url", ""),
+            })
+        return jsonify({"update": False, "current": APP_VERSION})
+    except Exception as e:
+        print(f"[UPDATE] Check failed: {e}")
+        return jsonify({"update": False, "current": APP_VERSION, "error": str(e)})
+
+
+@app.route("/app-version")
+def app_version():
+    return jsonify({"version": APP_VERSION})
+
+
 @app.route("/check")
 def check():
     pdfs = {

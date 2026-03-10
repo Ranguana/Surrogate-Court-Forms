@@ -1879,6 +1879,19 @@ fetch("/check").then(r=>r.json()).then(d=>{
   if(missing.length) showStatus("⚠ Missing template files: "+missing.join(", "),"err");
 }).catch(()=>{});
 
+// ── AUTO-UPDATE CHECK ─────────────────────────────────────────────────────
+fetch("/check-update").then(r=>r.json()).then(d=>{
+  if(d.update){
+    const bar=document.getElementById("status-bar");
+    const msg=d.download_url
+      ? `🔔 Update available: v${d.latest} (you have v${d.current}). <a href="${d.download_url}" style="color:inherit;font-weight:bold;text-decoration:underline" target="_blank">Download now</a>`
+      : `🔔 Update available: v${d.latest} (you have v${d.current}). <a href="${d.html_url}" style="color:inherit;font-weight:bold;text-decoration:underline" target="_blank">View on GitHub</a>`;
+    bar.innerHTML=msg;
+    bar.className="info";
+    bar.style.display="block";
+  }
+}).catch(()=>{});
+
 // ── SMART INTAKE ──────────────────────────────────────────────────────────────
 let siFiles = [];
 let siExtracted = null;
