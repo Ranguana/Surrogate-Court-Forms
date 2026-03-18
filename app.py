@@ -12,8 +12,12 @@ import json
 import os
 import traceback
 import zipfile
-from dotenv import load_dotenv
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    # Load .env from same directory as app.py (works both in dev and packaged app)
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
 from flask import Flask, request, jsonify, send_file, send_from_directory
 
 # ── Output folder settings ────────────────────────────────────────────────────
@@ -163,7 +167,7 @@ from generators import (
     generate_probate_docs, fill_ancillary_pdf,
     fill_administration_pdf, fill_nondom_pdf, generate_ft1,
     generate_auth_letter, generate_instruction_letter,
-    generate_accounting_excel,
+    generate_accounting_excel, fill_schedule_da_pdf,
     needs_family_tree_affidavit, needs_family_tree_diagram,
     family_tree_trigger_reason,
     COUNTY_INFO, today, decedent_full, petitioner_full
@@ -387,6 +391,23 @@ def generate_packet():
                 files.append((f"{waiver_slot}_MISSING_Waiver_{safe}.txt",
                                f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
+    # ── Schedule D(a) — post-deceased distributees (same slot as waivers)
+    for dist in distributees:
+        if dist.get("disposition") == "postDeceased" and dist.get("name"):
+            try:
+                safe = dist['name'].replace(' ', '_')
+                print(f"[TRYING] {waiver_slot} fill_schedule_da_pdf() for {dist['name']!r}")
+                fname = f"{waiver_slot}_Schedule_Da_{safe}.pdf"
+                files.append((fname, fill_schedule_da_pdf(data, dist)))
+                print(f"[OK] {waiver_slot} Schedule D(a): {dist['name']}")
+            except Exception as e:
+                print(f"[ERR] {waiver_slot} Schedule D(a) {dist.get('name')}: {e}")
+                traceback.print_exc()
+                errors.append(f"Schedule D(a) for {dist.get('name')}: {e}")
+                safe = dist['name'].replace(' ', '_')
+                files.append((f"{waiver_slot}_MISSING_Schedule_Da_{safe}.txt",
+                               f"FAILED TO GENERATE\n\nError: {e}".encode()))
+
     # 00. Summary sheet (prepended)
     if proceeding == "Probate":
         if probate_needs_ft_aff:
@@ -534,8 +555,6 @@ def smart_intake():
         return jsonify({"error": "No files uploaded"}), 400
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key or api_key == "sk-ant-your-key-here":
-        return jsonify({"error": "ANTHROPIC_API_KEY not configured in .env"}), 500
 
     import pdfplumber
     import anthropic as _anthropic
@@ -549,11 +568,64 @@ def smart_intake():
         try:
             pdf_bytes = f.read()
             pages = []
+            # Try text extraction first
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text()
-                    if t:
+                    if t and t.strip():
                         pages.append(t)
+            # If no text found, try OCR for scanned documents
+            if not pages:
+                try:
+                    import pytesseract
+                    from pdf2image import convert_from_bytes
+                    print(f"[SMART-INTAKE] No text in {f.filename}, trying OCR...")
+                    images = convert_from_bytes(pdf_bytes, dpi=300)
+                    for img in images:
+                        t = pytesseract.image_to_string(img)
+                        if t and t.strip():
+                            pages.append(t)
+                    if pages:
+                        print(f"[SMART-INTAKE] OCR extracted {len(pages)} pages from {f.filename}")
+                except ImportError:
+                    print(f"[SMART-INTAKE] OCR not available, trying image-based Claude extraction")
+                except Exception as ocr_err:
+                    print(f"[SMART-INTAKE] OCR failed: {ocr_err}, trying image-based Claude extraction")
+
+            # If still no text, send pages as images to Claude directly
+            if not pages:
+                try:
+                    import fitz as _fitz
+                    print(f"[SMART-INTAKE] Converting {f.filename} to images for Claude vision...")
+                    pdf_doc = _fitz.open(stream=pdf_bytes, filetype="pdf")
+                    import base64 as _b64
+                    image_contents = []
+                    for page_num in range(min(len(pdf_doc), 10)):  # max 10 pages
+                        pix = pdf_doc[page_num].get_pixmap(dpi=200)
+                        img_bytes = pix.tobytes("png")
+                        img_b64 = _b64.b64encode(img_bytes).decode("utf-8")
+                        image_contents.append({
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/png", "data": img_b64}
+                        })
+                    pdf_doc.close()
+                    if image_contents:
+                        # Send images directly to Claude for extraction
+                        _api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                        client = _anthropic.Anthropic(api_key=_api_key)
+                        vision_prompt = image_contents + [{"type": "text", "text": "Extract ALL text from these scanned document pages. Return the full text content."}]
+                        msg = client.messages.create(
+                            model="claude-sonnet-4-6",
+                            max_tokens=4096,
+                            messages=[{"role": "user", "content": vision_prompt}],
+                        )
+                        extracted_text = msg.content[0].text.strip()
+                        if extracted_text:
+                            pages.append(extracted_text)
+                            print(f"[SMART-INTAKE] Claude vision extracted text from {f.filename}")
+                except Exception as vision_err:
+                    print(f"[SMART-INTAKE] Vision extraction failed: {vision_err}")
+
             text = "\n\n".join(pages).strip()
             if text:
                 doc_texts.append(f"=== {f.filename} ===\n{text}")
@@ -561,7 +633,7 @@ def smart_intake():
             print(f"[SMART-INTAKE] Error reading {f.filename}: {e}")
 
     if not doc_texts:
-        return jsonify({"error": "Could not extract text from uploaded PDFs. They may be scanned — OCR support coming soon."}), 400
+        return jsonify({"error": "Could not extract any text from the uploaded PDFs."}), 400
 
     combined = "\n\n".join(doc_texts)
 
@@ -779,7 +851,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
@@ -865,6 +937,9 @@ def parse_pdf():
 
 if __name__ == "__main__":
     import socket
+
+    port = 52845  # uncommon port to avoid conflicts
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -877,9 +952,9 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"  Counties: {', '.join(COUNTY_INFO.keys())}")
     print()
-    print(f"  Local:   http://localhost:8080")
-    print(f"  Network: http://{local_ip}:8080")
+    print(f"  Local:   http://localhost:{port}")
+    print(f"  Network: http://{local_ip}:{port}")
     print()
     print("  Share the Network URL with others on your Wi-Fi.")
     print("=" * 60)
-    app.run(debug=False, host="0.0.0.0", port=8080)
+    app.run(debug=False, host="0.0.0.0", port=port)

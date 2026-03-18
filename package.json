@@ -1,6 +1,6 @@
 {
   "name": "probate-assistant",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "NY Surrogate's Court Probate Assistant",
   "main": "main.js",
   "scripts": {
@@ -56,12 +56,9 @@
           "templates/**/*",
           "Accounting/**/*",
           "*.pdf",
-          "favicon.svg"
+          "favicon.svg",
+          ".env"
         ]
-      },
-      {
-        "from": "python_bundle",
-        "to": "python_bundle"
       }
     ],
     "asar": false

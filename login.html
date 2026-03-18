@@ -86,10 +86,15 @@
         .map(b => b.toString(16).padStart(2, "0")).join("");
     }
 
-    function waitForServer() {
-      return new Promise(resolve => {
+    function waitForServer(timeoutMs) {
+      return new Promise((resolve, reject) => {
+        const start = Date.now();
         const check = () => {
-          fetch("http://localhost:8080/counties")
+          if (Date.now() - start > timeoutMs) {
+            reject(new Error("timeout"));
+            return;
+          }
+          fetch("http://localhost:52845/counties")
             .then(r => { if (r.ok) resolve(); else setTimeout(check, 300); })
             .catch(() => setTimeout(check, 300));
         };
@@ -97,10 +102,36 @@
       });
     }
 
+    // Listen for status updates from Electron main process
+    window.__statusUpdate = (msg) => {
+      const err = document.getElementById("err");
+      err.style.color = "#aaa";
+      err.textContent = msg;
+    };
+
+    window.__flaskFailed = (msg) => {
+      const err = document.getElementById("err");
+      err.style.color = "#e94560";
+      err.textContent = msg;
+      err.style.fontSize = "12px";
+      const btn = document.querySelector("button");
+      if (btn) { btn.textContent = "Unlock"; btn.disabled = false; }
+    };
+
     async function unlock() {
-      document.getElementById("err").textContent = "Starting app...";
-      await waitForServer();
-      window.location.href = "http://localhost:8080";
+      const err = document.getElementById("err");
+      err.textContent = "Starting app...";
+      err.style.color = "#aaa";
+      try {
+        await waitForServer(15000);
+        window.location.href = "http://localhost:52845";
+      } catch (e) {
+        err.style.color = "#e94560";
+        err.textContent = "Server didn't start. macOS may be blocking it — try right-clicking the app icon and choosing \"Open\" instead of double-clicking.";
+        err.style.fontSize = "12px";
+        const btn = document.querySelector("button");
+        if (btn) { btn.textContent = "Retry"; btn.disabled = false; }
+      }
     }
 
     // Check if password exists

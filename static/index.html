@@ -211,6 +211,12 @@ body {
 .disp-btn.waiver  { border-color: var(--green); color: var(--green); background: var(--green-bg); font-weight: bold; }
 .disp-btn.citation{ border-color: #c07050; color: #7a3820; background: #fdf5f0; font-weight: bold; }
 .disp-btn.tbd     { border-color: #b0a090; color: var(--text3); }
+.disp-btn.postDeceased { border-color: #7b6ba0; color: #5a4a80; background: #f3f0fa; font-weight: bold; }
+.pd-extra { margin-top: 10px; padding: 12px; background: #f8f6fd; border: 1px solid #d8d0e8; border-radius: 6px; }
+.pd-extra .field label { color: #5a4a80; }
+.pd-sub-head { font-size: 12px; color: #7b6ba0; font-weight: bold; margin: 10px 0 6px; font-family: Arial, sans-serif; }
+.pd-heir-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+.pd-heir-row input { font-size: 12px; padding: 4px 6px; }
 
 /* ── SUMMARY PANEL ── */
 #summary { width: 215px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); padding: 15px 13px; overflow-y: auto; }
@@ -1078,8 +1084,44 @@ function renderDists() {
         <span class="disp-label">Disposition:</span>
         <button class="disp-btn ${d.disposition==='waiver'?'waiver':''}"   onclick="setDisp(${i},'waiver')">✓ Waiver</button>
         <button class="disp-btn ${d.disposition==='citation'?'citation':''}" onclick="setDisp(${i},'citation')">📋 Citation</button>
+        <button class="disp-btn ${d.disposition==='postDeceased'?'postDeceased':''}" onclick="setDisp(${i},'postDeceased')">Post-Deceased</button>
         <button class="disp-btn ${d.disposition==='tbd'?'tbd':''}"         onclick="setDisp(${i},'tbd')">? TBD</button>
-      </div>`;
+      </div>
+      ${d.disposition==='postDeceased'?`
+      <div class="pd-extra">
+        <div class="grid2">
+          <div class="field"><label>Date of Death (post-deceased)</label><input value="${d.postDeceasedDOD||''}" oninput="ud(${i},'postDeceasedDOD',this.value)" placeholder="MM/DD/YYYY"></div>
+          <div class="field"><label>Fiduciary appointed?</label>
+            <select onchange="ud(${i},'hasFiduciary',this.value==='yes');renderDists()">
+              <option value="no" ${d.hasFiduciary?'':'selected'}>No</option>
+              <option value="yes" ${d.hasFiduciary?'selected':''}>Yes</option>
+            </select>
+          </div>
+        </div>
+        ${d.hasFiduciary?`
+        <div class="pd-sub-head">3(a) Fiduciary Details</div>
+        <div class="grid2">
+          <div class="field"><label>Fiduciary Name</label><input value="${(d.fiduciary||{}).name||''}" oninput="udFid(${i},'name',this.value)"></div>
+          <div class="field"><label>Fiduciary Address</label><input value="${(d.fiduciary||{}).address||''}" oninput="udFid(${i},'address',this.value)"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Citizenship</label><input value="${(d.fiduciary||{}).citizenship||''}" oninput="udFid(${i},'citizenship',this.value)"></div>
+          <div class="field"><label>Court</label><input value="${(d.fiduciary||{}).court||''}" oninput="udFid(${i},'court',this.value)"></div>
+        </div>
+        `:`
+        <div class="pd-sub-head">3(b) Post-Deceased Person's Distributees</div>
+        ${(d.postDeceasedDistributees||[{name:'',address:'',citizenship:'',relationship:''}]).map((pd,pi)=>
+          `<div class="pd-heir-row">
+            <input placeholder="Name" value="${pd.name||''}" oninput="udPdDist(${i},${pi},'name',this.value)">
+            <input placeholder="Address" value="${pd.address||''}" oninput="udPdDist(${i},${pi},'address',this.value)">
+            <input placeholder="Citizenship" value="${pd.citizenship||''}" oninput="udPdDist(${i},${pi},'citizenship',this.value)">
+            <input placeholder="Relationship" value="${pd.relationship||''}" oninput="udPdDist(${i},${pi},'relationship',this.value)">
+          </div>`).join('')}
+        <button class="btn btn-outline" style="font-size:12px;margin-top:4px;padding:3px 10px" onclick="addPdDist(${i})">+ Add Heir</button>
+        `}
+      </div>
+      `:''}
+    `;
     c.appendChild(el);
   });
   document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
@@ -1088,7 +1130,28 @@ function renderDists() {
 function addDist()     { if(distributees.length<7){distributees.push({name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
 function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
-function setDisp(i,v)  { distributees[i].disposition=v; renderDists(); updateDocList(); }
+function setDisp(i,v)  {
+  distributees[i].disposition=v;
+  if(v==='postDeceased' && !distributees[i].postDeceasedDistributees){
+    distributees[i].postDeceasedDistributees=[{name:'',address:'',citizenship:'',relationship:''}];
+  }
+  renderDists(); updateDocList();
+}
+function udFid(i,k,v) {
+  if(!distributees[i].fiduciary) distributees[i].fiduciary={};
+  distributees[i].fiduciary[k]=v;
+}
+function udPdDist(i,pi,k,v) {
+  if(!distributees[i].postDeceasedDistributees) distributees[i].postDeceasedDistributees=[{name:'',address:'',citizenship:'',relationship:''}];
+  distributees[i].postDeceasedDistributees[pi][k]=v;
+}
+function addPdDist(i) {
+  if(!distributees[i].postDeceasedDistributees) distributees[i].postDeceasedDistributees=[];
+  if(distributees[i].postDeceasedDistributees.length<6){
+    distributees[i].postDeceasedDistributees.push({name:'',address:'',citizenship:'',relationship:''});
+    renderDists();
+  }
+}
 
 // ── FORM DATA ─────────────────────────────────────────────────────────────────
 function g(id){const el=document.getElementById(id);return el?el.value:"";}
@@ -1163,8 +1226,10 @@ function getDocList(){
   if(checks.preliminaryLetters) d.push({name:"Preliminary Letters",on:true});
   const waivers=distributees.filter(x=>x.name&&x.disposition==="waiver").length;
   const citations=distributees.filter(x=>x.name&&x.disposition==="citation").length;
+  const postDeceased=distributees.filter(x=>x.name&&x.disposition==="postDeceased").length;
   const tbds=distributees.filter(x=>x.name&&x.disposition==="tbd").length;
   if(waivers>0)  d.push({name:`Waiver Cover Letter ×${waivers}`,on:true});
+  if(postDeceased>0) d.push({name:`Schedule D(a) ×${postDeceased}`,on:true});
   if(citations>0)d.push({name:`Citation ×${citations}`,on:true,note:"generated by court"});
   if(tbds>0)     d.push({name:`${tbds} distributee(s) TBD`,on:false});
   return d;
@@ -1196,7 +1261,7 @@ function updateSummary(){
   if(fd.length){
     html+=`<div style="border-top:1px solid var(--border);padding-top:7px;margin-top:4px">
       <div class="sum-k" style="margin-bottom:4px">Distributees</div>
-      ${fd.map(d=>{const ic=d.disposition==="waiver"?"✓":d.disposition==="citation"?"📋":"?";return`<div style="font-size:13px;color:var(--text2);margin-bottom:2px">${ic} ${d.name}${d.relationship?" ("+d.relationship+")":""}</div>`;}).join("")}
+      ${fd.map(d=>{const ic=d.disposition==="waiver"?"✓":d.disposition==="citation"?"📋":d.disposition==="postDeceased"?"†":"?";return`<div style="font-size:13px;color:var(--text2);margin-bottom:2px">${ic} ${d.name}${d.relationship?" ("+d.relationship+")":""}</div>`;}).join("")}
     </div>`;
   }
   document.getElementById("sum-content").innerHTML=html||`<p style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif">Fill in fields to see summary</p>`;

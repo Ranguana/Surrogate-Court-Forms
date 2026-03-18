@@ -1837,3 +1837,73 @@ def generate_instruction_letter(data, asset, marshal_action="check"):
     line(signer)
 
     return make_docx_bytes(doc)
+
+
+# ─── SCHEDULE D(a) — POST-DECEASED DISTRIBUTEE ──────────────────────────────
+
+def fill_schedule_da_pdf(data, dist):
+    """Fill the Schedule D(a) form for a distributee who post-deceased the decedent.
+
+    Field mapping (by rect position on page):
+    - Combo Box0:     County
+    - Text Field167:  File #
+    - Text Field164:  Estate of (decedent name)
+    - Text Field165:  a/k/a
+    - Text Field168:  1. Name of post-deceased distributee
+    - Text Field169:  Date of Death of post-deceased
+    - Text Field170:  Relationship to decedent
+    - Text Field171:  Last permanent address (domicile)
+    - Check Box01:    Yes/No fiduciary appointed
+    - Text Field174:  3(a) Fiduciary row 1 (name / address / citizenship / court)
+    - Text Field176:  3(a) Fiduciary row 2
+    - Text Field175:  3(b) Distributee row 1
+    - Text Field177:  3(b) Distributee row 2
+    - Text Field178:  3(b) Distributee row 3
+    - Text Field179:  3(b) Distributee row 4
+    - Text Field180:  3(b) Distributee row 5
+    - Text Field181:  3(b) Distributee row 6
+    """
+    dec = decedent_full(data)
+    aka = data.get("decedentAKA", "")
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+
+    fields = {}
+
+    # Header
+    fields["Combo Box0"] = county
+    fields["Text Field167"] = file_no
+    fields["Text Field164"] = dec
+    fields["Text Field165"] = aka
+
+    # Section 1 — post-deceased distributee info
+    fields["Text Field168"] = dist.get("name", "")
+    fields["Text Field169"] = dist.get("postDeceasedDOD", "")
+    fields["Text Field170"] = dist.get("relationship", "")
+    fields["Text Field171"] = dist.get("address", "")
+
+    # Section 2 — fiduciary yes/no
+    has_fiduciary = dist.get("hasFiduciary", False)
+    if has_fiduciary:
+        fields["Check Box01"] = True
+
+    # Section 3(a) — fiduciary details (2 rows)
+    fid = dist.get("fiduciary", {})
+    if has_fiduciary and fid:
+        row1_parts = [fid.get("name", ""), fid.get("address", ""),
+                      fid.get("citizenship", ""), fid.get("court", "")]
+        fields["Text Field174"] = "     ".join(p for p in row1_parts if p)
+        fields["Text Field176"] = fid.get("row2", "")
+
+    # Section 3(b) — post-deceased person's distributees (up to 6 rows)
+    pd_dists = dist.get("postDeceasedDistributees", [])
+    row_fields = ["Text Field175", "Text Field177", "Text Field178",
+                  "Text Field179", "Text Field180", "Text Field181"]
+    for idx, pd in enumerate(pd_dists[:6]):
+        parts = [pd.get("name", ""), pd.get("address", ""),
+                 pd.get("citizenship", ""), pd.get("relationship", "")]
+        fields[row_fields[idx]] = "     ".join(p for p in parts if p)
+
+    template = os.path.join(PROBATE_TEMPLATES_DIR,
+                            "Schedule D(a)- Distributee Who Post-Deceased Decedent.pdf")
+    return fill_pdf(template, fields)
