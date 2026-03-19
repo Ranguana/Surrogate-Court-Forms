@@ -1907,3 +1907,931 @@ def fill_schedule_da_pdf(data, dist):
     template = os.path.join(PROBATE_TEMPLATES_DIR,
                             "Schedule D(a)- Distributee Who Post-Deceased Decedent.pdf")
     return fill_pdf(template, fields)
+
+
+# ─── ADMIN CTA (ADMINISTRATION C.T.A.) ──────────────────────────────────────
+
+def fill_cta_pdf(data):
+    """Fill the Administration C.T.A. petition PDF (SCPA 1418/1419).
+
+    Used when a will exists but the named executor cannot serve
+    (died, resigned, or was removed).
+
+    Template: templates/Probate/probcta.pdf  (7 pages)
+    Page 0: CTA-1 Petition (sections 1-2)
+    Page 1: CTA-1 Petition cont (sections 3-7, WHEREFORE, signatures)
+    Page 2: Combined Verification, Oath & Designation
+    Page 3: Corporate Verification, Consent & Designation
+    Page 4: CTA Citation
+    Page 5: CTA-3 Waiver/Renunciation
+    Page 6: P-12 Affidavit of No Debt
+    """
+    county   = data.get("county", "")
+    dec      = decedent_full(data)
+    aka      = data.get("decedentAKA", "")
+    pet      = petitioner_full(data)
+    file_no  = data.get("fileNo", "")
+    letters_to = data.get("lettersTo", "") or pet
+
+    def v(key, default=""):
+        return str(data.get(key, "") or "").strip() or default
+
+    pet_street = v("petitionerStreet")
+    pet_city   = v("petitionerCity")
+    pet_state  = v("petitionerState", "NY")
+    pet_zip    = v("petitionerZip")
+    pet_cit    = v("petitionerCitizenship", "US Citizen")
+    dec_street = v("decedentStreet")
+    dec_city   = v("decedentCity")
+    dec_county = v("decedentCounty", county)
+    dec_state  = v("decedentState", "NY")
+    dec_zip    = v("decedentZip")
+
+    # CTA-specific fields
+    orig_county   = v("ctaOriginalCounty")
+    orig_date     = v("ctaOriginalDate")
+    orig_executor = v("ctaOriginalExecutor")
+    exec_reason   = v("ctaExecutorReason")  # died / resigned / removed
+    pet_interest  = v("ctaPetitionerInterest", "Residuary Beneficiary")
+    is_attorney   = v("ctaAdminIsAttorney", "no")
+
+    # Estate values
+    personal = v("personalPropertyValue", "0")
+    real_imp = v("improvedRealProperty", "0")
+    real_unimp = v("unimprovedRealProperty", "0")
+    gross_rents = v("grossRents18mo", "0")
+
+    # Distributees
+    dists = data.get("distributees", [])
+
+    fields = {}
+
+    # ═══ PAGE 0: CTA-1 Petition ═══════════════════════════════════════════
+    fields["Decedent_Name"]   = dec
+    fields["Decedent_AKA"]    = aka
+    fields["File_No"]         = file_no
+
+    # Section 1(a) — Petitioner info
+    fields["TextField13[0]"]  = pet                  # Petitioner name
+    fields["TextField14[0]"]  = pet_street            # Street address
+    fields["TextField15[0]"]  = pet_city              # City/Village/Town
+    fields["TextField16[0]"]  = pet_state             # State... but wrong field?
+    fields["TextField17[0]"]  = dec_county            # County
+    fields["TextField18[0]"]  = pet_state             # State
+    fields["TextField19[0]"]  = pet_zip               # Zip
+    fields["TextField20[0]"]  = ""                    # Telephone
+    fields["TextField21[0]"]  = ""                    # Mailing address if different
+
+    # Citizenship checkboxes
+    if "us" in pet_cit.lower() or "citizen" in pet_cit.lower():
+        fields["CheckBox1[0]"] = True   # USA
+    else:
+        fields["CheckBox2[0]"] = True   # Other
+        fields["TextField22[0]"] = pet_cit
+
+    # Second petitioner (leave blank)
+    fields["TextField23[0]"]  = ""
+
+    # Interest checkboxes
+    if "sole" in pet_interest.lower():
+        fields["CheckBox5[0]"] = True   # Sole Beneficiary
+    elif "residuary" in pet_interest.lower():
+        fields["CheckBox6[0]"] = True   # Residuary Beneficiary
+    else:
+        fields["CheckBox7[0]"] = True   # Other
+        fields["TextField32[0]"] = pet_interest
+
+    # 1(b) — Is admin CTA an attorney?
+    if is_attorney.lower() == "yes":
+        fields["CheckBox8[0]"] = True   # is an attorney
+    else:
+        fields["CheckBox9[0]"] = True   # is not an attorney
+
+    # Section 2 — Original probate info
+    fields["TextField33[0]"]  = orig_county           # County where probated
+    fields["TextField34[0]"]  = orig_date             # Date probated
+    fields["TextField35[0]"]  = orig_executor         # Original executor name
+    fields["TextField36[0]"]  = ""                    # "who on [date]..."
+
+    # Reason checkboxes
+    if exec_reason == "died":
+        fields["CheckBox10[0]"] = True
+    elif exec_reason == "resigned":
+        fields["CheckBox11[0]"] = True
+    elif exec_reason == "removed":
+        fields["CheckBox12[0]"] = True
+
+    # ═══ PAGE 1: Petition continued ═══════════════════════════════════════
+    # Section 3 — Persons with prior/equal right (SCPA 1418)
+    if len(dists) > 0:
+        d = dists[0]
+        fields["TextField37[0]"]  = d.get("name", "")
+        fields["TextField38[0]"]  = ""                 # Description of legacy
+        fields["TextField39[0]"]  = d.get("relationship", "")
+        fields["TextField40[0]"]  = ""                 # Mailing address
+        fields["TextField41[0]"]  = ""                 # Fiduciary status
+        fields["TextField42[0]"]  = d.get("address", "")
+        fields["TextField43[0]"]  = ""                 # Additional line
+
+    # Section 4 — Other beneficiaries
+    if len(dists) > 1:
+        d = dists[1]
+        fields["TextField44[0]"]  = d.get("name", "")
+        fields["TextField45[0]"]  = ""
+        fields["TextField46[0]"]  = d.get("relationship", "")
+        fields["TextField47[0]"]  = ""
+        fields["TextField67[0]"]  = ""
+        fields["TextField49[0]"]  = d.get("address", "")
+        fields["TextField50[0]"]  = ""
+
+    # Section 6 — Debts
+    fields["TextField51[0]"]  = ""    # Debts/funeral expenses (leave for manual)
+
+    # Section 7 — Estate values
+    fields["TextField52[0]"]  = personal    # Personal property
+    fields["TextField53[0]"]  = real_imp    # Improved real property
+    fields["TextField54[0]"]  = real_unimp  # Unimproved real property
+    fields["TextField55[0]"]  = gross_rents # Estimated gross rents 18 months
+    fields["TextField56[0]"]  = ""          # Other assets / cause of action
+
+    # WHEREFORE
+    fields["Petitioner"]      = letters_to   # Letters of Admin CTA to
+    fields["TextField58[0]"]  = ""           # Other relief
+    fields["TextField59[0]"]  = today()      # Dated
+
+    # Petitioner signatures (print names)
+    fields["TextField60[0]"]  = pet          # Signature line 1 (print name)
+    fields["TextField61[0]"]  = ""           # Signature line 2
+    fields["TextField62[0]"]  = pet          # Print name 1
+    fields["TextField63[0]"]  = ""           # Print name 2
+
+    # ═══ PAGE 2: Verification, Oath & Designation ═════════════════════════
+    fields["STATE OF_F02"]             = "NEW YORK"
+    fields["COUNTY OF_F13"]            = county.upper()
+    fields["of_F24"]                   = county  # Designation county
+    fields["(Street Address)_F35"]     = pet_street
+    fields["(City/Town/Village)_F46"]  = pet_city
+    fields["(State)_F57"]              = pet_state
+    fields["(Print Name)_F68"]         = pet
+    fields["came_F79"]                 = pet     # "came [name]"
+    fields["Date0"]                    = today()
+    fields["Year1"]                    = ""
+
+    # ═══ PAGE 3: Corporate Verification ═══════════════════════════════════
+    fields["TextField86[0]"]  = ""    # State
+    fields["TextField87[0]"]  = ""    # County
+    # Corporate fields left blank (filled when corporate petitioner)
+
+    # ═══ PAGE 4: Citation ═════════════════════════════════════════════════
+    fields["TextField108[0]"] = file_no               # File No
+    fields["TextField109[0]"] = county                 # County
+    # TO lines (cite parties)
+    cite_names = [d.get("name", "") for d in dists if d.get("disposition") == "citation"]
+    to_fields = ["TextField110[0]", "TextField111[0]", "TextField112[0]",
+                 "TextField113[0]", "TextField114[0]"]
+    for i, name in enumerate(cite_names[:5]):
+        fields[to_fields[i]] = name
+
+    fields["TextField115[0]"] = pet                    # Petitioner name
+    fields["TextField116[0]"] = pet_street             # Petitioner domicile
+    fields["TextField117[0]"] = f"{pet_city}, {pet_state}"
+    fields["TextField118[0]"] = county                 # County
+    fields["TextField120[0]"] = dec                    # Estate of
+    fields["TextField123[0]"] = f"{dec_street}, {dec_city}, {dec_state}"  # Domicile
+    fields["TextField124[0]"] = dec_county             # County
+    fields["TextField125[0]"] = ""                     # Surrogate name
+    fields["TextField126[0]"] = letters_to             # Letters to
+    fields["TextField135[0]"] = ""                     # Attorney for petitioner
+    fields["TextField136[0]"] = ""                     # Telephone
+    fields["TextField137[0]"] = ""                     # Address of attorney
+
+    # ═══ PAGE 5: CTA-3 Waiver/Renunciation ═══════════════════════════════
+    fields["TextField138[0]"] = county                 # County
+    fields["TextField139[0]"] = dec                    # Will of
+    fields["TextField140[0]"] = aka                    # a/k/a
+    fields["TextField141[0]"] = file_no                # File No
+    fields["TextField142[0]"] = ""                     # Undersigned name (filled by signer)
+
+    # Interest checkboxes (page 5)
+    # CheckBox13 = beneficiary with equal/prior right
+    # CheckBox14 = beneficiary of estate
+    # CheckBox15 = creditor
+    # CheckBox16 = other
+
+    fields["TextField144[0]"] = letters_to             # Letters CTA to
+    fields["TextField145[0]"] = county                 # County for notary
+
+    # ═══ PAGE 6: P-12 Affidavit of No Debt ═══════════════════════════════
+    fields["TextField161[0]"] = county                 # County
+    fields["TextField162[0]"] = dec                    # Will of
+    fields["TextField163[0]"] = aka                    # a/k/a
+    fields["TextField164[0]"] = file_no                # File No
+    fields["TextField165[0]"] = county                 # County (SS:)
+    fields["TextField166[0]"] = pet                    # Deponent name
+    fields["TextField170[0]"] = pet_street             # Resides at
+    fields["TextField168[0]"] = dec_county             # County of residence
+    fields["TextField169[0]"] = pet_state              # State
+    fields["TextField171[0]"] = personal               # Estate value
+
+    template = os.path.join(PROBATE_TEMPLATES_DIR, "probcta.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── WAIVER OF CONSENT AND RENUNCIATION (A-8 Individual) ────────────────────
+
+def fill_waiver_individual_pdf(data, dist):
+    """Fill the A-8 Waiver, Consent and Renunciation form for an individual distributee.
+
+    Field mapping (Waiver of Consent and Renunciation.pdf):
+    - county of 111:        County
+    - Estate of 111:        Estate name (decedent)
+    - aka of 111:           a/k/a
+    - File No_7:            File number
+    - Print Name_5:         Distributee print name
+    - Street Address:       Distributee street address
+    - TownStateZip:         Distributee city/state/zip
+    - Relationship_2:       Relationship to decedent
+    - be issued to:         Letters to (administrator name)
+    - COUNTY OF_5:          County (notary section)
+    - Name of Attorney:     Attorney name
+    - 1_4:                  Attorney address line 1
+    - 2_4:                  Attorney address line 2
+    - Telephone Number_2:   Attorney phone
+    """
+    dec = decedent_full(data)
+    aka = data.get("decedentAKA", "")
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    letters_to = data.get("lettersTo", "") or petitioner_full(data)
+
+    dist_name = dist.get("name", "")
+    dist_addr = dist.get("address", "")
+    dist_rel = dist.get("relationship", "")
+
+    fields = {
+        "county of 111":     county,
+        "Estate of 111":     dec,
+        "aka of 111":        aka,
+        "File No_7":         file_no,
+        "Print Name_5":      dist_name,
+        "Street Address":    dist_addr,
+        "TownStateZip":      "",
+        "Relationship_2":    dist_rel,
+        "be issued to":      letters_to,
+        "COUNTY OF_5":       county,
+        "Name of Attorney":  data.get("attorneyName", "Jessica Wilson, Esq."),
+        "1_4":               data.get("firmAddress", "221 Columbia Street"),
+        "2_4":               data.get("firmAddress2", "Brooklyn NY 11231"),
+        "Telephone Number_2": data.get("attorneyPhone", "(212) 739-1736"),
+    }
+
+    # Split address into street + city/state/zip if comma-separated
+    if dist_addr and ", " in dist_addr:
+        parts = dist_addr.split(", ", 1)
+        fields["Street Address"] = parts[0]
+        fields["TownStateZip"] = parts[1] if len(parts) > 1 else ""
+    else:
+        fields["Street Address"] = dist_addr
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Waiver of Consent and Renunciation.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── WAIVER & CONSENT CORPORATE (A-9) ───────────────────────────────────────
+
+def fill_waiver_corporate_pdf(data, dist):
+    """Fill the A-9 Waiver & Consent form for a corporate distributee.
+
+    Field mapping (Waiver & Consent Corp.pdf):
+    - county of 112:                     County
+    - Estate of 112:                     Estate name (decedent)
+    - aka of 112:                        a/k/a
+    - File No_8:                         File number
+    - Name of Corporation:               Corporation name
+    - a citation ... be issued to:       Letters to (administrator name)
+    - COUNTY OF_6:                       County (notary section)
+    - Name of Attorney_2:               Attorney name
+    - 1_5:                               Attorney address line 1
+    - 2_5:                               Attorney address line 2
+    - Telephone Number_3:               Attorney phone
+    """
+    dec = decedent_full(data)
+    aka = data.get("decedentAKA", "")
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    letters_to = data.get("lettersTo", "") or petitioner_full(data)
+
+    corp_name = dist.get("name", "")
+
+    fields = {
+        "county of 112":     county,
+        "Estate of 112":     dec,
+        "aka of 112":        aka,
+        "File No_8":         file_no,
+        "Name of Corporation": corp_name,
+        "a citation in this matter and consents that Letters of Administration be issued to": letters_to,
+        "COUNTY OF_6":       county,
+        "Name of Attorney_2": data.get("attorneyName", "Jessica Wilson, Esq."),
+        "1_5":               data.get("firmAddress", "221 Columbia Street"),
+        "2_5":               data.get("firmAddress2", "Brooklyn NY 11231"),
+        "Telephone Number_3": data.get("attorneyPhone", "(212) 739-1736"),
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Waiver & Consent Corp.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── CITATION (Admin) ───────────────────────────────────────────────────────
+
+def fill_citation_pdf(data):
+    """Fill the Citation PDF form (post-filing document).
+
+    Field mapping (Citation.pdf):
+    - SURROGATES COURT:                  County
+    - File No_2:                         File number
+    - A petition having been duly filed by: Petitioner name
+    - who is domicilied at:              Petitioner address
+    - county 444:                        County
+    - decree should not be made in the estate of: Decedent name
+    - decree should not be made in the estate of 222: a/k/a
+    - lately domiciled at:               Decedent address
+    - lately domiciled at the county of: Decedent county
+    - estate of decentt to 222345:       Letters to name
+    - Attorney for Petitioner:           Attorney name
+    - TelNo_2:                           Attorney phone
+    - Address of Attorney_2:             Attorney address
+    """
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    letters_to = data.get("lettersTo", "") or pet
+
+    pet_addr = ", ".join(filter(None, [
+        data.get("petitionerStreet", ""),
+        data.get("petitionerCity", ""),
+        data.get("petitionerState", ""),
+        data.get("petitionerZip", ""),
+    ]))
+    dec_addr = ", ".join(filter(None, [
+        data.get("decedentStreet", ""),
+        data.get("decedentCity", ""),
+        data.get("decedentState", ""),
+        data.get("decedentZip", ""),
+    ]))
+
+    fields = {
+        "SURROGATES COURT":                 county,
+        "File No_2":                        file_no,
+        "A petition having been duly filed by": pet,
+        "who is domicilied at":             pet_addr,
+        "county 444":                       county,
+        "decree should not be made in the estate of": dec,
+        "decree should not be made in the estate of 222": data.get("decedentAKA", ""),
+        "lately domiciled at":              dec_addr,
+        "lately domiciled at the county of": data.get("decedentCounty", county),
+        "estate of decentt to 222345":      letters_to,
+        "Attorney for Petitioner":          data.get("attorneyName", "Jessica Wilson, Esq."),
+        "TelNo_2":                          data.get("attorneyPhone", "(212) 739-1736"),
+        "Address of Attorney_2":            data.get("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Citation.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── AFFIDAVIT OF SERVICE ───────────────────────────────────────────────────
+
+def fill_affidavit_of_service_pdf(data):
+    """Fill the Affidavit of Service PDF header fields (post-filing document).
+
+    Only fills county, estate, and file number. Person-served details are
+    completed manually after service is actually made.
+
+    Field mapping (Affid of Service.pdf):
+    - county of 113:    County
+    - Estate of 113:    Estate name (decedent)
+    - File No_9:        File number
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+
+    fields = {
+        "county of 113":  county,
+        "Estate of 113":  dec,
+        "File No_9":      file_no,
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Affid of Service.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── NOTICE OF APPLICATION (SCPA 1005) ──────────────────────────────────────
+
+def fill_notice_of_application_pdf(data):
+    """Fill the Notice of Application (SCPA 1005) PDF form.
+
+    Field mapping (Notice of App SCPA 1005.pdf):
+    - County of 56:      County
+    - Estate of 56:      Estate name (decedent)
+    - aka of 56:         a/k/a
+    - File No_3:         File number
+    - petitioner:        Petitioner name
+    - 3 petitioner prays...: Letters to name
+    - Name of Distributee 1/2/3:              Distributee names (section 4a)
+    - Domicile and Post Office Address 1/2/3: Distributee addresses (section 4a)
+    - Name of Distributee 1_2/2_2/3_2:       Distributee names (section 4b)
+    - Domicile and Post Office Address 1_2/2_2/3_2: Distributee addresses (section 4b)
+    - Attorney for Petitioner_2:             Attorney name
+    - Print Name_4:                          Attorney print name
+    - Address Office:                        Attorney address
+    """
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+    letters_to = data.get("lettersTo", "") or pet
+
+    fields = {
+        "County of 56":    county,
+        "Estate of 56":    dec,
+        "aka of 56":       aka,
+        "File No_3":       file_no,
+        "petitioner":      pet,
+        "1 an application for Letters of Administration upon the estate of the abovenamed decedent has been made": "",
+        "3 petitioner prays that a decree be made directing the issuance of Letters of Administration to": letters_to,
+        "Attorney for Petitioner_2": data.get("attorneyName", "Jessica Wilson, Esq."),
+        "Print Name_4":    data.get("attorneyName", "Jessica Wilson, Esq."),
+        "Address Office":  data.get("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
+    }
+
+    # Section 4a — distributees with full age and sound mind (up to 3)
+    dists = data.get("distributees", [])
+    name_fields_a = ["Name of Distributee 1", "Name of Distributee 2", "Name of Distributee 3"]
+    addr_fields_a = ["Domicile and Post Office Address 1", "Domicile and Post Office Address 2",
+                     "Domicile and Post Office Address 3"]
+    name_fields_b = ["Name of Distributee 1_2", "Name of Distributee 2_2", "Name of Distributee 3_2"]
+    addr_fields_b = ["Domicile and Post Office Address 1_2", "Domicile and Post Office Address 2_2",
+                     "Domicile and Post Office Address 3_2"]
+
+    for i, dist in enumerate(dists[:3]):
+        if dist.get("name"):
+            fields[name_fields_a[i]] = dist["name"]
+            fields[addr_fields_a[i]] = dist.get("address", "")
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Notice of App SCPA 1005.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── AFFIDAVIT OF MAILING ───────────────────────────────────────────────────
+
+def fill_affidavit_of_mailing_pdf(data):
+    """Fill the Affidavit of Mailing PDF form header and distributee addresses.
+
+    Field mapping (Affid of Mailing.pdf):
+    - County of 57:      County
+    - Estate of 57:      Estate name (decedent)
+    - aka of 57:         a/k/a
+    - File No_4:         File number
+    - COUNTY OF_2:       County (venue)
+    - whose post office address is / _2 / _3 / _4 / _5 / _6 / _7 / _8:
+                         Distributee addresses (up to 8)
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+
+    fields = {
+        "County of 57":   county,
+        "Estate of 57":   dec,
+        "aka of 57":      aka,
+        "File No_4":      file_no,
+        "COUNTY OF_2":    county,
+    }
+
+    # Fill distributee addresses (up to 8 slots)
+    addr_fields = [
+        "whose post office address is",
+        "whose post office address is_2",
+        "whose post office address is_3",
+        "whose post office address is_4",
+        "whose post office address is_5",
+        "whose post office address is_6",
+        "whose post office address is_7",
+        "whose post office address is_8",
+    ]
+    dists = data.get("distributees", [])
+    for i, dist in enumerate(dists[:8]):
+        if dist.get("name"):
+            addr = dist.get("address", "")
+            fields[addr_fields[i]] = f"{dist['name']}, {addr}" if addr else dist["name"]
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Affid of Mailing.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── AFFIDAVIT OF REGULARITY ────────────────────────────────────────────────
+
+def fill_affidavit_of_regularity_pdf(data):
+    """Fill the Affidavit of Regularity PDF form (post-filing document).
+
+    Field mapping (Affid of Regularity.pdf):
+    - county of 10:      County
+    - Estate of 10:      Estate name (decedent)
+    - aka of10:          a/k/a
+    - File No_6:         File number
+    - COUNTY OF_4:       County (venue)
+    - being duly sworn deposes and says: Attorney name (deponent)
+    - 1 That heshe is the attorney for: Petitioner name
+    - Name 1_5 / Name 2_5:              Waiver distributee names (section c)
+    - Address 1_3 / Address 2_3:         Waiver distributee addresses (section c)
+    - Name 1_3 / Name 2_3:              Citation distributee names (section a)
+    - Address 1 / Address 2:            Citation distributee addresses (section a)
+    """
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+    attorney = data.get("attorneyName", "Jessica Wilson, Esq.")
+
+    fields = {
+        "county of 10":    county,
+        "Estate of 10":    dec,
+        "aka of10":        aka,
+        "File No_6":       file_no,
+        "COUNTY OF_4":     county,
+        "being duly sworn deposes and says": attorney,
+        "1 That heshe is the attorney for": pet,
+    }
+
+    # Separate distributees by disposition
+    dists = data.get("distributees", [])
+    waiver_dists = [d for d in dists if d.get("disposition") == "waiver" and d.get("name")]
+    citation_dists = [d for d in dists if d.get("disposition") == "citation" and d.get("name")]
+
+    # Section (c) — waivers (up to 2)
+    waiver_name_fields = ["Name 1_5", "Name 2_5"]
+    waiver_addr_fields = ["Address 1_3", "Address 2_3"]
+    for i, d in enumerate(waiver_dists[:2]):
+        fields[waiver_name_fields[i]] = d["name"]
+        fields[waiver_addr_fields[i]] = d.get("address", "")
+
+    # Section (a) — citations (up to 2)
+    cite_name_fields = ["Name 1_3", "Name 2_3"]
+    cite_addr_fields = ["Address 1", "Address 2"]
+    for i, d in enumerate(citation_dists[:2]):
+        fields[cite_name_fields[i]] = d["name"]
+        fields[cite_addr_fields[i]] = d.get("address", "")
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Affid of Regularity.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── PROPOSED DECREE ─────────────────────────────────────────────────────────
+
+def fill_proposed_decree_pdf(data):
+    """Fill the Proposed Decree PDF form (post-filing document).
+
+    Field mapping (Proposed Decree.pdf):
+    - in and for the County of:          County
+    - Estate of 9:                       Estate name (decedent)
+    - aka of 9:                          a/k/a
+    - FileNo:                            File number
+    - A petition having been filed by:   Petitioner name
+    - of the goods chattels...:          Letters to name
+    - that:                              Petitioner name (competency statement)
+    - ORDERED AND DECREED...:            Letters to name
+    - ORDERED AND DECREED... 22:         Letters to name (bond dispensed)
+    - bond having been filed and approved...: Bond amount
+    - bond having been filed:            Checkbox — bond filed
+    - bond having been dispensed:        Checkbox — bond dispensed
+    """
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+    letters_to = data.get("lettersTo", "") or pet
+    bond_amount = data.get("bondAmount", "")
+
+    fields = {
+        "in and for the County of":       county,
+        "Estate of 9":                    dec,
+        "aka of 9":                       aka,
+        "FileNo":                         file_no,
+        "A petition having been filed by": pet,
+        "of the goods chattels and credits of the abovenamed decedent be granted to": letters_to,
+        "that":                           pet,
+        "is in all respects competent to act as administrat": "",
+        "ORDERED AND DECREED that Letters of Administration issue to": letters_to,
+        "ORDERED AND DECREED that Letters of Administration issue to 22": letters_to,
+    }
+
+    # Bond: filed vs dispensed
+    if bond_amount and bond_amount.strip() not in ("0", ""):
+        fields["bond having been filed"] = True
+        fields["bond having been filed and approved in the amount of"] = bond_amount
+    else:
+        fields["bond having been dispensed"] = True
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Proposed Decree.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── SCHEDULE A — NONMARITAL PERSONS ────────────────────────────────────────
+
+def fill_schedule_a_pdf(data, dist):
+    """Fill Schedule A (Nonmarital Persons) for a per-distributee schedule.
+
+    Field mapping (Schedule A Nonmarital Persons.pdf):
+    - County of 2:             County
+    - Estate of 2:             Estate name (decedent)
+    - aka of 2:                a/k/a
+    - File:                    File number
+    - Name of alleged distributee: Distributee name
+    - Date of birth:           Distributee DOB
+    - Relationship to decedent: Relationship
+    - Name of father:          Father name
+    - Name of mother:          Mother name
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+
+    fields = {
+        "County of 2":              county,
+        "Estate of 2":              dec,
+        "aka of 2":                 aka,
+        "File":                     file_no,
+        "Name of alleged distributee": dist.get("name", ""),
+        "Date of birth":            dist.get("dob", ""),
+        "Relationship to decedent": dist.get("relationship", ""),
+        "Name of father":           dist.get("fatherName", ""),
+        "Name of mother":           dist.get("motherName", ""),
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Schedule A Nonmarital Persons.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── SCHEDULE B — ADOPTION ──────────────────────────────────────────────────
+
+def fill_schedule_b_pdf(data, dist):
+    """Fill Schedule B (Adoption) for a per-distributee schedule.
+
+    Field mapping (Sched B Adoption.pdf):
+    - County of 3:             County
+    - Estate of 3:             Estate name (decedent)
+    - aka of 3:                a/k/a
+    - File_2:                  File number
+    - Name of child:           Adopted child name
+    - Relationship to decedent prior to adoption: Prior relationship
+    - Date of adoption:        Adoption date
+    - If yesname of adoptive father or mother: Adoptive parent name
+    - Name of the adoptive parent: Adoptive parent name
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+
+    fields = {
+        "County of 3":     county,
+        "Estate of 3":     dec,
+        "aka of 3":        aka,
+        "File_2":          file_no,
+        "Name of child":   dist.get("name", ""),
+        "Relationship to decedent prior to adoption": dist.get("priorRelationship", ""),
+        "Date of adoption": dist.get("adoptionDate", ""),
+        "If yesname of adoptive father or mother": dist.get("adoptiveParent", ""),
+        "Name of the adoptive parent": dist.get("adoptiveParent", ""),
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Sched B Adoption.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── SCHEDULE C — INFANTS ───────────────────────────────────────────────────
+
+def fill_schedule_c_pdf(data, dist):
+    """Fill Schedule C (Infants) for a per-distributee schedule.
+
+    Field mapping (Sched C Infants.pdf):
+    - County of 4:             County
+    - Estate of 4:             Estate name (decedent)
+    - aka of 4:                a/k/a
+    - File_3:                  File number
+    - Name_3:                  Infant name
+    - Date of birth 1:         DOB line 1
+    - Date of birth 2:         DOB line 2
+    - Relationship to the decedent: Relationship
+    - With whom does the infant reside: Residence info
+    - Name of mother_2:        Mother name
+    - Is she alive:            Mother alive
+    - Name of Father:          Father name
+    - Is he alive:             Father alive
+    - If yes name and address of guardian: Guardian info
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+
+    fields = {
+        "County of 4":     county,
+        "Estate of 4":     dec,
+        "aka of 4":        aka,
+        "File_3":          file_no,
+        "Name_3":          dist.get("name", ""),
+        "Date of birth 1": dist.get("dob", ""),
+        "Relationship to the decedent": dist.get("relationship", ""),
+        "With whom does the infant reside": dist.get("residesWithWhom", ""),
+        "Name of mother_2": dist.get("motherName", ""),
+        "Is she alive":    dist.get("motherAlive", ""),
+        "Name of Father":  dist.get("fatherName", ""),
+        "Is he alive":     dist.get("fatherAlive", ""),
+        "If yes name and address of guardian": dist.get("guardianInfo", ""),
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Sched C Infants.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── SCHEDULE D — DISABILITY ────────────────────────────────────────────────
+
+def fill_schedule_d_pdf(data, dist):
+    """Fill Schedule D (Disability) for a per-distributee schedule.
+
+    Field mapping (Sched D Disability.pdf):
+    - County of 5:             County
+    - Estate of 5:             Estate name (decedent)
+    - aka of 5:                a/k/a
+    - File_4:                  File number
+    - 1 Name:                  Person's name
+    - Relationship:            Relationship to decedent
+    - Residence:               Residence address
+    - With whom does this person reside: Caretaker info
+    - If this person is in prison name of prison: Prison name
+    - If yesgive nametitle and address 1: Court-appointed attorney line 1
+    - If yesgive nametitle and address 2: Court-appointed attorney line 2
+    - If nodescribe nature of disability 1: Disability description line 1
+    - If nodescribe nature of disability 2: Disability description line 2
+    - If nogive name and address of relative or friend... 1: Interested person line 1
+    - If nogive name and address of relative or friend... 2: Interested person line 2
+    """
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    file_no = data.get("fileNo", "")
+    aka = data.get("decedentAKA", "")
+
+    fields = {
+        "County of 5":     county,
+        "Estate of 5":     dec,
+        "aka of 5":        aka,
+        "File_4":          file_no,
+        "1 Name":          dist.get("name", ""),
+        "Relationship":    dist.get("relationship", ""),
+        "Residence":       dist.get("address", ""),
+        "With whom does this person reside": dist.get("residesWithWhom", ""),
+        "If this person is in prison name of prison": dist.get("prisonName", ""),
+        "If yesgive nametitle and address 1": dist.get("courtAttorneyInfo", ""),
+        "If yesgive nametitle and address 2": "",
+        "If nodescribe nature of disability 1": dist.get("disabilityDescription", ""),
+        "If nodescribe nature of disability 2": "",
+        "If nogive name and address of relative or friend interested in his or her welfare 1":
+            dist.get("interestedPerson", ""),
+        "If nogive name and address of relative or friend interested in his or her welfare 2": "",
+    }
+
+    template = os.path.join(ADMIN_TEMPLATES_DIR, "Sched D Disability.pdf")
+    return fill_pdf(template, fields)
+
+
+# ─── WORD TEMPLATE GENERATORS ───────────────────────────────────────────────
+
+def generate_waiver_probate(data, dist):
+    """Generate the P-4 Waiver of Process, Consent to Probate Word document
+    for a Probate proceeding distributee.
+
+    Template placeholders (Waiver_Probate.docx):
+    - _________________  (county, in 'County of ___')
+    - No actual bracket-style placeholders; uses blanks for manual fill.
+    We replace the county blank and leave signature blanks for manual completion.
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Waiver_Probate.docx"))
+    county = data.get("county", "")
+
+    replace_in_doc(doc, {
+        "County of _________________": f"County of {county}",
+    })
+
+    return make_docx_bytes(doc)
+
+
+def generate_notice_of_probate(data):
+    """Generate the Notice of Probate + Affidavit of Mailing Word document.
+
+    Template placeholders (Notice_of_Probate.docx):
+    - [COUNTY]:        County name
+    - [DECEDENT]:      Decedent full name
+    - [DECEDENT AKA]:  a/k/a
+    - [county]:        County (lowercase placeholder)
+    - [Petitioner]:    Petitioner name
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Notice_of_Probate.docx"))
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    aka = data.get("decedentAKA", "")
+
+    replace_in_doc(doc, {
+        "[COUNTY]":       county.upper(),
+        "[DECEDENT]":     dec,
+        "[DECEDENT AKA]": aka,
+        "[county]":       county,
+        "[Petitioner]":   pet,
+    })
+
+    return make_docx_bytes(doc)
+
+
+def generate_bond_affidavit(data):
+    """Generate the Bond Affidavit Word document.
+
+    Template uses hardcoded sample data (PHILLIP WILSON-CAMHI / KINGS).
+    We replace sample names/values with actual case data.
+
+    Template placeholders (Bond_Affidavit.docx):
+    - COUNTY OF KINGS:                     County
+    - PHILLIP WILSON-CAMHI:                Petitioner name (appears 3x)
+    - 9 Mills Road, Stony Brook, New York 11790: Petitioner address
+    - 31 years of age:                     Decedent age at death
+    - February 2018:                       Month/Year for notary
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Bond_Affidavit.docx"))
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+
+    # Calculate decedent age at death
+    age_str = ""
+    try:
+        dob = data.get("decedentDOB", "")
+        dod = data.get("decedentDOD", "")
+        if dob and dod:
+            from datetime import datetime as _dt
+            dt_dob = _dt.strptime(dob, "%m/%d/%Y")
+            dt_dod = _dt.strptime(dod, "%m/%d/%Y")
+            age = dt_dod.year - dt_dob.year - (
+                (dt_dod.month, dt_dod.day) < (dt_dob.month, dt_dob.day))
+            age_str = str(age)
+    except Exception:
+        pass
+
+    # Build relationship string
+    pet_rel = data.get("petitionerRelationship", "Distributee")
+
+    replace_in_doc(doc, {
+        "COUNTY OF KINGS":         f"COUNTY OF {county.upper()}",
+        "PHILLIP WILSON-CAMHI":    pet,
+        "9 Mills Road, Stony Brook, New York 11790": ", ".join(filter(None, [
+            data.get("petitionerStreet", ""),
+            data.get("petitionerCity", ""),
+            data.get("petitionerState", ""),
+            data.get("petitionerZip", ""),
+        ])),
+        "31 years of age":         f"{age_str} years of age" if age_str else "__ years of age",
+        "Distributee of said deceased": f"{pet_rel} of said deceased",
+        "February 2018":           datetime.now().strftime("%B %Y"),
+    })
+
+    return make_docx_bytes(doc)
+
+
+def generate_petition_scpa_2203(data):
+    """Generate the Petition SCPA 2203 (Voluntary Accounting) Word document.
+
+    This template uses hardcoded sample data. We replace the county header.
+    Most fields require manual completion as the template is a filled sample.
+
+    Template: Petition_SCPA_2203.docx
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Petition_SCPA_2203.docx"))
+    county = data.get("county", "")
+
+    replace_in_doc(doc, {
+        "COUNTY OF BRONX": f"COUNTY OF {county.upper()}",
+    })
+
+    return make_docx_bytes(doc)
+
+
+# NOTE: RRI FINAL-Probate Estate.doc is a legacy .doc format (not .docx).
+# python-docx cannot open it. To generate Receipt & Release documents,
+# the .doc must first be converted to .docx format in Microsoft Word.
+# TODO: Convert knowledge/Releases/RRI FINAL-Probate Estate.doc to .docx
+#       and add generate_receipt_release(data, dist) function.

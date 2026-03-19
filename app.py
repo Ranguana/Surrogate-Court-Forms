@@ -165,11 +165,21 @@ from generators import (
     generate_cover_letter, generate_805, generate_heirship,
     generate_waiver_cover, generate_attorney_cert,
     generate_probate_docs, fill_ancillary_pdf,
-    fill_administration_pdf, fill_nondom_pdf, generate_ft1,
+    fill_administration_pdf, fill_nondom_pdf, fill_cta_pdf, generate_ft1,
     generate_auth_letter, generate_instruction_letter,
     generate_accounting_excel, fill_schedule_da_pdf,
     needs_family_tree_affidavit, needs_family_tree_diagram,
     family_tree_trigger_reason,
+    # New PDF fill functions (Admin forms)
+    fill_waiver_individual_pdf, fill_waiver_corporate_pdf,
+    fill_citation_pdf, fill_affidavit_of_service_pdf,
+    fill_notice_of_application_pdf, fill_affidavit_of_mailing_pdf,
+    fill_affidavit_of_regularity_pdf, fill_proposed_decree_pdf,
+    fill_schedule_a_pdf, fill_schedule_b_pdf,
+    fill_schedule_c_pdf, fill_schedule_d_pdf,
+    # New Word template generators
+    generate_waiver_probate, generate_bond_affidavit,
+    generate_notice_of_probate, generate_petition_scpa_2203,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
 
@@ -223,7 +233,7 @@ def generate_packet():
 
     proceeding = data.get("proceedingType", "Probate")
     last_name = data.get("decedentLastName", "estate").replace(" ", "_")
-    non_probate = proceeding in ("Administration", "Ancillary", "NonDomiciliary")
+    non_probate = proceeding in ("Administration", "Ancillary", "NonDomiciliary", "AdminCTA")
     files = []
     errors = []
 
@@ -272,6 +282,10 @@ def generate_packet():
                 files.append((f"02_Petition_NonDomiciliary_{last_name}.pdf",
                                fill_nondom_pdf(data)))
                 print("[OK] 02 NonDomiciliary petition (Non-Dom)")
+            elif proceeding == "AdminCTA":
+                files.append((f"02_Petition_AdminCTA_{last_name}.pdf",
+                               fill_cta_pdf(data)))
+                print("[OK] 02 Admin CTA petition (CTA-1)")
             else:
                 print(f"[WARN] 02 No petition — unrecognised proceedingType={proceeding!r}")
         except Exception as e:
@@ -391,6 +405,45 @@ def generate_packet():
                 files.append((f"{waiver_slot}_MISSING_Waiver_{safe}.txt",
                                f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
+    # ── Waiver form PDFs (alongside cover letters)
+    # Probate → P-4 (Word), Admin/NonDom/Ancillary/CTA → A-8 individual PDF
+    for dist in distributees:
+        if dist.get("disposition") == "waiver" and dist.get("name"):
+            safe = dist['name'].replace(' ', '_')
+            if proceeding == "Probate":
+                try:
+                    print(f"[TRYING] {waiver_slot} generate_waiver_probate() for {dist['name']!r}")
+                    fname = f"{waiver_slot}_Waiver_P4_{safe}.docx"
+                    files.append((fname, generate_waiver_probate(data, dist)))
+                    print(f"[OK] {waiver_slot} Waiver P-4: {dist['name']}")
+                except Exception as e:
+                    print(f"[ERR] {waiver_slot} Waiver P-4 {dist.get('name')}: {e}")
+                    traceback.print_exc()
+                    errors.append(f"Waiver P-4 for {dist.get('name')}: {e}")
+                    files.append((f"{waiver_slot}_MISSING_Waiver_P4_{safe}.txt",
+                                   f"FAILED TO GENERATE\n\nError: {e}".encode()))
+            else:
+                # Admin proceeding — A-8 (individual) or A-9 (corporate)
+                is_corp = dist.get("isCorporate", False)
+                try:
+                    if is_corp:
+                        print(f"[TRYING] {waiver_slot} fill_waiver_corporate_pdf() for {dist['name']!r}")
+                        fname = f"{waiver_slot}_Waiver_A9_Corp_{safe}.pdf"
+                        files.append((fname, fill_waiver_corporate_pdf(data, dist)))
+                        print(f"[OK] {waiver_slot} Waiver A-9 (Corp): {dist['name']}")
+                    else:
+                        print(f"[TRYING] {waiver_slot} fill_waiver_individual_pdf() for {dist['name']!r}")
+                        fname = f"{waiver_slot}_Waiver_A8_{safe}.pdf"
+                        files.append((fname, fill_waiver_individual_pdf(data, dist)))
+                        print(f"[OK] {waiver_slot} Waiver A-8: {dist['name']}")
+                except Exception as e:
+                    form_type = "A-9 Corp" if is_corp else "A-8"
+                    print(f"[ERR] {waiver_slot} Waiver {form_type} {dist.get('name')}: {e}")
+                    traceback.print_exc()
+                    errors.append(f"Waiver {form_type} for {dist.get('name')}: {e}")
+                    files.append((f"{waiver_slot}_MISSING_Waiver_{safe}.txt",
+                                   f"FAILED TO GENERATE\n\nError: {e}".encode()))
+
     # ── Schedule D(a) — post-deceased distributees (same slot as waivers)
     for dist in distributees:
         if dist.get("disposition") == "postDeceased" and dist.get("name"):
@@ -407,6 +460,40 @@ def generate_packet():
                 safe = dist['name'].replace(' ', '_')
                 files.append((f"{waiver_slot}_MISSING_Schedule_Da_{safe}.txt",
                                f"FAILED TO GENERATE\n\nError: {e}".encode()))
+
+    # ── Bond Affidavit (all proceeding types)
+    bond_slot = waiver_slot  # same slot grouping as waivers
+    try:
+        print(f"[TRYING] {bond_slot} generate_bond_affidavit()")
+        files.append((f"{bond_slot}_Bond_Affidavit_{last_name}.docx",
+                       generate_bond_affidavit(data)))
+        print(f"[OK] {bond_slot} Bond Affidavit")
+    except Exception as e:
+        print(f"[ERR] {bond_slot} Bond Affidavit: {e}")
+        traceback.print_exc()
+        errors.append(f"Bond Affidavit: {e}")
+        files.append((f"{bond_slot}_MISSING_Bond_Affidavit.txt",
+                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
+
+    # TODO: Schedules A-D (Nonmarital, Adoption, Infants, Disability)
+    # These per-distributee schedules require additional UI fields not yet collected:
+    #   - fill_schedule_a_pdf(data, dist) — for nonmarital distributees
+    #   - fill_schedule_b_pdf(data, dist) — for adopted distributees
+    #   - fill_schedule_c_pdf(data, dist) — for infant distributees
+    #   - fill_schedule_d_pdf(data, dist) — for disabled distributees
+    # Wire these in once the UI collects distributee sub-type attributes.
+
+    # NOTE: The following post-filing forms are available as standalone functions
+    # but are NOT auto-generated in the initial packet:
+    #   - fill_citation_pdf(data)
+    #   - fill_affidavit_of_service_pdf(data)
+    #   - fill_notice_of_application_pdf(data)
+    #   - fill_affidavit_of_mailing_pdf(data)
+    #   - fill_affidavit_of_regularity_pdf(data)
+    #   - fill_proposed_decree_pdf(data)
+    #   - generate_notice_of_probate(data)
+    #   - generate_petition_scpa_2203(data)
+    # These can be wired up later as standalone API endpoints.
 
     # 00. Summary sheet (prepended)
     if proceeding == "Probate":
@@ -454,9 +541,10 @@ def generate_packet():
 def build_summary(data, proceeding, doc_count, errors, ft_info=None):
     proc_display = {
         "Probate": "PROBATE",
-        "Administration": "ADMINISTRATION", 
+        "Administration": "ADMINISTRATION",
         "NonDomiciliary": "NON-DOMICILIARY ADMINISTRATION",
-        "Ancillary": "ANCILLARY ADMINISTRATION"
+        "Ancillary": "ANCILLARY ADMINISTRATION",
+        "AdminCTA": "ADMINISTRATION C.T.A."
     }.get(proceeding, proceeding.upper())
     lines = [
         "=" * 60,

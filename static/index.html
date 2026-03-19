@@ -440,6 +440,7 @@ body {
           <button class="proc-btn" onclick="setProceeding('Administration',this)">📋 Administration<small>No will — NY domicile</small></button>
           <button class="proc-btn" onclick="setProceeding('NonDomiciliary',this)">🏠 Non-Domiciliary<small>Lived out of state, no prior letters</small></button>
           <button class="proc-btn" onclick="setProceeding('Ancillary',this)">🗺 Ancillary<small>Letters already issued elsewhere</small></button>
+          <button class="proc-btn" onclick="setProceeding('AdminCTA',this)">📑 Admin CTA<small>Will exists, executor can't serve</small></button>
         </div>
       </div>
       <div class="grid2">
@@ -668,6 +669,41 @@ body {
           <div class="field"><label>Bond / Security Amount ($)</label><input id="foreignBondAmount" placeholder="0"></div>
         </div>
       </div>
+      <div id="cta-fields" style="display:none">
+        <div class="sub-head">Admin CTA — Original Probate Info (SCPA 1418/1419)</div>
+        <div class="grid2">
+          <div class="field"><label>Original Probate County</label><input id="ctaOriginalCounty" placeholder="County where will was probated"></div>
+          <div class="field"><label>Original Probate Date</label><input id="ctaOriginalDate" placeholder="MM/DD/YYYY"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Original Executor Name</label><input id="ctaOriginalExecutor"></div>
+          <div class="field"><label>Reason Executor Can't Serve</label>
+            <select id="ctaExecutorReason">
+              <option value="">— Select —</option>
+              <option value="died">Died</option>
+              <option value="resigned">Resigned</option>
+              <option value="removed">Was Removed</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Petitioner's Interest</label>
+            <select id="ctaPetitionerInterest" onchange="document.getElementById('ctaPetitionerInterestOther').style.display=this.value==='Other'?'block':'none'">
+              <option value="">— Select —</option>
+              <option value="Sole Beneficiary">Sole Beneficiary</option>
+              <option value="Residuary Beneficiary">Residuary Beneficiary</option>
+              <option value="Other">Other (specify)</option>
+            </select>
+            <input id="ctaPetitionerInterestOther" style="display:none;margin-top:6px" placeholder="Specify interest">
+          </div>
+          <div class="field"><label>Proposed Admin CTA is an Attorney?</label>
+            <select id="ctaAdminIsAttorney">
+              <option value="No">No</option>
+              <option value="Yes">Yes</option>
+            </select>
+          </div>
+        </div>
+      </div>
       <div class="grid2">
         <div class="field"><label>Letters Requested <span class="req">*</span></label>
           <select id="lettersType" onchange="updateSummary()">
@@ -866,6 +902,7 @@ body {
         <option value="Administration">Administration</option>
         <option value="NonDomiciliary">Non-Domiciliary</option>
         <option value="Ancillary">Ancillary</option>
+        <option value="AdminCTA">Admin CTA</option>
       </select>
       <select id="dash-county" onchange="renderDashboard()"
         style="padding:7px 11px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:#fff;color:var(--text);font-family:Arial,sans-serif">
@@ -898,7 +935,7 @@ const ft = { spouse:null, children:null, parents:null, siblings:null, grandparen
 const FT_ORDER = ["spouse","children","parents","siblings","grandparents","auntsUncles","firstCousins"];
 
 // Proceeding checklist state: arrays of booleans per proceeding type
-const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[] };
+const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[], AdminCTA:[] };
 
 // ── ASSETS STATE ──────────────────────────────────────────────────────────────
 let assets = [];
@@ -963,6 +1000,19 @@ const CHECKLIST_ITEMS = {
     "Names and addresses of all NY distributees",
     "Recent account statements for NY financial accounts",
   ],
+  AdminCTA: [
+    "Original executed Will (wet-ink signature)",
+    "Certified death certificate — 4+ copies recommended",
+    "Proof that executor cannot serve (death cert / resignation / removal order)",
+    "Photo ID of proposed administrator c.t.a.",
+    "Petitioner's address and phone number",
+    "Names, addresses, and relationships of all distributees",
+    "Estate asset inventory (accounts, real estate, investments)",
+    "Real estate deed(s) — if applicable",
+    "Recent account statements for all financial accounts",
+    "Death Certificate of spouse — if widowed",
+    "Divorce decree — if previously divorced",
+  ],
 };
 const FT_STEPS = [
   { key:"spouse",       q:"Is there a surviving spouse (husband/wife)?",
@@ -1012,10 +1062,12 @@ function setProceeding(type, btn) {
   document.getElementById("q-selfprove-row").style.display     = type==="Probate" ? "flex" : "none";
   document.getElementById("nav-will").style.display            = (type==="Administration"||type==="NonDomiciliary") ? "none" : "flex";
   document.getElementById("ancillary-fields").style.display    = type==="Ancillary" ? "block" : "none";
+  document.getElementById("cta-fields").style.display          = type==="AdminCTA" ? "block" : "none";
   document.getElementById("ftw-panel").style.display           = type==="Probate" ? "none" : "block";
   const lt = document.getElementById("lettersType");
   if(type==="Probate")           lt.value = "Letters Testamentary";
   else if(type==="Ancillary")    lt.value = "Ancillary Letters of Administration";
+  else if(type==="AdminCTA")     lt.value = "Letters of Administration c.t.a.";
   else                           lt.value = "Letters of Administration";
   updateSummary(); updateDocList(); renderChecklist();
 }
@@ -1159,13 +1211,14 @@ function g(id){const el=document.getElementById(id);return el?el.value:"";}
 function buildEnclosures() {
   const enc = [];
   enc.push("Death Certificate");
-  if (proceeding === "Probate") {
+  if (proceeding === "Probate" || proceeding === "AdminCTA") {
     enc.push("Original Last Will and Testament");
     if (g("codicilDate")) enc.push("Codicil dated " + g("codicilDate"));
   }
   if (g("maritalStatus") === "widowed")  enc.push("Death Certificate of Spouse");
   if (g("maritalStatus") === "divorced") enc.push("Divorce Decree");
   if (proceeding === "Ancillary")        enc.push("Exemplified Copy of Foreign Letters / Decree");
+  if (proceeding === "AdminCTA")         enc.push("Proof Executor Cannot Serve");
   return enc;
 }
 
@@ -1201,6 +1254,10 @@ function getFormData() {
     witness1:g("witness1"), witness2:g("witness2"), noOtherWill:g("noOtherWill"),
     foreignLettersDate:g("foreignLettersDate"), foreignLettersIssuedTo:g("foreignLettersIssuedTo"),
     foreignCourtName:g("foreignCourtName"), foreignBondAmount:g("foreignBondAmount"),
+    ctaOriginalCounty:g("ctaOriginalCounty"), ctaOriginalDate:g("ctaOriginalDate"),
+    ctaOriginalExecutor:g("ctaOriginalExecutor"), ctaExecutorReason:g("ctaExecutorReason"),
+    ctaPetitionerInterest:g("ctaPetitionerInterest")==="Other"?g("ctaPetitionerInterestOther"):g("ctaPetitionerInterest"),
+    ctaAdminIsAttorney:g("ctaAdminIsAttorney"),
     lettersType:g("lettersType"), lettersTo:g("lettersTo"),
     efileDate:g("efileDate"), fileNo:g("fileNo"),
     enclosures:buildEnclosures(), distributees,
@@ -1219,6 +1276,13 @@ function getDocList(){
   if(proceeding==="Administration")  d.push({name:"Administration Petition (A-1)",on:true});
   if(proceeding==="NonDomiciliary")  d.push({name:"Non-Domiciliary Petition (A-1)",on:true});
   if(proceeding==="Ancillary")       d.push({name:"Ancillary Petition (AA-1)",on:true});
+  if(proceeding==="AdminCTA"){
+    d.push({name:"CTA Petition (CTA-1)",on:true});
+    d.push({name:"Oath & Designation",on:true});
+    d.push({name:"Citation",on:true});
+    d.push({name:"Waiver / Renunciation",on:true});
+    d.push({name:"Affidavit of No Debt",on:true});
+  }
   d.push({name:"805 Affidavit",on:checks.dispenseBond});
   if(proceeding!=="Probate"){d.push({name:"Affidavit of Heirship",on:true});d.push({name:"Family Tree (FT-1)",on:true});}
   d.push({name:"Attorney Certification",on:true});
@@ -1386,7 +1450,7 @@ Return raw JSON only — no markdown, no backticks, no explanation.`,
     for(const k of selF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
 
     if(parsed.proceedingType){
-      const ptMap={"Probate":"Probate","Administration":"Administration","Ancillary":"Ancillary","NonDomiciliary":"NonDomiciliary","Non-Domiciliary":"NonDomiciliary"};
+      const ptMap={"Probate":"Probate","Administration":"Administration","Ancillary":"Ancillary","NonDomiciliary":"NonDomiciliary","Non-Domiciliary":"NonDomiciliary","AdminCTA":"AdminCTA","Admin CTA":"AdminCTA"};
       const pt=ptMap[parsed.proceedingType]||parsed.proceedingType;
       const pb=document.querySelector(`.proc-btn[onclick*="${pt}"]`);
       if(pb) setProceeding(pt,pb);
@@ -1770,15 +1834,15 @@ async function renderDashboard(){
 
   const PROC_COLORS={
     Probate:"#1a3f6e",Administration:"#2d6a4f",
-    NonDomiciliary:"#6a3f1a",Ancillary:"#5a1a6a"
+    NonDomiciliary:"#6a3f1a",Ancillary:"#5a1a6a",AdminCTA:"#6a1a2a"
   };
   const PROC_BG={
     Probate:"#eef3fb",Administration:"#eaf5ef",
-    NonDomiciliary:"#fdf3eb",Ancillary:"#f5ebfd"
+    NonDomiciliary:"#fdf3eb",Ancillary:"#f5ebfd",AdminCTA:"#fdebed"
   };
   const PROC_LABELS={
     Probate:"Probate",Administration:"Administration",
-    NonDomiciliary:"Non-Dom.",Ancillary:"Ancillary"
+    NonDomiciliary:"Non-Dom.",Ancillary:"Ancillary",AdminCTA:"Admin CTA"
   };
 
   if(filtered.length===0){
@@ -2097,7 +2161,7 @@ function siApply() {
 
   // Proceeding type
   if(d.proceedingType) {
-    const map = {Probate:'Probate',Administration:'Administration',Ancillary:'Ancillary',NonDomiciliary:'NonDomiciliary'};
+    const map = {Probate:'Probate',Administration:'Administration',Ancillary:'Ancillary',NonDomiciliary:'NonDomiciliary',AdminCTA:'AdminCTA','Admin CTA':'AdminCTA'};
     const t = map[d.proceedingType];
     if(t) {
       const btn = [...document.querySelectorAll('.proc-btn')].find(b=>b.dataset.type===t||b.textContent.includes(t));
