@@ -759,6 +759,20 @@ body {
         <div class="field"><label>E-File Date</label><input id="efileDate" placeholder="Leave blank for today's date"></div>
         <div class="field"><label>File No. (if known)</label><input id="fileNo"></div>
       </div>
+      <div class="grid2">
+        <div class="field"><label>Case Status</label>
+          <select id="caseStatus">
+            <option value="drafting">Drafting</option>
+            <option value="ready">Ready to File</option>
+            <option value="submitted">Submitted</option>
+            <option value="issued">Letters Issued</option>
+            <option value="marshaling">Marshaling Assets</option>
+            <option value="accounting">Accounting</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <div class="field"><label>Date Submitted</label><input id="dateSubmitted" placeholder="MM/DD/YYYY"></div>
+      </div>
     </div>
 
   <!-- DOCUMENT CHECKLIST -->
@@ -960,24 +974,23 @@ body {
 
     <div id="rpt-main-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px;"></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:22px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:22px;">
       <div>
-        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Cases by Type</h4>
+        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">By Status</h4>
+        <div id="rpt-main-by-status"></div>
+      </div>
+      <div>
+        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">By Type</h4>
         <div id="rpt-main-by-type"></div>
       </div>
       <div>
-        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Cases by County</h4>
-        <div id="rpt-main-by-county"></div>
+        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Aging</h4>
+        <div id="rpt-main-aging"></div>
       </div>
     </div>
 
-    <div style="margin-bottom:22px;">
-      <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Aging Cases</h4>
-      <div id="rpt-main-aging"></div>
-    </div>
-
     <div>
-      <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">All Estates</h4>
+      <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">All Cases</h4>
       <div id="rpt-main-values"></div>
     </div>
   </div><!-- /sec-reports -->
@@ -1055,22 +1068,22 @@ body {
     <!-- reports panel (hidden by default) -->
     <div id="dash-reports" style="display:none;padding:18px 22px;">
       <div id="rpt-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;">
         <div>
-          <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Cases by Type</h4>
+          <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">By Status</h4>
+          <div id="rpt-by-status"></div>
+        </div>
+        <div>
+          <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">By Type</h4>
           <div id="rpt-by-type"></div>
         </div>
         <div>
-          <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Cases by County</h4>
-          <div id="rpt-by-county"></div>
+          <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Aging</h4>
+          <div id="rpt-aging"></div>
         </div>
       </div>
       <div style="margin-top:20px;">
-        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Aging Cases</h4>
-        <div id="rpt-aging"></div>
-      </div>
-      <div style="margin-top:20px;">
-        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Estate Values</h4>
+        <h4 style="font-size:13px;color:var(--text3);font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">All Cases</h4>
         <div id="rpt-values"></div>
       </div>
     </div>
@@ -1213,13 +1226,23 @@ function nav(id, btn) {
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
   document.getElementById("sec-"+id).classList.add("active");
   btn.classList.add("active");
+  const isReports = id === 'reports';
   // Toggle right panel: show recent cases on Reports, case summary elsewhere
   const rcp = document.getElementById('recent-cases-panel');
   const sc = document.getElementById('sum-content');
   const dl = document.getElementById('doc-list');
-  if(rcp) rcp.style.display = id==='reports' ? 'block' : 'none';
-  if(sc) sc.style.display = id==='reports' ? 'none' : 'block';
-  if(dl) dl.style.display = id==='reports' ? 'none' : 'block';
+  if(rcp) rcp.style.display = isReports ? 'block' : 'none';
+  if(sc) sc.style.display = isReports ? 'none' : 'block';
+  if(dl) dl.style.display = isReports ? 'none' : 'block';
+  // Hide sidebar and summary panel on reports dashboard
+  const sidebar = document.getElementById('sidebar');
+  const summary = document.getElementById('summary');
+  if(sidebar) sidebar.style.display = isReports ? 'none' : '';
+  if(summary) summary.style.display = isReports ? 'none' : '';
+  // Reports section should take full width
+  const formArea = document.getElementById('form-area');
+  if(formArea) formArea.style.flex = isReports ? '1' : '';
+  if(isReports) renderReports();
 }
 
 // ── PROCEEDING TYPE ───────────────────────────────────────────────────────────
@@ -1447,7 +1470,7 @@ function getFormData() {
     ctaPetitionerInterest:g("ctaPetitionerInterest")==="Other"?g("ctaPetitionerInterestOther"):g("ctaPetitionerInterest"),
     ctaAdminIsAttorney:g("ctaAdminIsAttorney"),
     lettersType:g("lettersType"), lettersTo:g("lettersTo"),
-    efileDate:g("efileDate"), fileNo:g("fileNo"),
+    efileDate:g("efileDate"), fileNo:g("fileNo"), caseStatus:g("caseStatus"), dateSubmitted:g("dateSubmitted"),
     enclosures:buildEnclosures(), distributees,
   };
 }
@@ -2577,59 +2600,57 @@ async function renderReports() {
   // Gather stats
   const byType = {};
   const byCounty = {};
-  let totalEstateValue = 0;
-  let totalRealProperty = 0;
-  let totalPersonalProperty = 0;
-  const agingBuckets = { '< 3 months': 0, '3–6 months': 0, '6–12 months': 0, '> 1 year': 0 };
+  const byStatus = {};
+  const STATUS_LABELS = {
+    drafting:'Drafting', ready:'Ready to File', submitted:'Submitted',
+    issued:'Letters Issued', marshaling:'Marshaling', accounting:'Accounting', closed:'Closed'
+  };
+  const agingBuckets = { '< 3 months': 0, '3\u20136 months': 0, '6\u201312 months': 0, '> 1 year': 0 };
   const caseDetails = [];
+  let needsAction = 0;
 
   for(const k of keys) {
     const c = cases[k];
     const d = c.data || {};
     const pt = c.proceeding || d.proceedingType || 'Unknown';
     const county = d.county || 'Unknown';
+    const status = d.caseStatus || 'drafting';
     byType[pt] = (byType[pt] || 0) + 1;
     byCounty[county] = (byCounty[county] || 0) + 1;
-
-    const ppv = fmtNum(d.personalPropertyValue);
-    const rpv = fmtNum(d.realPropertyValue);
-    const estateVal = ppv + rpv;
-    totalEstateValue += estateVal;
-    totalRealProperty += rpv;
-    totalPersonalProperty += ppv;
-
-    // Aging based on DOD
-    const dod = d.decedentDOD || '';
-    let ageMs = 0;
-    if(dod) {
-      try {
-        const dodDate = new Date(dod);
-        ageMs = now - dodDate.getTime();
-      } catch(e) {}
-    } else if(c.savedAt) {
-      ageMs = now - c.savedAt;
-    }
-    const ageDays = ageMs / DAY;
-    if(ageDays < 90) agingBuckets['< 3 months']++;
-    else if(ageDays < 180) agingBuckets['3–6 months']++;
-    else if(ageDays < 365) agingBuckets['6–12 months']++;
-    else agingBuckets['> 1 year']++;
+    byStatus[status] = (byStatus[status] || 0) + 1;
 
     // Checklist progress
     const clItems = (c.proceedingChecklist || {})[pt] || [];
     const clDone = clItems.filter(Boolean).length;
     const clTotal = clItems.length;
 
+    // Aging based on DOD
+    const dod = d.decedentDOD || '';
+    let ageMs = 0;
+    if(dod) {
+      try { ageMs = now - new Date(dod).getTime(); } catch(e) {}
+    } else if(c.savedAt) {
+      ageMs = now - c.savedAt;
+    }
+    const ageDays = ageMs / DAY;
+    if(ageDays < 90) agingBuckets['< 3 months']++;
+    else if(ageDays < 180) agingBuckets['3\u20136 months']++;
+    else if(ageDays < 365) agingBuckets['6\u201312 months']++;
+    else agingBuckets['> 1 year']++;
+
+    // Needs action = not submitted/issued/closed and checklist incomplete
+    if(!['submitted','issued','closed'].includes(status) && clDone < clTotal) needsAction++;
+
     caseDetails.push({
-      name: k, type: pt, county, estateVal, dod,
+      name: k, type: pt, county, status, dod,
       ageDays: Math.round(ageDays),
-      clDone, clTotal,
-      mortgage: fmtNum(d.mortgageAmount),
+      clDone, clTotal, dateSubmitted: d.dateSubmitted || '',
     });
   }
 
-  // Sort by estate value descending for the values table
-  caseDetails.sort((a, b) => b.estateVal - a.estateVal);
+  // Sort: needs action first, then by age descending
+  const statusOrder = {drafting:0, ready:1, marshaling:2, accounting:3, submitted:4, issued:5, closed:6};
+  caseDetails.sort((a, b) => (statusOrder[a.status]||0) - (statusOrder[b.status]||0) || b.ageDays - a.ageDays);
 
   const PROC_COLORS = {
     Probate:"#1a3f6e", Administration:"#2d6a4f",
@@ -2652,13 +2673,16 @@ async function renderReports() {
     if(el2) el2.innerHTML = html;
   }
 
-  // Stats cards
+  // Stats cards — practice management focus
   const overYear = agingBuckets['> 1 year'];
+  const submitted = byStatus['submitted'] || 0;
+  const drafting = byStatus['drafting'] || 0;
+  const ready = byStatus['ready'] || 0;
   rptSet('stats', `
     <div class="acct-card"><div class="label">Total Cases</div><div class="value">${total}</div></div>
-    <div class="acct-card"><div class="label">Total Estate Value</div><div class="value">${fmt(totalEstateValue)}</div></div>
-    <div class="acct-card"><div class="label">Real Property</div><div class="value">${fmt(totalRealProperty)}</div></div>
-    <div class="acct-card"><div class="label">Personal Property</div><div class="value">${fmt(totalPersonalProperty)}</div></div>
+    <div class="acct-card"><div class="label">Needs Action</div><div class="value ${needsAction>0?'red':''}">${needsAction}</div></div>
+    <div class="acct-card"><div class="label">Ready to File</div><div class="value" style="${ready>0?'color:#d97706':''}">${ready}</div></div>
+    <div class="acct-card"><div class="label">Submitted</div><div class="value">${submitted}</div></div>
     <div class="acct-card"><div class="label">Aging > 1 Year</div><div class="value ${overYear>0?'red':''}">${overYear}</div></div>
   `);
 
@@ -2697,6 +2721,25 @@ async function renderReports() {
       </div>`;
     }).join(''));
 
+  // By status bars
+  const maxStatus = Math.max(...Object.values(byStatus), 1);
+  rptSet('by-status', Object.entries(byStatus)
+    .sort((a,b) => (statusOrder[a[0]]||0) - (statusOrder[b[0]]||0))
+    .map(([status, count]) => {
+      const pct = (count / maxStatus * 100);
+      const color = STATUS_COLORS[status] || '#888';
+      const bg = STATUS_BG[status] || '#f5f5f5';
+      const label = STATUS_LABELS[status] || status;
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-family:Arial,sans-serif;color:var(--text2);margin-bottom:3px">
+          <span>${label}</span><span style="font-weight:bold">${count}</span>
+        </div>
+        <div style="background:${bg};border-radius:4px;height:20px;overflow:hidden">
+          <div style="background:${color};height:100%;width:${pct}%;border-radius:4px;transition:width .3s"></div>
+        </div>
+      </div>`;
+    }).join(''));
+
   // Aging breakdown
   rptSet('aging', `<table class="acct-table">
     <thead><tr><th>Age</th><th style="text-align:right">Cases</th></tr></thead>
@@ -2707,30 +2750,35 @@ async function renderReports() {
     ).join('')}
     </tbody></table>`);
 
-  // Estate values table
+  // Case status table
+  const STATUS_COLORS = {
+    drafting:'#6b7280', ready:'#d97706', submitted:'#2563eb',
+    issued:'#059669', marshaling:'#7c3aed', accounting:'#0891b2', closed:'#6b7280'
+  };
+  const STATUS_BG = {
+    drafting:'#f3f4f6', ready:'#fef3c7', submitted:'#dbeafe',
+    issued:'#d1fae5', marshaling:'#ede9fe', accounting:'#cffafe', closed:'#f3f4f6'
+  };
   rptSet('values', caseDetails.length ? `<table class="acct-table">
     <thead><tr>
       <th>Estate</th><th>Type</th><th>County</th>
-      <th style="text-align:right">Estate Value</th>
-      <th style="text-align:right">Mortgage</th>
-      <th style="text-align:right">Net Equity</th>
-      <th>Age</th><th>Checklist</th>
+      <th>Status</th><th>Age</th><th>Checklist</th>
     </tr></thead>
     <tbody>
     ${caseDetails.map(c => {
-      const net = c.estateVal - c.mortgage;
       const color = PROC_COLORS[c.type] || '#888';
       const bg = PROC_BG[c.type] || '#f5f5f5';
       const label = PROC_LABELS[c.type] || c.type;
+      const stColor = STATUS_COLORS[c.status] || '#888';
+      const stBg = STATUS_BG[c.status] || '#f5f5f5';
+      const stLabel = STATUS_LABELS[c.status] || c.status;
       const clPct = c.clTotal > 0 ? Math.round(c.clDone / c.clTotal * 100) : 0;
       const ageTxt = c.ageDays < 30 ? c.ageDays + 'd' : c.ageDays < 365 ? Math.round(c.ageDays/30) + 'mo' : (c.ageDays/365).toFixed(1) + 'yr';
       return `<tr>
         <td style="font-size:12px">${escHtml(c.name)}</td>
         <td><span style="background:${bg};color:${color};padding:2px 6px;border-radius:3px;font-size:11px;font-family:Arial,sans-serif">${label}</span></td>
         <td style="font-size:12px">${c.county}</td>
-        <td class="money">${fmt(c.estateVal)}</td>
-        <td class="money" style="${c.mortgage>0?'color:#dc2626':''}">${c.mortgage>0?'('+fmt(c.mortgage)+')':''}</td>
-        <td class="money">${fmt(net)}</td>
+        <td><span style="background:${stBg};color:${stColor};padding:2px 8px;border-radius:3px;font-size:11px;font-family:Arial,sans-serif;font-weight:500">${stLabel}</span></td>
         <td style="font-size:12px;white-space:nowrap;${c.ageDays>365?'color:#dc2626;font-weight:bold':''}">${ageTxt}</td>
         <td style="font-size:12px"><div style="display:flex;align-items:center;gap:6px">
           <div style="flex:1;background:var(--border);border-radius:3px;height:8px;min-width:50px;overflow:hidden">
@@ -2814,7 +2862,7 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","ssn"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","caseStatus","dateSubmitted","ssn"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   updateMaritalFields();
 
