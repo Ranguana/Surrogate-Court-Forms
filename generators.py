@@ -943,6 +943,9 @@ def _build_probate_fields(data):
     pet_interest = data.get("petitionerInterest", "")
     if "Executor" in pet_interest or not pet_interest:
         fields["Executor s named in decedents Will"] = "X"
+    else:
+        fields["Other Specify Check"] = "X"
+        fields["Other Specify"] = pet_interest
     if data.get("petitionerIsAttorney") == "Yes":
         fields["is"] = "X"
     else:
