@@ -648,6 +648,9 @@ body {
       <div class="field"><label>Other Assets / Causes of Action</label>
         <textarea id="otherAssets" rows="2">NONE</textarea>
       </div>
+      <div class="field"><label>Confidential Relationships (§8) — attorney, accountant, doctor, clergyperson</label>
+        <textarea id="confidentialRelationships" rows="2">NONE</textarea>
+      </div>
       <div class="sub-head">Liabilities (for 805 Affidavit)</div>
       <div class="grid2">
         <div class="field"><label>Outstanding Mortgages ($)</label><input id="mortgageAmount" placeholder="NONE"></div>
@@ -1458,7 +1461,7 @@ function getFormData() {
     personalPropertyValue:g("personalPropertyValue"), realPropertyValue:g("realPropertyValue"),
     improvedRealProperty:g("improvedRealProperty"), unimprovedRealProperty:g("unimprovedRealProperty"),
     realPropertyDescription:g("realPropertyDescription"),
-    grossRents18mo:g("grossRents18mo"), otherAssets:g("otherAssets"),
+    grossRents18mo:g("grossRents18mo"), otherAssets:g("otherAssets"), confidentialRelationships:g("confidentialRelationships"),
     mortgageAmount:g("mortgageAmount"), funeralPaid:g("funeralPaid"),
     funeralOutstanding:g("funeralOutstanding"), miscDebts:g("miscDebts"),
     willDate:g("willDate"), codicilDate:g("codicilDate"),
@@ -2862,7 +2865,7 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","caseStatus","dateSubmitted","ssn"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   updateMaritalFields();
 
@@ -2920,8 +2923,24 @@ function showStatus(text,type){
 // ── GENERATE PACKET ───────────────────────────────────────────────────────────
 async function generatePacket(){
   const data=getFormData();
-  if(!data.decedentLastName){ showStatus("⚠ Please enter the decedent's last name.","err"); return; }
-  if(!data.county){ showStatus("⚠ Please select a county.","err"); return; }
+  // ── Validation ──
+  const errors = [];
+  const warnings = [];
+  if(!data.decedentLastName) errors.push("Decedent last name");
+  if(!data.county) errors.push("County");
+  if(!data.decedentDOD) errors.push("Date of death");
+  if(!data.petitionerFirstName && !data.petitionerLastName) errors.push("Petitioner name");
+  if(data.proceedingType==="Probate") {
+    if(!data.willDate) errors.push("Will date");
+    if(!data.witness1) warnings.push("No witnesses — attesting witness affidavit will be incomplete");
+  }
+  if(!data.personalPropertyValue && !data.realPropertyValue && !assets.length) {
+    warnings.push("No property values or assets — Section 9 will show $0");
+  }
+  const hasDists = distributees.some(d=>d.name);
+  if(!hasDists) warnings.push("No distributees — Sections 6-7 will be empty");
+  if(errors.length) { showStatus("Missing required: "+errors.join(", "),"err"); return; }
+  if(warnings.length && !confirm("Warnings:\n\u2022 "+warnings.join("\n\u2022 ")+"\n\nGenerate anyway?")) return;
   const btn=document.getElementById("gen-btn");
   btn.textContent="⏳ Generating..."; btn.disabled=true;
   showStatus("Generating document packet...","info");

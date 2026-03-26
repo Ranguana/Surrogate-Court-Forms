@@ -518,11 +518,24 @@ def generate_805(data):
     blank()
 
     # ── WHEREFORE clause ──────────────────────────────────────────────────────
-    line(
-        f"WHEREFORE, your deponent prays, that the filing of a bond by {petitioner} "
-        f"as administrator and sole distributee be dispensed with.",
-        space_before=6, space_after=18
-    )
+    bond_status, bond_reason = compute_bond_status(data)
+    pet_role = "Executor" if proceeding == "Probate" else "Administrator"
+    pet_rel = data.get("petitionerRelationship", "")
+    role_desc = f"{pet_role}"
+    if pet_rel:
+        role_desc += f" and {pet_rel}"
+
+    if bond_status == "dispense":
+        wherefore_text = (
+            f"WHEREFORE, your deponent prays, that the filing of a bond by {petitioner} "
+            f"as {role_desc} be dispensed with."
+        )
+    else:
+        wherefore_text = (
+            f"WHEREFORE, your deponent prays for the issuance of Letters to {petitioner} "
+            f"as {role_desc}, upon the filing of a bond."
+        )
+    line(wherefore_text, space_before=6, space_after=18)
 
     # ── Signature block ───────────────────────────────────────────────────────
     line("__________________________________", space_after=2)
@@ -762,8 +775,53 @@ def extract_pdf_pages(template_path, fields, page_indices):
 # ─── PROBATE PDF (P-1 + OATH + WITNESS) ──────────────────────────────────────
 
 
+def _auto_compute_property(data):
+    """Auto-compute property values from asset tracker when available."""
+    tracked = [a for a in data.get("assets", []) if a.get("institution")]
+    if not tracked:
+        return
+    personal = 0
+    real = 0
+    for a in tracked:
+        try:
+            val = float(str(a.get("value", "0")).replace(",", "").replace("$", ""))
+        except (ValueError, TypeError):
+            val = 0
+        if a.get("category") == "Real Estate":
+            real += val
+        else:
+            personal += val
+    if personal > 0:
+        data["personalPropertyValue"] = f"{personal:,.2f}"
+    if real > 0:
+        data["realPropertyValue"] = f"{real:,.2f}"
+
+
+def compute_bond_status(data):
+    """Determine bond status from distributee dispositions.
+    Returns: ('dispense', reason) or ('require', reason)
+    """
+    dists = [d for d in data.get("distributees", []) if d.get("name")]
+    has_minors = any(d.get("isMinor") for d in dists)
+    has_citations = any(d.get("disposition") == "citation" for d in dists)
+    all_waive = all(d.get("disposition") == "waiver" for d in dists) and len(dists) > 0
+
+    if has_minors:
+        return ("require", "minor/person under disability exists")
+    if has_citations:
+        return ("require", "citation required for one or more parties")
+    if all_waive:
+        return ("dispense", "all distributees waiving")
+    if data.get("dispenseBond"):
+        return ("dispense", "per will / petitioner request")
+    return ("dispense", "")
+
+
 def _build_probate_fields(data):
     """Build field name→value dict for Probate Petition + Oath.pdf."""
+    # Auto-compute property values from asset tracker
+    _auto_compute_property(data)
+
     county   = data.get("county", "")
     dec      = decedent_full(data)
     pet      = petitioner_full(data)
@@ -874,7 +932,7 @@ def _build_probate_fields(data):
         "Names of All Witnesses to Will": witnesses,
         "Date of Codicil": data.get("codicilDate", ""),
         "follows Enter NONE or specify 1": data.get("noOtherWill", "NONE"),
-        "the nature of the confidential relationship 1": "NONE",
+        "the nature of the confidential relationship 1": data.get("confidentialRelationships", "NONE"),
         "Improved real property in New York State": data.get("improvedRealProperty", ""),
         "Unimproved real property in New York State": data.get("unimprovedRealProperty", ""),
         "Estimated gross rents for a period of 18 months": data.get("grossRents18mo", ""),
@@ -955,6 +1013,20 @@ def _build_probate_fields(data):
     # For probate: "interest" = description of legacy/devise under the will
     # For administration: fall back to relationship
     all_dists = [d for d in data.get("distributees", []) if d.get("name")]
+
+    # Auto-insert petitioner in §6a if not already listed
+    pet_lower = pet.strip().lower()
+    if pet_lower and not any(d.get("name", "").strip().lower() == pet_lower for d in all_dists):
+        pet_interest_label = data.get("petitionerInterest", "Executor(s) named in decedent's Will")
+        all_dists.insert(0, {
+            "name": pet,
+            "address": pet_addr,
+            "citizenship": data.get("petitionerCitizenship", "U.S.A."),
+            "interest": pet_interest_label,
+            "relationship": data.get("petitionerRelationship", ""),
+            "beneficiaryType": "primary",
+            "isMinor": False,
+        })
 
     # Split into 4 groups
     primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
@@ -1209,6 +1281,7 @@ def fill_administration_pdf(data):
     NOTE: The notary block on page 5 has mixed fonts in the PDF template.
     This must be fixed in the PDF template itself (Adobe Acrobat), not in code.
     """
+    _auto_compute_property(data)
     county    = data.get("county", "")
     dec       = decedent_full(data)
     pet       = petitioner_full(data)
