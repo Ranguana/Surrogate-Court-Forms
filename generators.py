@@ -913,7 +913,6 @@ def _build_probate_fields(data):
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
-        "X": "",  # clear unused caption filler
         "To the Surrogates Court County of": county,
         "decedent": dec,
         "a Name": dec,
@@ -961,13 +960,11 @@ def _build_probate_fields(data):
         # ── Oath and Designation (page 5) ───────────────────────────────────────
         "STATE OF NEW YORK": "New York",
         "COUNTY OF_2": county,
-        "ss": county,
         "OATH OF": pet,
         "Surrogates Court of": county,
         "My domicile is": pet_addr,
         "Street Address": data.get("petitionerStreet", ""),
         "Print Name_3": data.get("attorneyName") or "Jessica Wilson, Esq.",
-        "Signature of Attorney": data.get("attorneyName") or "Jessica Wilson, Esq.",
         "Print Name_4": data.get("attorneyName") or "Jessica Wilson, Esq.",
         "Firm Name": data.get("firmName") or "Law Office of Jessica Wilson",
         "Tel No": data.get("attorneyPhone") or "(212) 739-1736",
@@ -976,8 +973,6 @@ def _build_probate_fields(data):
 
         # ── Attesting Witness (page 10) ─────────────────────────────────────────
         "COUNTY OF_7": county,
-        "X_3": "",  # clear unused filler
-        "X_4": "",  # clear unused filler
         "WILL OF 1": " ".join(filter(None, [
             data.get("decedentFirstName", ""),
             data.get("decedentMiddleName", ""),

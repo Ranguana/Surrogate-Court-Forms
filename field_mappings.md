@@ -135,13 +135,12 @@
 | Page | Field Name | Type | Y |
 |------|-----------|------|---|
 | 1 | COUNTY OF | text | 70 |
-| 1 | X | text | 83 |
 | 1 | PROBATE PROCEEDING 1 | text | 96 |
 | 1 | decedent | text | 127 |
-| 1 | Letters Testamentary | text | 132 |
+| 1 | Letters Testamentary | text | 131 |
 | 1 | aka | text | 142 |
 | 1 | Letters of Trusteeship | text | 147 |
-| 1 | 1 | text | 157 |
+| 1 | aka2 | text | 157 |
 | 1 | Letters of Administration cta | text | 162 |
 | 1 | Temporary Administration | text | 178 |
 | 1 | File No | text | 201 |
@@ -154,7 +153,7 @@
 | 1 | Mailing Address | text | 346 |
 | 1 | Citizen of | text | 372 |
 | 1 | Executor s named in decedents Will | text | 391 |
-| 1 | Other Specify | text | 404 |
+| 1 | Other Specify Check | text | 404 |
 | 1 | Other Specify | text | 397 |
 | 1 | is | text | 417 |
 | 1 | is not an attorney | text | 417 |
@@ -313,7 +312,6 @@
 | 4 | Print Name and Title of Officer | text | 427 |
 | 5 | STATE OF NEW YORK | text | 53 |
 | 5 | COUNTY OF_2 | text | 71 |
-| 5 | ss | text | 71 |
 | 5 | OATH OF | text | 162 |
 | 5 | EXECUTOR | text | 162 |
 | 5 | ADMINISTRATOR cta | text | 162 |
@@ -324,9 +322,6 @@
 | 5 | 20 | text | 388 |
 | 5 | On 1 | text | 389 |
 | 5 | On 2 | text | 408 |
-| 5 | Notary Public | text | 461 |
-| 5 | Commission Expires | text | 477 |
-| 5 | Signature of Attorney | signature | 509 |
 | 5 | Print Name_4 | text | 525 |
 | 5 | Firm Name | text | 541 |
 | 5 | Tel No | text | 541 |
@@ -352,21 +347,17 @@
 | 6 | of | text | 454 |
 | 6 | Notary Public_2 | text | 486 |
 | 6 | Commission Expires_2 | text | 502 |
-| 6 | Signature of Attorney_2 | signature | 534 |
 | 6 | Print Name_5 | text | 550 |
 | 6 | Firm Name_2 | text | 566 |
 | 6 | Tel No_2 | text | 566 |
 | 6 | Email_2 | text | 582 |
 | 6 | Address of Attorney_2 | text | 598 |
 | 7 | SURROGATES COURT OF THE STATE OF NEW YORK | text | 32 |
-| 7 | COUNTY OF_4 | text | 50 |
-| 7 | undefined_9 | text | 69 |
 | 7 | PROBATE PROCEEDING | text | 87 |
 | 7 | WILL OF_2 | text | 105 |
 | 7 | undefined_10 | text | 124 |
 | 7 | aka_2 | text | 143 |
 | 7 | File | text | 143 |
-| 7 | Deceased | text | 180 |
 | 7 | undefined_11 | text | 198 |
 | 7 | The proposed preliminary executor s isare | text | 216 |
 | 7 | and isare designated as executor s in the Will | text | 231 |
@@ -403,15 +394,11 @@
 | 8 | I the undersigned | text | 298 |
 | 8 | Surrogates Court of_3 | text | 393 |
 | 8 | My domicile is_2 | text | 451 |
-| 8 | Signature of Petitioner | signature | 486 |
 | 8 | On_2 | text | 549 |
 | 8 | Print Name_6 | text | 518 |
 | 8 | 20_3 | text | 549 |
 | 8 | before me personally came_2 | text | 549 |
 | 8 | to me known to be the person described in and | text | 565 |
-| 8 | Notary Public_3 | text | 611 |
-| 8 | Commission Expires_3 | text | 627 |
-| 8 | Signature of Attorney_3 | signature | 659 |
 | 8 | Print Name_7 | text | 675 |
 | 8 | Firm Name_3 | text | 691 |
 | 8 | Tel No_3 | text | 691 |
@@ -424,7 +411,6 @@
 | 9 | Surrogates Court of_4 | text | 207 |
 | 9 | Name of Bank or Trust Company_4 | text | 254 |
 | 9 | BY_2 | text | 286 |
-| 9 | Signature | signature | 319 |
 | 9 | On_3 | text | 351 |
 | 9 | 20_4 | text | 351 |
 | 9 | before me personally came_3 | text | 351 |
@@ -433,22 +419,17 @@
 | 9 | instrument and who did say that heshe resides at_2 | text | 393 |
 | 9 | and that heshe is a | text | 407 |
 | 9 | of_2 | text | 407 |
-| 9 | Notary Public_4 | text | 456 |
-| 9 | Commission Expires_4 | text | 472 |
-| 9 | Signature of Attorney_4 | signature | 504 |
 | 9 | Print Name_8 | text | 520 |
 | 9 | Firm Name_4 | text | 536 |
 | 9 | Tel No_4 | text | 536 |
 | 9 | Email_4 | text | 552 |
 | 9 | Address of Attorney_4 | text | 568 |
 | 10 | COUNTY OF_7 | text | 32 |
-| 10 | X_3 | text | 49 |
 | 10 | PROBATE PROCEEDING_2 | text | 67 |
 | 10 | WILL OF 1 | text | 84 |
 | 10 | WILL OF 2 | text | 102 |
 | 10 | aka 1 | text | 120 |
 | 10 | aka 2 | text | 137 |
-| 10 | X_4 | text | 155 |
 | 10 | STATE OF NEW YORK_5 | text | 174 |
 | 10 | COUNTY OF_8 | text | 194 |
 | 10 | I have been shown check one | text | 258 |
@@ -458,24 +439,16 @@
 | 10 | purporting to be the last Will and TestamentCodicil of the abovenamed decedent | text | 276 |
 | 10 | and I saw the other witness es | text | 364 |
 | 10 | I am making this affidavit at the request of 1 | text | 500 |
-| 10 | I am making this affidavit at the request of 2 | signature | 518 |
 | 10 | Print Name_9 | text | 551 |
 | 10 | Street Address_2 | text | 583 |
 | 10 | TownStateZip | text | 616 |
-| 10 | Sworn before me this | text | 648 |
-| 10 | day of | text | 667 |
-| 10 | 20_5 | text | 667 |
-| 10 | Notary Public_5 | text | 687 |
-| 10 | Commission Expires_5 | text | 704 |
 | 11 | COUNTY OF_9 | text | 33 |
-| 11 | X_5 | text | 49 |
 | 11 | PROBATE PROCEEDING_3 | text | 67 |
 | 11 | WILL OF 1_2 | text | 85 |
 | 11 | WILL OF 2_2 | text | 102 |
 | 11 | aka 1_2 | text | 119 |
 | 11 | aka 2_2 | text | 136 |
 | 11 | File_3 | text | 136 |
-| 11 | X_6 | text | 170 |
 | 11 | To the Surrogates Court County of_2 | text | 188 |
 | 11 | that the court admit to probate the decedents Last Will and Testament dated | text | 237 |
 | 11 | 20_6 | text | 237 |
@@ -492,7 +465,6 @@
 | 11 | of the following trusts 3 | text | 411 |
 | 11 | of the following trusts 4 | text | 429 |
 | 11 | Dated_3 | text | 450 |
-| 11 | Signature_2 | signature | 450 |
 | 11 | Street Address_3 | text | 486 |
 | 11 | Relationship | text | 486 |
 | 11 | Print Name_10 | text | 516 |
@@ -503,15 +475,11 @@
 | 11 | 20_7 | text | 581 |
 | 11 | before me personally appeared | text | 581 |
 | 11 | to me known and known to me to be the person described in and who executed the foregoing waiver and consent and | text | 597 |
-| 11 | Notary Public_6 | text | 643 |
-| 11 | Commission Expires_6 | text | 659 |
-| 11 | Signature of Attorney_5 | signature | 691 |
 | 11 | Print Name_11 | text | 707 |
 | 11 | Firm Name_5 | text | 723 |
 | 11 | Tel No_5 | text | 723 |
 | 11 | Email_5 | text | 739 |
 | 11 | Address of Attorney_5 | text | 755 |
-| 12 | PROBATE CITATION | text | 17 |
 | 12 | File No_2 | text | 17 |
 | 12 | SURROGATES COURT | text | 36 |
 | 12 | TO 1 | text | 110 |
@@ -549,14 +517,12 @@
 | 12 | Telephone Number | text | 541 |
 | 12 | Address of Attorney_6 | text | 574 |
 | 13 | SURROGATES COURT OF THE STATE OF NEW YORK_2 | text | 32 |
-| 13 | COUNTY OF_11 | text | 50 |
 | 13 | undefined_21 | text | 69 |
 | 13 | PROBATE PROCEEDING_4 | text | 87 |
 | 13 | WILL OF_3 | text | 106 |
 | 13 | aka 1_3 | text | 124 |
 | 13 | aka 2_3 | text | 143 |
 | 13 | aka_3 | text | 161 |
-| 13 | Deceased_2 | text | 198 |
 | 13 | File_4 | text | 198 |
 | 13 | and Codicil dated | text | 235 |
 | 13 | undefined_22 | text | 235 |
@@ -593,14 +559,12 @@
 | 13 | NATURE OF INTEREST OR STATUS 6 | text | 570 |
 | 13 | NATURE OF INTEREST OR STATUS 7 | text | 588 |
 | 13 | NATURE OF INTEREST OR STATUS 8 | text | 607 |
-| 13 | USE ADDITIONAL SHEETS IF NECESSARY | text | 644 |
-| 13 | 20_10 | text | 644 |
 | 13 | parent or guardian | text | 695 |
 | 13 | Telephone Number_2 | text | 695 |
 | 13 | Name of Attorney | text | 727 |
 | 14 | STATE OF NEW YORK_7 | text | 36 |
 | 14 | COUNTY OF 1 | text | 57 |
-| 14 | COUNTY OF 2 | text | 75 |
+| 14 | Affiant | text | 75 |
 | 14 | residing at | text | 75 |
 | 14 | being duly sworn says that heshe is over the age of 18 years that on the | text | 94 |
 | 14 | day of_2 | text | 110 |
@@ -610,24 +574,18 @@
 | 14 | Sworn to before me this 1 | text | 187 |
 | 14 | Sworn to before me this 2 | text | 205 |
 | 14 | 20_12 | text | 205 |
-| 14 | Signature_3 | signature | 187 |
-| 14 | Notary Public_7 | text | 226 |
-| 14 | Commission Expires_7 | text | 242 |
-| 14 | Signature of Attorney_6 | signature | 274 |
 | 14 | Print Name_12 | text | 290 |
 | 14 | Firm Name_6 | text | 306 |
 | 14 | Tel No_6 | text | 306 |
 | 14 | Email_6 | text | 322 |
 | 14 | Address of Attorney_7 | text | 338 |
 | 15 | COUNTY OF_12 | text | 36 |
-| 15 | X_7 | text | 50 |
 | 15 | PROBATE PROCEEDING_5 | text | 73 |
 | 15 | WILL OF 1_3 | text | 92 |
 | 15 | WILL OF 2_3 | text | 110 |
 | 15 | aka 1_4 | text | 129 |
 | 15 | aka 2_4 | text | 147 |
 | 15 | aka 3 | text | 166 |
-| 15 | X_8 | text | 198 |
 | 15 | STATE OF NEW YORK_8 | text | 223 |
 | 15 | COUNTY OF 1_2 | text | 244 |
 | 15 | COUNTY OF 2_2 | text | 262 |
@@ -672,23 +630,18 @@
 | 15 | day of_3 | text | 556 |
 | 15 | 20_17 | text | 556 |
 | 15 | Print Name_13 | text | 588 |
-| 15 | Notary Public_8 | text | 623 |
-| 15 | Commission Expires_8 | text | 639 |
-| 15 | Signature of Attorney_7 | signature | 671 |
 | 15 | Print Name_14 | text | 687 |
 | 15 | Firm Name_7 | text | 703 |
 | 15 | Tel No_7 | text | 703 |
 | 15 | Email_7 | text | 719 |
 | 15 | Address of Attorney_8 | text | 735 |
 | 16 | COUNTY OF_13 | text | 35 |
-| 16 | X_9 | text | 49 |
 | 16 | PROBATE PROCEEDING_6 | text | 69 |
 | 16 | WILL OF 1_4 | text | 86 |
 | 16 | WILL OF 2_4 | text | 103 |
 | 16 | aka_4 | text | 121 |
 | 16 | undefined_25 | text | 138 |
 | 16 | Deceased_3 | text | 155 |
-| 16 | X_10 | text | 187 |
 | 16 | STATE OF NEW YORK_9 | text | 209 |
 | 16 | COUNTY OF_14 | text | 225 |
 | 16 | File No_3 | text | 190 |
@@ -705,33 +658,23 @@
 | 16 | Explain in detail and add additional affidavit if necessary 5 | text | 377 |
 | 16 | Sworn to before me this_2 | text | 433 |
 | 16 | day of_4 | text | 433 |
-| 16 | 20_18 | text | 433 |
-| 16 | Signature_4 | signature | 466 |
+| 16 | Name | text | 465 |
 | 16 | Notary Public_9 | text | 500 |
 | 16 | Commission Expires_9 | text | 516 |
 | 17 | COUNTY OF_15 | text | 32 |
-| 17 | X_11 | text | 49 |
-| 17 | PROBATE PROCEEDING_7 | text | 66 |
 | 17 | WILL OF 1_5 | text | 83 |
-| 17 | WILL OF 2_5 | text | 101 |
 | 17 | aka_5 | text | 118 |
-| 17 | undefined_26 | text | 135 |
-| 17 | Deceased_4 | text | 152 |
-| 17 | X_12 | text | 187 |
+| 17 | aka_6 | text | 135 |
 | 17 | File No_4 | text | 187 |
 | 17 | ORDERED that the testimony of | text | 237 |
 | 17 | Dated_4 | text | 288 |
 | 17 | 20_19 | text | 288 |
 | 17 | Surrogate | text | 288 |
 | 18 | COUNTY OF_16 | text | 33 |
-| 18 | X_13 | text | 49 |
-| 18 | PROBATE PROCEEDING_8 | text | 67 |
 | 18 | WILL OF 1_6 | text | 85 |
 | 18 | WILL OF 2_6 | text | 102 |
 | 18 | aka_6 | text | 119 |
 | 18 | undefined_27 | text | 136 |
-| 18 | Deceased_5 | text | 154 |
-| 18 | X_14 | text | 187 |
 | 18 | STATE OF NEW YORK_10 | text | 207 |
 | 18 | COUNTY OF_17 | text | 223 |
 | 18 | File No_5 | text | 188 |
@@ -743,22 +686,16 @@
 | 18 | undefined_28 | text | 345 |
 | 18 | Sworn to before me this_3 | text | 426 |
 | 18 | day of_5 | text | 426 |
-| 18 | 20_20 | text | 426 |
 | 18 | Print Name_15 | text | 459 |
-| 18 | Notary Public_10 | text | 493 |
-| 18 | Commission Expires_10 | text | 509 |
 | 18 | Name of Attorney_2 | text | 550 |
 | 18 | Tel No_8 | text | 550 |
 | 18 | Address of Attorney_9 | text | 566 |
 | 19 | COUNTY OF_18 | text | 32 |
-| 19 | X_15 | text | 48 |
-| 19 | PROBATE PROCEEDING_9 | text | 65 |
 | 19 | WILL OF 1_7 | text | 82 |
 | 19 | WILL OF 2_7 | text | 98 |
 | 19 | aka_7 | text | 115 |
 | 19 | undefined_29 | text | 131 |
 | 19 | Deceased_6 | text | 148 |
-| 19 | X_16 | text | 180 |
 | 19 | File No_6 | text | 181 |
 | 19 | I | text | 199 |
 | 19 | domiciled at or in the case of a bank or trust company its principal office | text | 215 |
@@ -775,7 +712,6 @@
 | 19 | of Administration cta | text | 351 |
 | 19 | of Trusteeship issue to | text | 343 |
 | 19 | without the necessity of furnishing a bond If a bond is furnished I hereby waive and release all right to make any claim on | text | 351 |
-| 19 | Signature_5 | signature | 405 |
 | 19 | Name of Corportation | text | 405 |
 | 19 | Print Name_16 | text | 438 |
 | 19 | Name of Officer | text | 438 |
@@ -791,20 +727,15 @@
 | 19 | known who duly swore to the foregoing instrument and who did say that heshe resides at | text | 593 |
 | 19 | and that heshe is a_2 | text | 609 |
 | 19 | of_4 | text | 609 |
-| 19 | Notary Public_11 | text | 673 |
-| 19 | Commission Expires_11 | text | 689 |
 | 19 | Name of Attorney_3 | text | 725 |
 | 19 | Tel No_9 | text | 725 |
 | 19 | Address of Attorney_10 | text | 741 |
 | 20 | COUNTY OF_20 | text | 32 |
-| 20 | X_17 | text | 48 |
 | 20 | PROBATE PROCEEDING_10 | text | 67 |
 | 20 | WILL OF 1_8 | text | 86 |
 | 20 | WILL OF 2_8 | text | 104 |
 | 20 | aka_8 | text | 123 |
-| 20 | undefined_31 | text | 139 |
-| 20 | Deceased_7 | text | 156 |
-| 20 | X_18 | text | 188 |
+| 20 | aka_9 | text | 139 |
 | 20 | File No_7 | text | 189 |
 | 20 | The undersigned | text | 208 |
 | 20 | Surrogates Court of_5 | text | 240 |
@@ -812,7 +743,6 @@
 | 20 | 20_25 | text | 287 |
 | 20 | Consents that Letters of Administration cta be granted by the Court to | text | 303 |
 | 20 | Dated_5 | text | 399 |
-| 20 | Signature_6 | signature | 399 |
 | 20 | Street Address_4 | text | 431 |
 | 20 | Relationship_2 | text | 431 |
 | 20 | Print Name_17 | text | 461 |
@@ -823,20 +753,15 @@
 | 20 | On_6 | text | 548 |
 | 20 | 20_26 | text | 548 |
 | 20 | to me known and known to me to be the person described in and who executed the foregoing waiver and consent and_2 | text | 564 |
-| 20 | Notary Public_12 | text | 628 |
-| 20 | Commission Expires_12 | text | 644 |
 | 20 | Name of Attorney_4 | text | 681 |
 | 20 | Tel No_10 | text | 681 |
 | 20 | Address of Attorney_11 | text | 697 |
 | 21 | COUNTY OF_22 | text | 32 |
-| 21 | X_19 | text | 49 |
-| 21 | PROBATE PROCEEDING_11 | text | 68 |
 | 21 | WILL OF 1_9 | text | 87 |
 | 21 | WILL OF 2_9 | text | 107 |
 | 21 | aka_9 | text | 124 |
 | 21 | undefined_32 | text | 141 |
 | 21 | Deceased_8 | text | 158 |
-| 21 | X_20 | text | 193 |
 | 21 | STATE OF NEW YORK_13 | text | 212 |
 | 21 | COUNTY OF_23 | text | 229 |
 | 21 | File No_8 | text | 193 |
@@ -860,22 +785,16 @@
 | 21 | NATURE OF CLAIM_3 | text | 553 |
 | 21 | Sworn to before me this_4 | text | 588 |
 | 21 | day of_6 | text | 588 |
-| 21 | 20_27 | text | 588 |
 | 21 | Print Name_18 | text | 619 |
-| 21 | Notary Public_13 | text | 652 |
-| 21 | Commission Expires_13 | text | 669 |
 | 21 | Name of Attorney_5 | text | 703 |
 | 21 | Tel No_11 | text | 703 |
 | 21 | Address of Attorney_12 | text | 720 |
 | 22 | COUNTY OF_24 | text | 33 |
-| 22 | X_21 | text | 49 |
 | 22 | PROBATE PROCEEDING_12 | text | 67 |
 | 22 | WILL OF 1_10 | text | 85 |
 | 22 | WILL OF 2_10 | text | 102 |
 | 22 | aka_10 | text | 119 |
-| 22 | undefined_33 | text | 136 |
-| 22 | Deceased_9 | text | 154 |
-| 22 | X_22 | text | 187 |
+| 22 | aka_11 | text | 136 |
 | 22 | File No_9 | text | 188 |
 | 22 | STATE OF NEW YORK_14 | text | 207 |
 | 22 | COUNTY OF_25 | text | 223 |
@@ -888,10 +807,7 @@
 | 22 | undefined_35 | text | 291 |
 | 22 | Sworn to before me this_5 | text | 348 |
 | 22 | day of_9 | text | 348 |
-| 22 | 20_28 | text | 348 |
 | 22 | Print Name_19 | text | 383 |
-| 22 | Notary Public_14 | text | 418 |
-| 22 | Commission Expires_14 | text | 434 |
 | 22 | Name of Attorney_6 | text | 469 |
 | 22 | Tel No_12 | text | 469 |
 | 22 | Address of Attorney_13 | text | 485 |
@@ -3640,4 +3556,3 @@
 | 8 | Text Field 266 | text | 685 |
 | 8 | Text Field 10200 | text | 698 |
 | 8 | Signature Field 10 | signature | 484 |
-
