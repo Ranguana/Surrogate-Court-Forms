@@ -788,7 +788,17 @@ RULES:
 - maritalStatus must be one of: never_married, married, divorced, widowed
 - proceedingType must be one of: Probate, Administration (Probate if a Will exists, Administration if no Will)
 - survivingX fields: "Yes" if that class survives, "No" if they existed but predeceased, null if unknown
-- For distributees: include all known heirs with name, relationship, address (if available), citizenship (default "US Citizen" if unknown)
+- For distributees: include EVERY person named in the Will — executors, beneficiaries, trustees, guardians, contingent/successor beneficiaries, and all known heirs
+- "interest" field is CRITICAL for Probate: describe each person's specific legacy, devise, or fiduciary role under the Will, citing the Article number. Examples:
+  - "Nominated Executor under Article SIXTH"
+  - "Residuary legatee under Article FOURTH"
+  - "Specific bequest of personal effects under Article THIRD"
+  - "Contingent beneficiary under Articles THIRD & FOURTH (equal share if [name] predeceases)"
+  - "Successor Executor under Article SIXTH"
+  - "Trustee under Article FIFTH"
+- "beneficiaryType": use "primary" for persons in the main disposition (executor, direct beneficiaries, contingent beneficiaries). Use "successor" for substitute executors, trustees, guardians, and other persons named in the Will who are not primary beneficiaries.
+- If someone appears in BOTH roles (e.g. contingent beneficiary AND successor executor), list them TWICE — once as "primary" and once as "successor" with different interest descriptions.
+- "isMinor": set to true if the person is identified as a minor/infant in the documents
 
 Return ONLY valid JSON with this exact structure (use null for unknown fields):
 
@@ -843,7 +853,7 @@ Return ONLY valid JSON with this exact structure (use null for unknown fields):
 }}
 
 Each distributee in the array should be:
-{{"name": "Full Name", "relationship": "Son/Daughter/Spouse/etc", "address": "full address or null", "citizenship": "US Citizen"}}
+{{"name": "Full Name", "relationship": "Son/Daughter/Spouse/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "describe legacy/devise/fiduciary role citing Article number", "beneficiaryType": "primary or successor", "isMinor": false}}
 
 === DOCUMENTS ===
 {combined}"""
@@ -1154,7 +1164,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
