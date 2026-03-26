@@ -350,13 +350,20 @@ def generate_805(data):
 
     # Build caption rows — left column has matter text, right has doc title
     aka_line = f"    a/k/a {aka}," if aka else ""
-    left_lines = [
-        "In the Matter of the Application for",
-        "",
-        f"{letters_type} of the Estate of",
-        "",
-        f"    {decedent.upper()},",
-    ]
+    if proceeding == "Probate":
+        left_lines = [
+            "PROBATE PROCEEDING, WILL OF",
+            "",
+            f"    {decedent.upper()},",
+        ]
+    else:
+        left_lines = [
+            "In the Matter of the Application for",
+            "",
+            f"{letters_type} of the Estate of",
+            "",
+            f"    {decedent.upper()},",
+        ]
     if aka_line:
         left_lines.append(aka_line)
     left_lines += [
@@ -882,6 +889,8 @@ def _build_probate_fields(data):
         fields["is not an attorney"] = "X"
 
     # Distributees (page 2, section 6a — 3 columns: name / address / interest)
+    # For probate: "interest" = description of legacy/devise under the will
+    # For administration: fall back to relationship
     name_f = ["1_2", "2_2", "3", "4", "5", "6", "7"]
     addr_f = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
     int_f  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 8)]
@@ -889,7 +898,9 @@ def _build_probate_fields(data):
         if dist.get("name"):
             fields[name_f[i]] = dist["name"]
             fields[addr_f[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-            fields[int_f[i]]  = dist.get("relationship", "Distributee")
+            # Use will interest if provided, otherwise fall back to relationship
+            interest = (dist.get("interest") or "").strip()
+            fields[int_f[i]] = interest if interest else dist.get("relationship", "Distributee")
 
     return fields
 

@@ -1090,7 +1090,7 @@ let proceeding = "Probate";
 const checks = {
   selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
 };
-let distributees = [{name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"}];
+let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",disposition:"tbd"}];
 
 // EPTL 4-1.1 succession chain
 // null=unanswered, true=yes, false=no
@@ -1302,6 +1302,9 @@ function renderDists() {
         <div class="field"><label>Domicile / Mailing Address</label><input value="${d.address}" oninput="ud(${i},'address',this.value)"></div>
         <div class="field"><label>Citizenship</label><input value="${d.citizenship}" oninput="ud(${i},'citizenship',this.value)"></div>
       </div>
+      <div class="field"><label>Interest (for Probate: describe legacy/devise under will)</label>
+        <input value="${d.interest||''}" oninput="ud(${i},'interest',this.value)" placeholder="e.g. Residuary legatee under Article FOURTH">
+      </div>
       <div class="disp-row">
         <span class="disp-label">Disposition:</span>
         <button class="disp-btn ${d.disposition==='waiver'?'waiver':''}"   onclick="setDisp(${i},'waiver')">✓ Waiver</button>
@@ -1349,7 +1352,7 @@ function renderDists() {
   document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
   updateSummary();
 }
-function addDist()     { if(distributees.length<7){distributees.push({name:"",relationship:"",address:"",citizenship:"",disposition:"tbd"});renderDists();} }
+function addDist()     { if(distributees.length<7){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
 function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
 function setDisp(i,v)  {
@@ -1604,7 +1607,8 @@ county (NY county ONLY — Kings for Brooklyn, New York for Manhattan, Queens, B
 personalPropertyValue,realPropertyValue,improvedRealProperty,realPropertyDescription,
 willDate,witness1,witness2,lettersTo,
 survivingSpouse (boolean),survivingChildren (boolean),survivingParents (boolean),survivingSiblings (boolean),
-distributees: [{name,relationship,address,citizenship,disposition}].
+distributees: [{name,relationship,address,citizenship,interest,disposition}].
+"interest" = for probate, the description of legacy/devise under the will (e.g. "Residuary legatee under Article FOURTH").
 Return raw JSON only — no markdown, no backticks, no explanation.`,
         messages:[{role:"user",content:"Extract from:\n\n"+notes}]
       })
@@ -3115,7 +3119,7 @@ function siApply() {
     const incoming = d.distributees.filter(dist => dist.name).map(dist => ({
       name: dist.name, relationship: dist.relationship||'',
       address: dist.address||'', citizenship: dist.citizenship||'US Citizen',
-      disposition: 'tbd'
+      interest: dist.interest||'', disposition: 'tbd'
     }));
     if(incoming.length) {
       // Keep only non-empty existing entries, then add incoming
@@ -3314,7 +3318,7 @@ function fillDistributee(id) {
   if(!c) return;
   distributees.push({
     name: c.name||'', relationship: c.relationship||'',
-    address: c.address||'', citizenship: c.citizenship||'US Citizen', disposition:'tbd'
+    address: c.address||'', citizenship: c.citizenship||'US Citizen', interest:'', disposition:'tbd'
   });
   renderDists();
   updateSummary();
