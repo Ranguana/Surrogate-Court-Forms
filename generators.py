@@ -725,6 +725,15 @@ def fill_pdf(template_path, fields):
                     # Size the X to fit the field box
                     h = widget.rect.height
                     widget.text_fontsize = max(5, min(h - 1, 10))
+                elif len(s) > 0:
+                    # Auto-shrink font for long text in narrow fields
+                    w = widget.rect.width
+                    current_size = widget.text_fontsize or 12
+                    # Rough estimate: each char ~0.6x font size in width
+                    est_width = len(s) * current_size * 0.5
+                    if est_width > w and w > 0:
+                        fitted = w / (len(s) * 0.5)
+                        widget.text_fontsize = max(5, min(fitted, current_size))
             widget.update()
     buf = io.BytesIO()
     doc.save(buf)
@@ -930,8 +939,9 @@ def _build_probate_fields(data):
     elif "Temporary" in lt:
         fields["Temporary Administration"] = "X"
 
-    # Petitioner interest
-    if "Executor" in data.get("petitionerInterest", ""):
+    # Petitioner interest — default to Executor for probate
+    pet_interest = data.get("petitionerInterest", "")
+    if "Executor" in pet_interest or not pet_interest:
         fields["Executor s named in decedents Will"] = "X"
     if data.get("petitionerIsAttorney") == "Yes":
         fields["is"] = "X"
