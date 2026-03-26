@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const https = require("https");
 const { spawn, exec } = require("child_process");
+const crypto = require("crypto");
 
 const FLASK_PORT = 52845;
 const GITHUB_REPO = "Ranguana/Surrogate-Court-Forms";
@@ -10,6 +11,18 @@ let mainWindow;
 let flaskProcess;
 let flaskFailed = false;
 let flaskError = "";
+
+// ── Path helpers ────────────────────────────────────────────────────────────
+
+function getServerBinary() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "probate-server");
+  }
+  // Dev mode: use local dist/ output from PyInstaller
+  const local = path.join(__dirname, "dist", "probate-server");
+  if (fs.existsSync(local)) return local;
+  return null;
+}
 
 function getBundledAppDir() {
   if (app.isPackaged) {
@@ -24,12 +37,13 @@ function getLiveAppDir() {
 
 function getAppDir() {
   const live = getLiveAppDir();
-  // Use live (updatable) copy if it exists, otherwise fall back to bundled
   if (fs.existsSync(path.join(live, "app.py"))) {
     return live;
   }
   return getBundledAppDir();
 }
+
+// ── Status messaging ────────────────────────────────────────────────────────
 
 function sendStatus(msg) {
   console.log("[STATUS]", msg);
@@ -42,6 +56,7 @@ function sendStatus(msg) {
 
 function notifyFlaskFailed(msg) {
   flaskFailed = true;
+  flaskError = msg;
   console.error("[FAILED]", msg);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.executeJavaScript(
@@ -63,91 +78,17 @@ function run(cmd, timeout = 120000) {
   });
 }
 
-async function findPython() {
-  const candidates = [
-    "/usr/bin/python3",
-    "/usr/local/bin/python3",
-    "/opt/homebrew/bin/python3",
-    "/Library/Frameworks/Python.framework/Versions/Current/bin/python3",
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) {
-        await run(`"${p}" --version`, 5000);
-        console.log("[PYTHON] Found:", p);
-        return p;
-      }
-    } catch (e) { /* skip */ }
-  }
-  return null;
-}
+// ── Server launcher ─────────────────────────────────────────────────────────
 
-function getVenvDir() {
-  return path.join(app.getPath("userData"), "python_env");
-}
-
-async function setupPythonEnv(systemPython) {
-  const venvDir = getVenvDir();
-  const venvPython = path.join(venvDir, "bin", "python3");
-  const marker = path.join(venvDir, ".deps_installed");
-
-  // If venv and deps already exist, return immediately
-  if (fs.existsSync(venvPython) && fs.existsSync(marker)) {
-    console.log("[PYTHON] Existing venv found");
-    return venvPython;
-  }
-
-  // Create venv
-  if (!fs.existsSync(venvPython)) {
-    sendStatus("Setting up Python environment (first time only)...");
-    await run(`"${systemPython}" -m venv "${venvDir}"`, 30000);
-  }
-
-  // Install dependencies
-  sendStatus("Installing dependencies — this may take a minute...");
-  const deps = "flask python-docx pypdf pdfplumber pymupdf openpyxl python-dotenv anthropic pytesseract pdf2image";
-  await run(`"${venvPython}" -m pip install --upgrade pip --quiet`, 60000);
-  await run(`"${venvPython}" -m pip install ${deps} --quiet`, 180000);
-
-  // Install Tesseract & Poppler system binaries for OCR (macOS via Homebrew)
-  try {
-    await run("which tesseract", 5000);
-    console.log("[OCR] Tesseract already installed");
-  } catch (e) {
-    try {
-      await run("which brew", 5000);
-      sendStatus("Installing OCR support (tesseract)...");
-      await run("brew install tesseract --quiet", 120000);
-      console.log("[OCR] Tesseract installed via Homebrew");
-    } catch (brewErr) {
-      console.log("[OCR] Homebrew not available — Tesseract OCR skipped, Claude vision will be used as fallback");
-    }
-  }
-  try {
-    await run("which pdftoppm", 5000);
-    console.log("[OCR] Poppler already installed");
-  } catch (e) {
-    try {
-      await run("which brew", 5000);
-      sendStatus("Installing OCR support (poppler)...");
-      await run("brew install poppler --quiet", 120000);
-      console.log("[OCR] Poppler installed via Homebrew");
-    } catch (brewErr) {
-      console.log("[OCR] Homebrew not available — Poppler skipped, Claude vision will be used as fallback");
-    }
-  }
-
-  fs.writeFileSync(marker, new Date().toISOString());
-  console.log("[PYTHON] Dependencies installed");
-  return venvPython;
-}
-
-function launchFlask(python, appDir) {
+function launchServer(binaryPath, appDir) {
   sendStatus("Starting server...");
-  flaskProcess = spawn(python, ["app.py"], {
-    cwd: appDir,
+
+  // The frozen binary takes the app directory as its argument
+  // It loads app.py from that directory at runtime
+  flaskProcess = spawn(binaryPath, [appDir], {
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
   });
+
   flaskProcess.stdout.on("data", (d) => process.stdout.write(d));
   flaskProcess.stderr.on("data", (d) => {
     process.stderr.write(d);
@@ -159,12 +100,11 @@ function launchFlask(python, appDir) {
     }
   });
   flaskProcess.on("error", (err) => {
-    flaskError = err.message;
     notifyFlaskFailed("Could not start server: " + err.message);
   });
 }
 
-// ── Auto-update: pull latest source from GitHub ─────────────────────────────
+// ── Auto-update (source files only — not the binary) ────────────────────────
 
 function httpGet(url) {
   return new Promise((resolve, reject) => {
@@ -185,7 +125,6 @@ function httpGet(url) {
 }
 
 function getLocalVersion() {
-  // Read version from the live app dir, then bundled, then fallback
   for (const dir of [getLiveAppDir(), getBundledAppDir()]) {
     const appPy = path.join(dir, "app.py");
     if (fs.existsSync(appPy)) {
@@ -213,39 +152,36 @@ async function checkAndUpdate() {
     console.log(`[UPDATE] New version available: v${latest} (current: v${current})`);
     sendStatus(`Updating to v${latest}...`);
 
-    // Download the source zip from the release tag
     const zipUrl = `https://github.com/${GITHUB_REPO}/archive/refs/tags/${release.tag_name}.zip`;
     const zipData = await httpGet(zipUrl);
 
-    // Write zip to temp file and extract
     const tmpZip = path.join(app.getPath("temp"), "probate_update.zip");
     fs.writeFileSync(tmpZip, zipData);
 
     const liveDir = getLiveAppDir();
     const tmpExtract = path.join(app.getPath("temp"), "probate_extract");
 
-    // Clean previous extract
     if (fs.existsSync(tmpExtract)) {
       fs.rmSync(tmpExtract, { recursive: true, force: true });
     }
 
     await run(`unzip -o -q "${tmpZip}" -d "${tmpExtract}"`, 30000);
 
-    // Find the extracted folder (GitHub zips have a top-level folder like Repo-Name-tag/)
     const extracted = fs.readdirSync(tmpExtract);
     const srcDir = path.join(tmpExtract, extracted[0]);
 
-    // Copy updated files to live app dir
     if (fs.existsSync(liveDir)) {
       fs.rmSync(liveDir, { recursive: true, force: true });
     }
     fs.mkdirSync(liveDir, { recursive: true });
 
-    // Copy all needed files/dirs
-    const items = ["app.py", "generators.py", "requirements.txt", "static", "templates",
-                   "Accounting", "Probate-_NY_Court_Forms.pdf", "admin_ancil.pdf",
-                   "Petition_for_Non-Domciliary_Letters_of_Admin.pdf", "login.html",
-                   "preload.js", "favicon.svg"];
+    const items = [
+      "app.py", "generators.py", "requirements.txt",
+      "static", "templates", "Accounting",
+      "Probate-_NY_Court_Forms.pdf", "admin_ancil.pdf",
+      "Petition_for_Non-Domciliary_Letters_of_Admin.pdf",
+      "login.html", "preload.js", "favicon.svg",
+    ];
     for (const item of items) {
       const src = path.join(srcDir, item);
       const dst = path.join(liveDir, item);
@@ -254,14 +190,12 @@ async function checkAndUpdate() {
       }
     }
 
-    // Copy .env from bundled app (has API key, not in git)
     const bundledEnv = path.join(getBundledAppDir(), ".env");
     const liveEnv = path.join(liveDir, ".env");
     if (fs.existsSync(bundledEnv)) {
       fs.copyFileSync(bundledEnv, liveEnv);
     }
 
-    // Copy contacts/cases from bundled dir if not in live dir yet
     for (const f of ["cases.json", "contacts.json"]) {
       const dst = path.join(liveDir, f);
       if (!fs.existsSync(dst)) {
@@ -274,13 +208,8 @@ async function checkAndUpdate() {
       }
     }
 
-    // Clean up
     try { fs.unlinkSync(tmpZip); } catch (e) { /* ok */ }
     try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch (e) { /* ok */ }
-
-    // Force re-install deps in case requirements changed
-    const marker = path.join(getVenvDir(), ".deps_installed");
-    try { fs.unlinkSync(marker); } catch (e) { /* ok */ }
 
     console.log(`[UPDATE] Updated to v${latest}`);
     sendStatus(`Updated to v${latest}! Starting...`);
@@ -289,41 +218,72 @@ async function checkAndUpdate() {
   }
 }
 
+// ── Main startup ────────────────────────────────────────────────────────────
+
 async function startFlask() {
-  // Check for updates before anything else
   await checkAndUpdate();
 
+  const binary = getServerBinary();
   const appDir = getAppDir();
 
-  sendStatus("Finding Python...");
-  const systemPython = await findPython();
-  if (!systemPython) {
+  if (!binary || !fs.existsSync(binary)) {
     notifyFlaskFailed(
-      "Python 3 not found. Please install from python.org/downloads and relaunch."
+      "The application appears to be damaged. Please re-download and reinstall Probate HQ."
     );
     return;
   }
 
-  let python;
-  try {
-    python = await setupPythonEnv(systemPython);
-  } catch (e) {
-    notifyFlaskFailed("Setup failed: " + e.message);
+  if (!fs.existsSync(path.join(appDir, "app.py"))) {
+    notifyFlaskFailed(
+      "Application files are missing. Please re-download and reinstall Probate HQ."
+    );
     return;
   }
 
-  launchFlask(python, appDir);
+  console.log("[SERVER] Binary:", binary);
+  console.log("[SERVER] App dir:", appDir);
+  launchServer(binary, appDir);
 }
+
+// ── IPC handlers ────────────────────────────────────────────────────────────
 
 ipcMain.handle("flask-status", () => {
   return { failed: flaskFailed, error: flaskError };
 });
 
+function getPasswordFile() {
+  return path.join(app.getPath("userData"), "password.hash");
+}
+
+function sha256(str) {
+  return crypto.createHash("sha256").update(str).digest("hex");
+}
+
+ipcMain.handle("has-password", () => {
+  return fs.existsSync(getPasswordFile());
+});
+
+ipcMain.handle("login", async (_event, password) => {
+  const file = getPasswordFile();
+  if (!fs.existsSync(file)) return { ok: false, error: "No password set" };
+  const saved = fs.readFileSync(file, "utf8").trim();
+  if (sha256(password) === saved) return { ok: true };
+  return { ok: false, error: "Incorrect password" };
+});
+
+ipcMain.handle("setup-password", async (_event, password) => {
+  if (password.length < 4) return { ok: false, error: "Password must be at least 4 characters" };
+  fs.writeFileSync(getPasswordFile(), sha256(password), "utf8");
+  return { ok: true };
+});
+
+// ── Window ──────────────────────────────────────────────────────────────────
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "NY Surrogate's Court Probate Assistant",
+    title: "NY Surrogate's Court — Probate HQ",
     webPreferences: {
       preload: path.join(getAppDir(), "preload.js"),
       contextIsolation: true,

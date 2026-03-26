@@ -1,5 +1,5 @@
 """
-NY Surrogate's Court Probate Assistant v2
+NY Surrogate's Court Probate HQ
 Full document packet generator
 
 Run: python3 app.py
@@ -12,6 +12,7 @@ import json
 import os
 import traceback
 import zipfile
+from datetime import datetime
 try:
     from dotenv import load_dotenv
     # Load .env from same directory as app.py (works both in dev and packaged app)
@@ -87,17 +88,39 @@ def get_drive_roots():
 def find_estate_folder(decedent_name):
     """Search all connected drives for an existing 'Estate of [Name]' folder.
 
-    Searches up to 2 levels deep in each root. Returns list of matches.
+    Searches up to 2 levels deep in each root.
+    Matches full name, first+last (ignoring middle), and last name only.
     """
-    target = f"Estate of {decedent_name}".lower()
+    parts = decedent_name.strip().split()
+    # Build search targets: full name, first+last, last only
+    targets = set()
+    targets.add(f"estate of {decedent_name.lower()}")
+    if len(parts) >= 2:
+        # First + Last (skip middle names)
+        first_last = f"{parts[0]} {parts[-1]}"
+        targets.add(f"estate of {first_last.lower()}")
+    if len(parts) >= 1:
+        targets.add(f"estate of {parts[-1].lower()}")  # last name only
+
     matches = []
     seen = set()
+
+    def check_dir(entry):
+        name_lower = entry.name.lower()
+        # Exact match on any target
+        if name_lower in targets:
+            return True
+        # Also match if folder contains "estate of" and the last name
+        if name_lower.startswith("estate of") and parts[-1].lower() in name_lower:
+            return True
+        return False
+
     for root in get_drive_roots():
         try:
             for entry in os.scandir(root):
                 if not entry.is_dir():
                     continue
-                if entry.name.lower() == target:
+                if check_dir(entry):
                     real = os.path.realpath(entry.path)
                     if real not in seen:
                         seen.add(real)
@@ -105,7 +128,7 @@ def find_estate_folder(decedent_name):
                 # Also check one level deeper
                 try:
                     for sub in os.scandir(entry.path):
-                        if sub.is_dir() and sub.name.lower() == target:
+                        if sub.is_dir() and check_dir(sub):
                             real = os.path.realpath(sub.path)
                             if real not in seen:
                                 seen.add(real)
@@ -180,6 +203,7 @@ from generators import (
     # New Word template generators
     generate_waiver_probate, generate_bond_affidavit,
     generate_notice_of_probate, generate_petition_scpa_2203,
+    generate_refunding_agreement, generate_formal_accounting,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
 
@@ -636,6 +660,35 @@ def gen_accounting_excel():
     return resp
 
 
+@app.route("/generate-refunding-agreement", methods=["POST"])
+def gen_refunding_agreement():
+    body = request.get_json()
+    data = body.get("data", {})
+    doc_bytes = generate_refunding_agreement(data)
+    last = data.get("decedentLastName", "Estate").replace(" ", "_")
+    filename = f"Refunding_Agreement_{last}.docx"
+    buf = io.BytesIO(doc_bytes)
+    resp = send_file(buf, as_attachment=True, download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    resp.headers["X-Filename"] = filename
+    return resp
+
+
+@app.route("/accounting/generate-formal", methods=["POST"])
+def gen_formal_accounting():
+    body = request.get_json()
+    data = body.get("form_data", {})
+    entries = body.get("entries", [])
+    doc_bytes = generate_formal_accounting(data, entries)
+    last = data.get("decedentLastName", "Estate").replace(" ", "_")
+    filename = f"Formal_Accounting_{last}.docx"
+    buf = io.BytesIO(doc_bytes)
+    resp = send_file(buf, as_attachment=True, download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    resp.headers["X-Filename"] = filename
+    return resp
+
+
 @app.route("/smart-intake", methods=["POST"])
 def smart_intake():
     """Accept one or more PDFs, extract text, send to Claude, return probate field JSON."""
@@ -826,26 +879,44 @@ Each distributee in the array should be:
         return jsonify({"error": f"Claude error: {e}"}), 500
 
 
-# ── Server-side case storage ──────────────────────────────────────────────────
-CASES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases.json")
+# ── Server-side case storage (Supabase) ──────────────────────────────────────
+import requests as _requests
 
-def _load_cases():
-    if os.path.exists(CASES_FILE):
-        try:
-            with open(CASES_FILE, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {}
-    return {}
+SUPABASE_URL = "https://rstvyogujihdjkscngev.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzdHZ5b2d1amloZGprc2NuZ2V2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjI5NzEsImV4cCI6MjA4OTU5ODk3MX0.jck5WHbPEnYuluXJWvKOpaeI2ldG4G1qUAtTtrd3Eww"
 
-def _save_cases(cases):
-    with open(CASES_FILE, "w") as f:
-        json.dump(cases, f, indent=2)
+def _supa_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+
+def _supa_get(path, params=None):
+    r = _requests.get(f"{SUPABASE_URL}/rest/v1/{path}",
+                      headers=_supa_headers(), params=params, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def _supa_post(path, payload, upsert=False):
+    h = _supa_headers()
+    if upsert:
+        h["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    r = _requests.post(f"{SUPABASE_URL}/rest/v1/{path}",
+                       headers=h, json=payload, timeout=10)
+    r.raise_for_status()
+
+def _supa_delete(path):
+    r = _requests.delete(f"{SUPABASE_URL}/rest/v1/{path}",
+                         headers=_supa_headers(), timeout=10)
+    r.raise_for_status()
 
 
 @app.route("/cases", methods=["GET"])
 def get_cases():
-    return jsonify(_load_cases())
+    rows = _supa_get("cases", {"select": "name,data", "order": "updated_at.desc"})
+    return jsonify({row["name"]: row["data"] for row in rows})
 
 
 @app.route("/cases", methods=["POST"])
@@ -855,19 +926,163 @@ def save_case():
     data = body.get("data")
     if not name or data is None:
         return jsonify({"error": "name and data required"}), 400
-    cases = _load_cases()
-    cases[name] = data
-    _save_cases(cases)
+    _supa_post("cases", {"name": name, "data": data,
+                         "updated_at": datetime.now().isoformat()},
+               upsert=True)
     return jsonify({"ok": True})
 
 
 @app.route("/cases/<name>", methods=["DELETE"])
 def delete_case(name):
-    cases = _load_cases()
-    if name in cases:
-        del cases[name]
-        _save_cases(cases)
+    _supa_delete(f"cases?name=eq.{_requests.utils.quote(name)}")
     return jsonify({"ok": True})
+
+
+# ── Accounting entries (Supabase) ─────────────────────────────────────────────
+
+@app.route("/accounting/<case_name>", methods=["GET"])
+def get_accounting(case_name):
+    rows = _supa_get("accounting_entries", {
+        "select": "*",
+        "case_name": f"eq.{case_name}",
+        "order": "schedule,date",
+    })
+    return jsonify(rows)
+
+
+@app.route("/accounting", methods=["POST"])
+def save_accounting_entry():
+    body = request.get_json()
+    entry = body.get("entry", {})
+    if not entry.get("case_name") or not entry.get("schedule"):
+        return jsonify({"error": "case_name and schedule required"}), 400
+    entry["updated_at"] = datetime.now().isoformat()
+    _supa_post("accounting_entries", entry, upsert=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/accounting/batch", methods=["POST"])
+def save_accounting_batch():
+    body = request.get_json()
+    entries = body.get("entries", [])
+    if not entries:
+        return jsonify({"error": "entries required"}), 400
+    now_ts = datetime.now().isoformat()
+    # Clean entries — only send columns that exist in the table
+    valid_cols = {"case_name", "schedule", "date", "description", "category",
+                  "amount", "shares", "institution", "inventory_value",
+                  "market_value", "lien_amount", "source", "created_by",
+                  "updated_at"}
+    numeric_cols = {"amount", "inventory_value", "market_value", "lien_amount"}
+    cleaned = []
+    for e in entries:
+        row = {}
+        for k in valid_cols:
+            v = e.get(k)
+            if k in numeric_cols:
+                try:
+                    v = float(str(v or 0).replace(",", "").replace("$", "").strip() or 0)
+                except (ValueError, TypeError):
+                    v = 0
+            elif v is None:
+                v = ""
+            row[k] = v
+        row["updated_at"] = now_ts
+        row.setdefault("amount", 0)
+        if not row.get("case_name") or not row.get("schedule"):
+            continue
+        cleaned.append(row)
+    if not cleaned:
+        return jsonify({"error": "No valid entries"}), 400
+    h = _supa_headers()
+    h["Prefer"] = "return=minimal"
+    r = _requests.post(f"{SUPABASE_URL}/rest/v1/accounting_entries",
+                       headers=h, json=cleaned, timeout=15)
+    if r.status_code >= 400:
+        print(f"[ACCOUNTING BATCH] Supabase error {r.status_code}: {r.text}")
+        return jsonify({"error": f"Database error: {r.text[:200]}"}), 500
+    return jsonify({"ok": True, "count": len(cleaned)})
+
+
+@app.route("/accounting/<entry_id>", methods=["DELETE"])
+def delete_accounting_entry(entry_id):
+    _supa_delete(f"accounting_entries?id=eq.{entry_id}")
+    return jsonify({"ok": True})
+
+
+@app.route("/accounting/case/<case_name>", methods=["DELETE"])
+def delete_accounting_for_case(case_name):
+    _supa_delete(f"accounting_entries?case_name=eq.{_requests.utils.quote(case_name)}")
+    return jsonify({"ok": True})
+
+
+@app.route("/accounting/import-statement", methods=["POST"])
+def import_bank_statement():
+    """Parse uploaded bank statement (CSV or PDF) and return proposed entries."""
+    if not request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = list(request.files.values())[0]
+    fname = f.filename.lower()
+    text = ""
+
+    if fname.endswith(".csv"):
+        import csv as _csv
+        content = f.read().decode("utf-8", errors="replace")
+        text = content
+    elif fname.endswith(".pdf"):
+        import pdfplumber
+        pdf_bytes = f.read()
+        pages = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t and t.strip():
+                    pages.append(t)
+        text = "\n\n".join(pages)
+    else:
+        return jsonify({"error": "Unsupported file type. Use CSV or PDF."}), 400
+
+    if not text.strip():
+        return jsonify({"error": "Could not extract text from file"}), 400
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    import anthropic as _anthropic
+    client = _anthropic.Anthropic(api_key=api_key)
+
+    prompt = f"""You are parsing a bank statement for a NYS estate accounting.
+Extract every transaction and return a JSON array of objects with these fields:
+- "date": MM/DD/YYYY format
+- "description": transaction description
+- "amount": positive number (no $ sign)
+- "category": one of "Deposit", "Interest", "Dividend", "Service Charge", "Tax", "Check", "Withdrawal", "Transfer", "Other"
+- "schedule": classify as:
+  - "A-2" for income (interest, dividends)
+  - "C" for expenses (fees, charges, taxes withheld)
+  - "AA" for deposits/receipts of principal
+  - "B" for sales/decreases
+
+Return ONLY the JSON array, no other text.
+
+Bank statement text:
+{text[:8000]}"""
+
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = msg.content[0].text.strip()
+    # Extract JSON from response
+    import re
+    m = re.search(r'\[.*\]', raw, re.DOTALL)
+    if m:
+        try:
+            entries = json.loads(m.group())
+            return jsonify({"entries": entries})
+        except json.JSONDecodeError:
+            return jsonify({"error": "Failed to parse AI response"}), 500
+    return jsonify({"error": "No transactions found"}), 400
 
 
 @app.route("/settings", methods=["GET"])
@@ -939,7 +1154,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.5"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
@@ -1026,7 +1241,24 @@ def parse_pdf():
 if __name__ == "__main__":
     import socket
 
-    port = 52845  # uncommon port to avoid conflicts
+    port = 52845  # preferred port
+
+    # Check if port is available; if not, find one
+    def port_available(p):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(("0.0.0.0", p))
+            s.close()
+            return True
+        except OSError:
+            return False
+
+    if not port_available(port):
+        # Try to find an open port nearby
+        for p in range(52846, 52860):
+            if port_available(p):
+                port = p
+                break
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1036,7 +1268,7 @@ if __name__ == "__main__":
     except Exception:
         local_ip = "unknown"
     print("=" * 60)
-    print("  NY Surrogate's Court Probate Assistant v2")
+    print("  NY Surrogate's Court Probate HQ")
     print("=" * 60)
     print(f"  Counties: {', '.join(COUNTY_INFO.keys())}")
     print()

@@ -1,5 +1,5 @@
 """
-Document generators for NY Surrogate's Court Probate Assistant
+Document generators for NY Surrogate's Court Probate HQ
 Generates filled Word docs and PDFs from case data
 """
 
@@ -427,19 +427,45 @@ def generate_805(data):
         space_after=4
     )
 
-    # Assets — skip empty and zero values
-    pp = nonzero(data.get("personalPropertyValue"))
-    ir = nonzero(data.get("improvedRealProperty"))
-    ur = nonzero(data.get("unimprovedRealProperty"))
-    rd = (data.get("realPropertyDescription") or "").strip()
-    gr = nonzero(data.get("grossRents18mo"))
-
+    # Assets — use individual asset tracker entries if available, else summary fields
+    tracked_assets = [a for a in data.get("assets", []) if a.get("institution")]
     asset_lines = []
-    if pp: asset_lines.append(f"Personal Property:  ${pp}")
-    if ir: asset_lines.append(f"Improved Real Property (NY):  ${ir}")
-    if ur: asset_lines.append(f"Unimproved Real Property (NY):  ${ur}")
-    if rd: asset_lines.append(f"Description:  {rd}")
-    if gr: asset_lines.append(f"Gross Rents (18 months):  ${gr}")
+
+    if tracked_assets:
+        for a in tracked_assets:
+            val = nonzero(a.get("value"))
+            inst = a.get("institution", "")
+            cat = a.get("category", "")
+            acct = a.get("accountNumber", "")
+            desc = f"{cat} – {inst}" if cat and inst else (inst or cat)
+            if acct:
+                desc += f" (acct ...{acct[-4:]})" if len(acct) >= 4 else f" (acct {acct})"
+            if val:
+                asset_lines.append(f"{desc}:  ${val}")
+            else:
+                asset_lines.append(desc)
+
+        # Also include real property from summary fields (not tracked in asset cards)
+        ir = nonzero(data.get("improvedRealProperty"))
+        ur = nonzero(data.get("unimprovedRealProperty"))
+        rd = (data.get("realPropertyDescription") or "").strip()
+        gr = nonzero(data.get("grossRents18mo"))
+        if ir: asset_lines.append(f"Improved Real Property (NY):  ${ir}")
+        if ur: asset_lines.append(f"Unimproved Real Property (NY):  ${ur}")
+        if rd: asset_lines.append(f"Description:  {rd}")
+        if gr: asset_lines.append(f"Gross Rents (18 months):  ${gr}")
+    else:
+        pp = nonzero(data.get("personalPropertyValue"))
+        ir = nonzero(data.get("improvedRealProperty"))
+        ur = nonzero(data.get("unimprovedRealProperty"))
+        rd = (data.get("realPropertyDescription") or "").strip()
+        gr = nonzero(data.get("grossRents18mo"))
+        if pp: asset_lines.append(f"Personal Property:  ${pp}")
+        if ir: asset_lines.append(f"Improved Real Property (NY):  ${ir}")
+        if ur: asset_lines.append(f"Unimproved Real Property (NY):  ${ur}")
+        if rd: asset_lines.append(f"Description:  {rd}")
+        if gr: asset_lines.append(f"Gross Rents (18 months):  ${gr}")
+
     if not asset_lines:
         asset_lines = ["NONE"]
 
@@ -766,7 +792,6 @@ def _build_probate_fields(data):
         "a Name": dec,
         "aka": data.get("decedentAKA", ""),
         "Name_petitioner": pet,
-        "1": pet,
         "Domicile or Principal Office": data.get("petitionerStreet", ""),
         "City Village or Town": data.get("petitionerCity", ""),
         "State": data.get("petitionerState", ""),
@@ -2830,8 +2855,549 @@ def generate_petition_scpa_2203(data):
     return make_docx_bytes(doc)
 
 
-# NOTE: RRI FINAL-Probate Estate.doc is a legacy .doc format (not .docx).
-# python-docx cannot open it. To generate Receipt & Release documents,
-# the .doc must first be converted to .docx format in Microsoft Word.
-# TODO: Convert knowledge/Releases/RRI FINAL-Probate Estate.doc to .docx
-#       and add generate_receipt_release(data, dist) function.
+# ─── REFUNDING AGREEMENT (Receipt, Release, Indemnification & Refunding) ──────
+
+
+def generate_refunding_agreement(data):
+    """Generate the Receipt, Release, Indemnification & Refunding Agreement.
+
+    Template: RRI_Refunding_Agreement.docx (converted from legacy .doc)
+
+    Auto-fills case header info (county, decedent, executor, date of death).
+    Bracketed optional clauses (e.g. [WHEREAS...], [his/her]) are left as-is
+    for the attorney to select/edit manually in Word.
+
+    Placeholders replaced:
+    - COUNTY OF SUFFOLK          → actual county
+    - DECEDENT (in header/body)  → decedent full name
+    - EXECUTOR (in header/body)  → petitioner/executor name
+    - "died on DATE"             → date of death (long format)
+    - "County of COUNTY"         → county name
+    - EXEC (commission para)     → executor name
+    - BENE1 / BENE 1            → first distributee name (if available)
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "RRI_Refunding_Agreement.docx"))
+
+    dec = decedent_full(data)
+    pet = petitioner_full(data)
+    county = data.get("county", "")
+    dod = data.get("decedentDOD", "")
+    dod_long = format_date_long(dod) if dod else "________"
+
+    # Get first distributee name if available
+    dists = data.get("distributees", [])
+    bene1_name = ""
+    if dists:
+        bene1_name = " ".join(filter(None, [
+            dists[0].get("firstName", ""),
+            dists[0].get("middleName", ""),
+            dists[0].get("lastName", ""),
+        ]))
+
+    replacements = {
+        "COUNTY OF SUFFOLK":  f"COUNTY OF {county.upper()}" if county else "COUNTY OF __________",
+        "died on DATE":       f"died on {dod_long}",
+        "County of COUNTY":   f"County of {county}" if county else "County of __________",
+    }
+
+    # Replace DECEDENT — but only the standalone placeholder, not inside
+    # "Decedent" (which appears as a defined term in the body)
+    if dec:
+        replacements["DECEDENT,"] = f"{dec.upper()},"
+        replacements["DECEDENT, (the"] = f"{dec.upper()}, (the"
+        replacements["of EXECUTOR, as Executor"] = f"of {pet.upper()}, as Executor"
+        replacements["EXECUTOR was appointed"] = f"{pet.upper()} was appointed"
+
+    # Executor signature block and notary
+    if pet:
+        replacements["EXEC individually"] = f"{pet.upper()} individually"
+
+    # Beneficiary name fill (first bene only — others need manual entry)
+    if bene1_name:
+        replacements["BENE1  hereby"] = f"{bene1_name.upper()}  hereby"
+        replacements["BENE 1"] = bene1_name.upper()
+
+    replace_in_doc(doc, replacements)
+
+    return make_docx_bytes(doc)
+
+
+# ─── FORMAL ACCOUNTING (Judicial Settlement) ─────────────────────────────────
+
+
+def generate_formal_accounting(form_data, entries):
+    """Generate a formal accounting document (Word) matching Surrogate's Court format.
+
+    Produces cover page, summary statement, and Schedules A through K.
+    """
+    from docx.enum.section import WD_ORIENT
+
+    doc = Document()
+
+    # ── Page setup ────────────────────────────────────────────────────────────
+    section = doc.sections[0]
+    section.top_margin = Inches(1)
+    section.bottom_margin = Inches(1)
+    section.left_margin = Inches(1.25)
+    section.right_margin = Inches(1.25)
+
+    dec = decedent_full(form_data)
+    aka = form_data.get("decedentAKA", "")
+    pet = petitioner_full(form_data)
+    county = form_data.get("county", "")
+    dod = form_data.get("decedentDOD", "")
+    dod_long = format_date_long(dod) if dod else "________"
+    file_no = form_data.get("fileNo", "")
+    proc = form_data.get("proceedingType", "Administration")
+    role = "Executor" if proc == "Probate" else "Administrator"
+
+    # Group entries by schedule
+    by_sched = {}
+    for e in entries:
+        s = e.get("schedule", "")
+        by_sched.setdefault(s, []).append(e)
+
+    def sched_total(s):
+        return sum(float(e.get("amount", 0) or 0) for e in by_sched.get(s, []))
+
+    def add_para(text, bold=False, size=12, alignment=None, space_after=6):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.bold = bold
+        run.font.size = Pt(size)
+        run.font.name = "Times New Roman"
+        if alignment is not None:
+            p.alignment = alignment
+        p.paragraph_format.space_after = Pt(space_after)
+        return p
+
+    def money(val):
+        try:
+            v = float(val or 0)
+            return f"${v:,.2f}"
+        except (ValueError, TypeError):
+            return "$0.00"
+
+    # ── COVER PAGE ────────────────────────────────────────────────────────────
+    add_para("SURROGATE'S COURT OF THE STATE OF NEW YORK",
+             bold=True, size=12, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+    add_para(f"COUNTY OF {county.upper()}" if county else "COUNTY OF __________",
+             bold=True, size=12, alignment=WD_ALIGN_PARAGRAPH.LEFT)
+
+    # Caption box
+    dec_display = dec.upper()
+    if aka:
+        dec_display += f", a/k/a\n{aka.upper()}"
+
+    caption_left = (
+        f"In the Matter of the Judicial Settlement of the Final Account of\n\n"
+        f"{pet.upper()}, as {role}\n\n"
+        f"of the Estate of\n\n"
+        f"{dec_display},\n\n"
+        f"{'':>40}Deceased."
+    )
+    add_para(caption_left, size=12)
+
+    file_line = f"File No:    {file_no}" if file_no else "File No:    __________"
+    add_para(file_line, size=12, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
+
+    # Accounting type
+    add_para(f"ACCOUNTING BY:\n  {role}", size=11, space_after=12)
+
+    # Court address and period
+    add_para(f"TO THE SURROGATE'S COURT OF THE COUNTY OF {county.upper() if county else '__________'}:",
+             bold=True, size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=6)
+    add_para(
+        f"The undersigned does hereby render the account of the proceedings as follows:\n"
+        f"Period of account from {dod_long} to {today()}\n"
+        f"This is a first and final account containing the following schedules.",
+        size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12
+    )
+
+    # ── TABLE OF CONTENTS ─────────────────────────────────────────────────────
+    toc_items = [
+        ("A", "Principal Received"),
+        ("AA", "Subsequent Receipts of Principal"),
+        ("A-1", "Realized Increases"),
+        ("A-2", "Income Collected"),
+        ("B", "Realized Decreases"),
+        ("C", "Funeral and Administration Expenses and Taxes"),
+        ("C-1", "Unpaid Administration Expenses"),
+        ("D", "Creditors' Claims"),
+        ("E", "Distributions of Principal"),
+        ("F", "New Investments, Exchanges and Stock Distributions"),
+        ("G", "Principal Remaining on Hand"),
+        ("H", "Interested Parties"),
+        ("I", "Computation of Commissions"),
+        ("J", "Other Pertinent Facts and Cash Reconciliation"),
+        ("K", "Estate Taxes Paid and Allocation of Estate Taxes"),
+    ]
+
+    add_para("PRINCIPAL", bold=True, size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=6)
+    for sched, title in toc_items[:11]:
+        add_para(f"Schedule {sched}        {title}", size=11, space_after=2)
+    add_para("OTHER", bold=True, size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=6)
+    for sched, title in toc_items[11:]:
+        add_para(f"Schedule {sched}        {title}", size=11, space_after=2)
+
+    doc.add_page_break()
+
+    # ── SUMMARY STATEMENT ─────────────────────────────────────────────────────
+    add_para("SUMMARY STATEMENT", bold=True, size=12,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=6)
+    add_para("COMBINED ACCOUNT", bold=True, size=12,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+    tot_a = sched_total("A")
+    tot_aa = sched_total("AA")
+    tot_a1 = sched_total("A-1")
+    tot_a2 = sched_total("A-2")
+    tot_b = sched_total("B")
+    tot_c = sched_total("C")
+    tot_c1 = sched_total("C-1")
+    tot_d = sched_total("D")
+    tot_e = sched_total("E")
+    tot_g = sched_total("G")
+
+    # Unrealized: G inventory vs market
+    unreal_inc = 0
+    unreal_dec = 0
+    for e in by_sched.get("G", []):
+        inv = float(e.get("inventory_value", 0) or 0)
+        mkt = float(e.get("market_value", 0) or float(e.get("amount", 0) or 0))
+        diff = mkt - inv
+        if diff > 0:
+            unreal_inc += diff
+        else:
+            unreal_dec += abs(diff)
+
+    charges = tot_a + tot_aa + tot_a1 + tot_a2 + unreal_inc
+    credits = tot_b + tot_c + tot_d + tot_e + unreal_dec
+    balance = charges - credits
+
+    # Charges table
+    add_para("CHARGES:", bold=True, size=11, space_after=4)
+    charge_items = [
+        ('Schedule "A"', "(Principal Received)", tot_a),
+        ('Schedule "AA"', "(Subsequent Receipts)", tot_aa),
+        ('Schedule "A-1"', "(Realized Increases)", tot_a1),
+        ('Schedule "A-2"', "(Income Collected)", tot_a2),
+        ('Schedule "G"', "(Unrealized Increases)", unreal_inc),
+    ]
+    for label, desc, val in charge_items:
+        add_para(f"{label:20s} {desc:40s} {money(val):>15s}", size=11, space_after=1)
+    add_para(f"{'Total Charges':20s} {'':40s} {money(charges):>15s}", bold=True, size=11, space_after=8)
+
+    add_para("CREDITS:", bold=True, size=11, space_after=4)
+    credit_items = [
+        ('Schedule "B"', "(Realized Decreases)", tot_b),
+        ('Schedule "C"', "(Funeral and Administration Expenses)", tot_c),
+        ('Schedule "D"', "(Creditors' Claims Actually Paid)", tot_d),
+        ('Schedule "E"', "(Distributions)", tot_e),
+        ('Schedule "G"', "(Unrealized Decreases)", unreal_dec),
+    ]
+    for label, desc, val in credit_items:
+        add_para(f"{label:20s} {desc:40s} {money(val):>15s}", size=11, space_after=1)
+    add_para(f"{'Total Credits':20s} {'':40s} {money(credits):>15s}", bold=True, size=11, space_after=4)
+    bal_label = 'Balance on Hand Shown by Schedule "G"'
+    add_para(f"{bal_label:40s} {money(balance):>15s}",
+             bold=True, size=11, space_after=8)
+
+    doc.add_page_break()
+
+    # ── SUMMARY NARRATIVE ─────────────────────────────────────────────────────
+    add_para("SUMMARY STATEMENT", bold=True, size=12,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+    add_para(
+        f"The foregoing balance of {money(balance)} consists of "
+        f"cash and other property on hand as of {today()}. "
+        f"It is subject to deductions of estimated principal commissions "
+        f"amounting to {money(_calc_commission(charges))}, "
+        f"shown in Schedule I and to the proper charge to principal of expenses of this "
+        f"accounting.",
+        size=11, space_after=12
+    )
+    add_para("The attached schedules are part of this account.",
+             size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=24)
+    add_para(f"{'_' * 35}", size=11, space_after=2)
+    add_para(pet, size=11, space_after=2)
+    add_para(role, size=11, space_after=0)
+
+    doc.add_page_break()
+
+    # ── SCHEDULE GENERATION HELPER ────────────────────────────────────────────
+    def add_schedule(sched_id, title, subtitle, cols, amt_col="amount"):
+        """Add a schedule section with header and entry table."""
+        estate_header = f"Estate of {dec}"
+        if aka:
+            estate_header += f", aka {aka}"
+        add_para(estate_header, bold=True, size=11,
+                 alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+        add_para(f"Schedule {sched_id}", bold=True, size=11,
+                 alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+        add_para(subtitle, bold=True, size=11,
+                 alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+        sched_entries = by_sched.get(sched_id, [])
+
+        if not sched_entries:
+            add_para("None", size=11, space_after=6)
+            total = 0
+        else:
+            # Build table
+            table = doc.add_table(rows=1, cols=len(cols))
+            table.style = "Table Grid"
+
+            # Header row
+            for i, (hdr, _) in enumerate(cols):
+                cell = table.rows[0].cells[i]
+                cell.text = hdr
+                for p in cell.paragraphs:
+                    for r in p.runs:
+                        r.bold = True
+                        r.font.size = Pt(10)
+                        r.font.name = "Times New Roman"
+
+            total = 0
+            for e in sched_entries:
+                row = table.add_row()
+                for i, (_, field) in enumerate(cols):
+                    val = e.get(field, "") or ""
+                    if field == amt_col or field in ("inventory_value", "market_value", "amount"):
+                        try:
+                            val = money(float(val or 0))
+                        except (ValueError, TypeError):
+                            val = ""
+                    cell = row.cells[i]
+                    cell.text = str(val)
+                    for p in cell.paragraphs:
+                        for r in p.runs:
+                            r.font.size = Pt(10)
+                            r.font.name = "Times New Roman"
+                amt = float(e.get(amt_col, 0) or 0)
+                total += amt
+
+        add_para(f"\nTotal Schedule {sched_id}:  {money(total)}",
+                 bold=True, size=11, space_after=6)
+
+        doc.add_page_break()
+        return total
+
+    # ── GENERATE ALL SCHEDULES ────────────────────────────────────────────────
+    add_schedule("A", "Schedule A", "Receipts",
+                 [("Description", "description"), ("Institution", "institution"),
+                  ("Inventory Value", "amount")])
+
+    add_schedule("AA", "Schedule AA", "Statement of Subsequent Receipts of Principal",
+                 [("Date Received", "date"), ("Description", "description"),
+                  ("Inventory Value", "amount")])
+
+    add_schedule("A-1", "Schedule A-1",
+                 "Statement of Increases on Sales, Liquidation or Distribution",
+                 [("Description", "description"),
+                  ("Proceeds", "amount"), ("Inventory Value", "inventory_value")])
+
+    add_schedule("A-2", "Schedule A-2", "Statement of All Income Collected",
+                 [("Date", "date"), ("Description", "description"),
+                  ("Institution", "institution"), ("Amount", "amount")])
+
+    add_schedule("B", "Schedule B",
+                 "Statement of Decreases Due to Sales, Liquidation, Collection, Distribution, or Uncollectibility",
+                 [("Date", "date"), ("Description", "description"),
+                  ("Proceeds", "amount"), ("Inventory Value", "inventory_value")])
+
+    add_schedule("C", "Schedule C",
+                 "Statement of Funeral and Administration Expenses and Taxes",
+                 [("Date", "date"), ("Description", "description"), ("Amount", "amount")])
+
+    add_schedule("C-1", "Schedule C-1", "Statement of Unpaid Administration Expenses",
+                 [("Description", "description"), ("Amount", "amount")])
+
+    add_schedule("D", "Schedule D", "Statement of All Creditors' Claims",
+                 [("Description", "description"), ("Amount", "amount")])
+
+    add_schedule("E", "Schedule E", "Distributions",
+                 [("Description", "description"), ("Distribution Value", "amount")])
+
+    add_schedule("F", "Schedule F",
+                 "Statement of New Investments, Exchanges and Stock Distributions",
+                 [("Date", "date"), ("Description", "description"),
+                  ("Shares", "shares"), ("Inventory Value", "amount")])
+
+    add_schedule("G", "Schedule G", "Balance On Hand",
+                 [("Description", "description"), ("Shares", "shares"),
+                  ("Market Value", "market_value"), ("Inventory Value", "inventory_value")])
+
+    # ── SCHEDULE H — Interested Parties ───────────────────────────────────────
+    estate_header = f"Estate of {dec}"
+    if aka:
+        estate_header += f", aka {aka}"
+    add_para(estate_header, bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Schedule H", bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Statement of Interested Parties", bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+    h_entries = by_sched.get("H", [])
+    if h_entries:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Table Grid"
+        for i, hdr in enumerate(["Name and Post Office Address", "Relationship", "Nature of Interest"]):
+            cell = table.rows[0].cells[i]
+            cell.text = hdr
+            for p in cell.paragraphs:
+                for r in p.runs:
+                    r.bold = True
+                    r.font.size = Pt(10)
+                    r.font.name = "Times New Roman"
+        for e in h_entries:
+            row = table.add_row()
+            row.cells[0].text = f"{e.get('description', '')}\n{e.get('institution', '')}"
+            row.cells[1].text = e.get("category", "")
+            row.cells[2].text = "Distributee"
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                        r.font.name = "Times New Roman"
+    else:
+        add_para("None", size=11)
+
+    add_para(
+        "\nThe records of this Court have been searched for powers of attorney and "
+        "assignments and encumbrances made and executed by any of the persons interested "
+        "in or entitled to share in the estate. No such powers of attorney, assignments "
+        "or encumbrances were found to have been filed or recorded in this Court, and the "
+        "accounting party has no knowledge of the execution of any such power of attorney, "
+        "assignment or encumbrance that is not so filed and recorded.",
+        size=10, space_after=6
+    )
+
+    doc.add_page_break()
+
+    # ── SCHEDULE I — Commission Computation ───────────────────────────────────
+    add_para(estate_header, bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Schedule I", bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Statement of Computation of Commissions", bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+    # Receiving commission — use net equity (gross minus liens/mortgages)
+    total_liens = sum(float(e.get("lien_amount", 0) or 0)
+                      for e in by_sched.get("A", []) + by_sched.get("AA", []))
+    net_principal = tot_a + tot_aa - total_liens
+
+    add_para("For Receiving Principal", bold=True, size=11, space_after=4)
+    recv_base = net_principal + tot_a1 + tot_a2 + unreal_inc
+    add_para(f"Principal Received (Schedule A + AA)     {money(tot_a + tot_aa)}", size=11, space_after=1)
+    if total_liens > 0:
+        add_para(f"Less: Liens/Mortgages on Real Property  ({money(total_liens)})", size=11, space_after=1)
+        add_para(f"Net Equity                              {money(net_principal)}", size=11, space_after=1)
+    add_para(f"Increases on Principal (Schedule A-1)    {money(tot_a1)}", size=11, space_after=1)
+    add_para(f"Income Collected (Schedule A-2)          {money(tot_a2)}", size=11, space_after=1)
+    add_para(f"Unrealized Increases (Schedule G)        {money(unreal_inc)}", size=11, space_after=4)
+    add_para(f"Commission Base                          {money(recv_base)}", bold=True, size=11, space_after=6)
+
+    tiers = [
+        (0.05, 100000), (0.04, 200000), (0.03, 700000), (0.025, float('inf')),
+    ]
+    remaining = recv_base
+    recv_comm = 0
+    for rate, bracket in tiers:
+        if remaining <= 0:
+            break
+        base = min(remaining, bracket)
+        comm = base * rate
+        recv_comm += comm
+        pct = int(rate * 100) if rate * 100 == int(rate * 100) else rate * 100
+        add_para(f"  {pct}% on {money(base):>20s} = {money(comm):>15s}", size=11, space_after=1)
+        remaining -= base
+
+    recv_half = recv_comm / 2
+    add_para(f"\n1/2 Thereof for Receiving               {money(recv_half)}",
+             bold=True, size=11, space_after=8)
+
+    # Paying commission
+    paying_base = tot_c + tot_d + tot_e + tot_g
+    add_para("For Paying Principal", bold=True, size=11, space_after=4)
+    add_para(f"Funeral and Administration Expenses (Schedule C)  {money(tot_c)}", size=11, space_after=1)
+    add_para(f"Payment of Debts (Schedule D)                     {money(tot_d)}", size=11, space_after=1)
+    add_para(f"Distributions of Principal (Schedule E)           {money(tot_e)}", size=11, space_after=1)
+    add_para(f"Principal on Hand (Schedule G)                    {money(tot_g)}", size=11, space_after=4)
+    add_para(f"Total Principal                                   {money(paying_base)}",
+             bold=True, size=11, space_after=6)
+
+    remaining = paying_base
+    pay_comm = 0
+    for rate, bracket in tiers:
+        if remaining <= 0:
+            break
+        base = min(remaining, bracket)
+        comm = base * rate
+        pay_comm += comm
+        pct = int(rate * 100) if rate * 100 == int(rate * 100) else rate * 100
+        add_para(f"  {pct}% on {money(base):>20s} = {money(comm):>15s}", size=11, space_after=1)
+        remaining -= base
+
+    pay_half = pay_comm / 2
+    add_para(f"\n1/2 Thereof for Paying                  {money(pay_half)}",
+             bold=True, size=11, space_after=12)
+
+    total_comm = recv_half + pay_half
+    add_para(f"Total Commissions Due Each {role}", bold=True, size=11, space_after=4)
+    add_para(f"  Receiving     {money(recv_half)}", size=11, space_after=1)
+    add_para(f"  Paying        {money(pay_half)}", size=11, space_after=4)
+    add_para(f"  Total         {money(total_comm)}", bold=True, size=11, space_after=6)
+    add_para(f"\nTotal commissions available for allocation:   {money(total_comm)}",
+             bold=True, size=11, space_after=6)
+
+    doc.add_page_break()
+
+    # ── SCHEDULE J — Cash Reconciliation ──────────────────────────────────────
+    add_para(estate_header, bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Schedule J", bold=True, size=11,
+             alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=2)
+    add_para("Statement of Other Pertinent Facts and Cash Reconciliation", bold=True,
+             size=11, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=12)
+
+    add_para("Other Pertinent Facts", bold=True, size=11, space_after=4)
+    add_para("None", size=11, space_after=8)
+
+    add_para("Reconciliation of Cash and Other Assets", bold=True, size=11, space_after=8)
+
+    recon_items = [
+        ("Schedule A", "Receipts", tot_a, "CREDITS"),
+        ("Schedule AA", "Subsequent Receipts", tot_aa, "CREDITS"),
+        ("Schedule A-2", "Income Collected", tot_a2, "CREDITS"),
+        ("Schedule B", "Proceeds on Sales, Etc.", tot_b, "DEBITS"),
+        ("Schedule C", "Admin/Funeral Expenses", tot_c, "DEBITS"),
+        ("Schedule F", "Purchases, Etc.", sched_total("F"), "DEBITS"),
+        ("Schedule G", "On Hand", tot_g, "DEBITS"),
+    ]
+
+    add_para(f"{'':30s} {'DEBITS':>15s} {'CREDITS':>15s}", bold=True, size=11, space_after=4)
+    cash_debits = 0
+    cash_credits = 0
+    for label, desc, val, side in recon_items:
+        debit = money(val) if side == "DEBITS" else ""
+        credit = money(val) if side == "CREDITS" else ""
+        if side == "DEBITS":
+            cash_debits += val
+        else:
+            cash_credits += val
+        add_para(f"{label:12s} {desc:18s} {debit:>15s} {credit:>15s}", size=11, space_after=1)
+
+    add_para(f"\n{'Total':30s} {money(cash_debits):>15s} {money(cash_credits):>15s}",
+             bold=True, size=11, space_after=6)
+
+    doc.add_page_break()
+
+    # ── SCHEDULE K — Estate Taxes ─────────────────────────────────────────────
+    add_schedule("K", "Schedule K",
+                 "Statement of Estate Taxes Paid and Allocation Thereof",
+                 [("Description", "description"), ("Amount", "amount")])
+
+    return make_docx_bytes(doc)

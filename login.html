@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Login — Probate Assistant</title>
+  <title>Login — Probate HQ</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -54,7 +54,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Probate Assistant</h1>
+    <h1>Probate HQ</h1>
 
     <div id="login-view">
       <p class="subtitle">Enter your password to continue</p>
@@ -77,32 +77,28 @@
   </div>
 
   <script>
-    const PASSWORD_KEY = "probate_pw_hash";
-
-    async function sha256(str) {
-      const buf = await crypto.subtle.digest("SHA-256",
-        new TextEncoder().encode(str));
-      return Array.from(new Uint8Array(buf))
-        .map(b => b.toString(16).padStart(2, "0")).join("");
-    }
+    let serverReady = false;
+    let serverFailed = false;
 
     function waitForServer(timeoutMs) {
       return new Promise((resolve, reject) => {
+        if (serverReady) { resolve(); return; }
+        if (serverFailed) { reject(new Error("failed")); return; }
         const start = Date.now();
         const check = () => {
+          if (serverFailed) { reject(new Error("failed")); return; }
           if (Date.now() - start > timeoutMs) {
             reject(new Error("timeout"));
             return;
           }
           fetch("http://localhost:52845/counties")
-            .then(r => { if (r.ok) resolve(); else setTimeout(check, 300); })
-            .catch(() => setTimeout(check, 300));
+            .then(r => { if (r.ok) { serverReady = true; resolve(); } else setTimeout(check, 500); })
+            .catch(() => setTimeout(check, 500));
         };
         check();
       });
     }
 
-    // Listen for status updates from Electron main process
     window.__statusUpdate = (msg) => {
       const err = document.getElementById("err");
       err.style.color = "#aaa";
@@ -110,6 +106,7 @@
     };
 
     window.__flaskFailed = (msg) => {
+      serverFailed = true;
       const err = document.getElementById("err");
       err.style.color = "#e94560";
       err.textContent = msg;
@@ -120,57 +117,67 @@
 
     async function unlock() {
       const err = document.getElementById("err");
-      err.textContent = "Starting app...";
       err.style.color = "#aaa";
+      err.textContent = "Starting app — first launch may take a few minutes...";
+      const btn = document.querySelector("button");
+      if (btn) { btn.disabled = true; btn.textContent = "Loading..."; }
       try {
-        await waitForServer(15000);
+        await waitForServer(300000);
         window.location.href = "http://localhost:52845";
       } catch (e) {
         err.style.color = "#e94560";
-        err.textContent = "Server didn't start. macOS may be blocking it — try right-clicking the app icon and choosing \"Open\" instead of double-clicking.";
+        if (serverFailed) {
+          err.textContent = "Server failed to start. Check that Python 3 is installed (python.org/downloads) and relaunch.";
+        } else {
+          err.textContent = "Server didn't start in time. Try relaunching the app.";
+        }
         err.style.fontSize = "12px";
-        const btn = document.querySelector("button");
         if (btn) { btn.textContent = "Retry"; btn.disabled = false; }
       }
     }
 
-    // Check if password exists
-    const savedHash = localStorage.getItem(PASSWORD_KEY);
+    // Init: check for local password via IPC
+    (async () => {
+      const hasPassword = await window.auth.hasPassword();
 
-    if (savedHash) {
-      document.getElementById("login-view").style.display = "block";
-      document.getElementById("setup-view").style.display = "none";
+      if (hasPassword) {
+        document.getElementById("login-view").style.display = "block";
+        document.getElementById("setup-view").style.display = "none";
 
-      document.getElementById("login-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const pw = document.getElementById("pw").value;
-        const hash = await sha256(pw);
-        if (hash === savedHash) {
-          unlock();
-        } else {
-          document.getElementById("err").textContent = "Incorrect password";
-          document.getElementById("pw").value = "";
-          document.getElementById("pw").focus();
-        }
-      });
-    } else {
-      document.getElementById("login-view").style.display = "none";
-      document.getElementById("setup-view").style.display = "block";
+        document.getElementById("login-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const pw = document.getElementById("pw").value;
+          const result = await window.auth.login(pw);
+          if (result.ok) {
+            unlock();
+          } else {
+            document.getElementById("err").textContent = "Incorrect password";
+            document.getElementById("pw").value = "";
+            document.getElementById("pw").focus();
+          }
+        });
+      } else {
+        document.getElementById("login-view").style.display = "none";
+        document.getElementById("setup-view").style.display = "block";
 
-      document.getElementById("setup-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const pw = document.getElementById("new-pw").value;
-        const pw2 = document.getElementById("new-pw2").value;
-        const err = document.getElementById("err");
+        document.getElementById("setup-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const pw = document.getElementById("new-pw").value;
+          const pw2 = document.getElementById("new-pw2").value;
+          const err = document.getElementById("err");
 
-        if (pw.length < 4) { err.textContent = "Password must be at least 4 characters"; return; }
-        if (pw !== pw2) { err.textContent = "Passwords don't match"; return; }
+          if (pw.length < 4) { err.textContent = "Password must be at least 4 characters"; return; }
+          if (pw !== pw2) { err.textContent = "Passwords don't match"; return; }
 
-        const hash = await sha256(pw);
-        localStorage.setItem(PASSWORD_KEY, hash);
-        unlock();
-      });
-    }
+          const result = await window.auth.setupPassword(pw);
+          if (result.ok) {
+            unlock();
+          } else {
+            err.textContent = result.error;
+          }
+        });
+      }
+    })();
   </script>
 </body>
 </html>

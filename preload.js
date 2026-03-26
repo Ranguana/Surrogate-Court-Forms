@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("auth", {
+  hasPassword: () => ipcRenderer.invoke("has-password"),
   login: (password) => ipcRenderer.invoke("login", password),
   setupPassword: (password) => ipcRenderer.invoke("setup-password", password),
 });
