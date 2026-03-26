@@ -722,7 +722,9 @@ def fill_pdf(template_path, fields):
                 s = str(value) if value is not None else ""
                 widget.field_value = s
                 if s == "X":
-                    widget.text_fontsize = 10
+                    # Size the X to fit the field box
+                    h = widget.rect.height
+                    widget.text_fontsize = max(5, min(h - 1, 10))
             widget.update()
     buf = io.BytesIO()
     doc.save(buf)
@@ -845,6 +847,7 @@ def _build_probate_fields(data):
         "decedent": dec,
         "a Name": dec,
         "aka": data.get("decedentAKA", ""),
+        "aka2": "",  # second AKA line in caption (renamed from field "1")
         "Name_petitioner": pet,
         "Domicile or Principal Office": data.get("petitionerStreet", ""),
         "City Village or Town": data.get("petitionerCity", ""),
