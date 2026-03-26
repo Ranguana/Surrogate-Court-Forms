@@ -734,15 +734,18 @@ def fill_pdf(template_path, fields):
             else:
                 s = str(value) if value is not None else ""
                 widget.field_value = s
+                h = widget.rect.height
+                w = widget.rect.width
                 if s == "X":
-                    # Size the X to fit the field box
-                    h = widget.rect.height
-                    widget.text_fontsize = max(5, min(h - 1, 10))
+                    # Size the X to fit the field box, centered
+                    widget.text_fontsize = max(4, min(h - 1, 8))
                 elif len(s) > 0:
+                    current_size = widget.text_fontsize
+                    # If template has 0 font size, set 10pt default
+                    if not current_size or current_size < 1:
+                        current_size = 10
+                        widget.text_fontsize = current_size
                     # Auto-shrink font for long text in narrow fields
-                    w = widget.rect.width
-                    current_size = widget.text_fontsize or 12
-                    # Rough estimate: each char ~0.6x font size in width
                     est_width = len(s) * current_size * 0.5
                     if est_width > w and w > 0:
                         fitted = w / (len(s) * 0.5)
@@ -910,6 +913,7 @@ def _build_probate_fields(data):
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
+        "X": "",  # clear unused caption filler
         "To the Surrogates Court County of": county,
         "decedent": dec,
         "a Name": dec,
@@ -972,9 +976,15 @@ def _build_probate_fields(data):
 
         # ── Attesting Witness (page 10) ─────────────────────────────────────────
         "COUNTY OF_7": county,
-        "WILL OF 1": data.get("decedentFirstName", ""),
+        "X_3": "",  # clear unused filler
+        "X_4": "",  # clear unused filler
+        "WILL OF 1": " ".join(filter(None, [
+            data.get("decedentFirstName", ""),
+            data.get("decedentMiddleName", ""),
+        ])),
         "WILL OF 2": data.get("decedentLastName", ""),
         "aka 1": data.get("decedentAKA", ""),
+        "aka 2": "",  # second AKA line on attesting witness
         "File_2": data.get("fileNo", ""),
         "STATE OF NEW YORK_5": "New York",
         "COUNTY OF_8": county,
