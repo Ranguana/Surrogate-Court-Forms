@@ -1090,7 +1090,7 @@ let proceeding = "Probate";
 const checks = {
   selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
 };
-let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",disposition:"tbd"}];
+let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,dob:"",guardianInfo:"",disposition:"tbd"}];
 
 // EPTL 4-1.1 succession chain
 // null=unanswered, true=yes, false=no
@@ -1294,6 +1294,15 @@ function renderDists() {
         <span class="dist-num">Distributee #${i+1}</span>
         ${distributees.length>1?`<button class="btn btn-danger btn-sm" onclick="removeDist(${i})">Remove</button>`:""}
       </div>
+      <div class="disp-row" style="margin-bottom:8px">
+        <span class="disp-label">Type:</span>
+        <button class="disp-btn ${(d.beneficiaryType||'primary')==='primary'?'waiver':''}" onclick="ud(${i},'beneficiaryType','primary');renderDists()">Primary</button>
+        <button class="disp-btn ${d.beneficiaryType==='successor'?'waiver':''}" onclick="ud(${i},'beneficiaryType','successor');renderDists()">Successor/Contingent</button>
+        <span style="margin-left:12px"></span>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" ${d.isMinor?'checked':''} onchange="ud(${i},'isMinor',this.checked);renderDists()"> Minor/Under Disability
+        </label>
+      </div>
       <div class="grid2">
         <div class="field"><label>Full Name</label><input value="${d.name}" oninput="ud(${i},'name',this.value)"></div>
         <div class="field"><label>Relationship to Decedent</label><input value="${d.relationship}" oninput="ud(${i},'relationship',this.value)"></div>
@@ -1305,6 +1314,12 @@ function renderDists() {
       <div class="field"><label>Interest (for Probate: describe legacy/devise under will)</label>
         <input value="${d.interest||''}" oninput="ud(${i},'interest',this.value)" placeholder="e.g. Residuary legatee under Article FOURTH">
       </div>
+      ${d.isMinor?`
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Date of Birth</label><input value="${d.dob||''}" oninput="ud(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
+        <div class="field"><label>Guardian Name & Address</label><input value="${d.guardianInfo||''}" oninput="ud(${i},'guardianInfo',this.value)" placeholder="Name, address of guardian"></div>
+      </div>
+      `:''}
       <div class="disp-row">
         <span class="disp-label">Disposition:</span>
         <button class="disp-btn ${d.disposition==='waiver'?'waiver':''}"   onclick="setDisp(${i},'waiver')">✓ Waiver</button>
@@ -1352,7 +1367,7 @@ function renderDists() {
   document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
   updateSummary();
 }
-function addDist()     { if(distributees.length<7){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",disposition:"tbd"});renderDists();} }
+function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,dob:"",guardianInfo:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
 function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
 function setDisp(i,v)  {
@@ -3119,7 +3134,9 @@ function siApply() {
     const incoming = d.distributees.filter(dist => dist.name).map(dist => ({
       name: dist.name, relationship: dist.relationship||'',
       address: dist.address||'', citizenship: dist.citizenship||'US Citizen',
-      interest: dist.interest||'', disposition: 'tbd'
+      interest: dist.interest||'', beneficiaryType: dist.beneficiaryType||'primary',
+      isMinor: dist.isMinor||false, dob: dist.dob||'', guardianInfo: dist.guardianInfo||'',
+      disposition: 'tbd'
     }));
     if(incoming.length) {
       // Keep only non-empty existing entries, then add incoming
@@ -3318,7 +3335,8 @@ function fillDistributee(id) {
   if(!c) return;
   distributees.push({
     name: c.name||'', relationship: c.relationship||'',
-    address: c.address||'', citizenship: c.citizenship||'US Citizen', interest:'', disposition:'tbd'
+    address: c.address||'', citizenship: c.citizenship||'US Citizen', interest:'',
+    beneficiaryType:'primary', isMinor:false, dob:'', guardianInfo:'', disposition:'tbd'
   });
   renderDists();
   updateSummary();

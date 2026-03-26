@@ -888,19 +888,69 @@ def _build_probate_fields(data):
     else:
         fields["is not an attorney"] = "X"
 
-    # Distributees (page 2, section 6a — 3 columns: name / address / interest)
+    # ── Distributees — route to correct petition section ─────────────────────
     # For probate: "interest" = description of legacy/devise under the will
     # For administration: fall back to relationship
-    name_f = ["1_2", "2_2", "3", "4", "5", "6", "7"]
-    addr_f = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
-    int_f  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 8)]
-    for i, dist in enumerate(data.get("distributees", [])[:7]):
-        if dist.get("name"):
-            fields[name_f[i]] = dist["name"]
-            fields[addr_f[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-            # Use will interest if provided, otherwise fall back to relationship
-            interest = (dist.get("interest") or "").strip()
-            fields[int_f[i]] = interest if interest else dist.get("relationship", "Distributee")
+    all_dists = [d for d in data.get("distributees", []) if d.get("name")]
+
+    # Split into 4 groups
+    primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
+    primary_minors    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and d.get("isMinor")]
+    successor_adults  = [d for d in all_dists if d.get("beneficiaryType") == "successor" and not d.get("isMinor")]
+    successor_minors  = [d for d in all_dists if d.get("beneficiaryType") == "successor" and d.get("isMinor")]
+
+    def _interest(dist):
+        interest = (dist.get("interest") or "").strip()
+        return interest if interest else dist.get("relationship", "Distributee")
+
+    def _minor_desc(dist):
+        """Build the 7b description: name, DOB, relationship, domicile, guardian."""
+        parts = [dist.get("name", "")]
+        if dist.get("dob"):
+            parts.append(f"DOB: {dist['dob']}")
+        if dist.get("relationship"):
+            parts.append(dist["relationship"])
+        if dist.get("address"):
+            parts.append(dist["address"])
+        if dist.get("guardianInfo"):
+            parts.append(f"Guardian: {dist['guardianInfo']}")
+        return "; ".join(parts)
+
+    # Page 2, section 6a — Primary beneficiaries (8 rows)
+    p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7", "8"]
+    p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2", "8"]
+    p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
+    for i, dist in enumerate(primary_adults[:8]):
+        fields[p2_6a_name[i]] = dist["name"]
+        fields[p2_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
+        fields[p2_6a_int[i]]  = _interest(dist)
+
+    # Page 2, section 7b — Primary beneficiaries under disability (6 rows)
+    p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
+    p2_7b_addr = ["1_5", "2_5", "3_4", "4_4", "5_4", "6_4"]
+    p2_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_2" for i in range(1, 7)]
+    for i, dist in enumerate(primary_minors[:6]):
+        fields[p2_7b_name[i]] = _minor_desc(dist)
+        fields[p2_7b_addr[i]] = dist.get("address", "")
+        fields[p2_7b_int[i]]  = _interest(dist)
+
+    # Page 3, section 6a cont — Successor/contingent beneficiaries (8 rows)
+    p3_6a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3", "8_2"]
+    p3_6a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4", "8_2"]
+    p3_6a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
+    for i, dist in enumerate(successor_adults[:8]):
+        fields[p3_6a_name[i]] = dist["name"]
+        fields[p3_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
+        fields[p3_6a_int[i]]  = _interest(dist)
+
+    # Page 3, section 7b cont — Successor beneficiaries under disability (7 rows)
+    p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]
+    p3_7b_addr = ["1_12", "2_12", "3_8", "4_8", "5_8", "6_8", "7_6"]
+    p3_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_4" for i in range(1, 8)]
+    for i, dist in enumerate(successor_minors[:7]):
+        fields[p3_7b_name[i]] = _minor_desc(dist)
+        fields[p3_7b_addr[i]] = dist.get("address", "")
+        fields[p3_7b_int[i]]  = _interest(dist)
 
     return fields
 
