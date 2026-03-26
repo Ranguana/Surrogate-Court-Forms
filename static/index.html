@@ -2412,6 +2412,25 @@ function _buildCaseData() {
 async function modalAction(){
   const name=(document.getElementById("save-name")?.value||"").trim();
   if(!name){ document.getElementById("save-name").style.borderColor="var(--red)"; return; }
+
+  // Dedup: check if a case with same first+last name already exists under a different key
+  const data = getFormData();
+  const first = (data.decedentFirstName||'').trim().toLowerCase();
+  const last = (data.decedentLastName||'').trim().toLowerCase();
+  if(first && last) {
+    const cases = await getSavedCasesAsync();
+    for(const [k, c] of Object.entries(cases)) {
+      if(k === name) continue; // same key is just an overwrite
+      const cf = (c.data?.decedentFirstName||'').trim().toLowerCase();
+      const cl = (c.data?.decedentLastName||'').trim().toLowerCase();
+      if(cf === first && cl === last) {
+        if(!confirm(`A case for "${c.data.decedentFirstName} ${c.data.decedentLastName}" already exists as "${k}". Overwrite it?`)) return;
+        await deleteCaseFromServer(k);
+        break;
+      }
+    }
+  }
+
   await saveCaseToServer(name, _buildCaseData());
   _currentCaseName = name;
   acctCaseName = name;
