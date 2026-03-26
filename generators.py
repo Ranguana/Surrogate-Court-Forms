@@ -766,30 +766,77 @@ def _build_probate_fields(data):
 
     # Surviving relatives → Dropdown 5a–5g (EPTL 4-1.1 order, 7 classes)
     # Logic: "No" for prior classes, number/Yes for first surviving class, "X" for all after
+    #
+    # Auto-derive from distributees if manual fields are empty.
+    # Map relationship keywords → EPTL class index
     surv_keys = [
         "survivingSpouse", "survivingChildren", "survivingParents",
         "survivingSiblings", "survivingGrandparents", "survivingAuntsUncles",
         "survivingFirstCousinsOnceRemoved",
     ]
-    # Find first surviving class
-    first_surviving = None
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
-            first_surviving = idx
-            break
-    dropdown_vals = []
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if first_surviving is None:
-            dropdown_vals.append("No")
-        elif idx < first_surviving:
-            dropdown_vals.append("No")
-        elif idx == first_surviving:
-            s = str(raw).strip()
-            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
-        else:
-            dropdown_vals.append("X")
+
+    # Check if any manual surviving fields are filled
+    has_manual = any(
+        data.get(k) and str(data.get(k)).strip().lower() not in ("false", "0", "no", "")
+        for k in surv_keys
+    )
+
+    if not has_manual:
+        # Auto-derive from distributees' relationships
+        rel_class_map = {
+            "spouse": 0, "husband": 0, "wife": 0,
+            "son": 1, "daughter": 1, "child": 1, "children": 1, "issue": 1,
+            "grandchild": 1, "grandson": 1, "granddaughter": 1,
+            "mother": 2, "father": 2, "parent": 2,
+            "sister": 3, "brother": 3, "sibling": 3, "half-sister": 3, "half-brother": 3,
+            "niece": 3, "nephew": 3,
+            "grandmother": 4, "grandfather": 4, "grandparent": 4,
+            "aunt": 5, "uncle": 5, "cousin": 5,
+        }
+        class_counts = [0] * 7
+        for dist in data.get("distributees", []):
+            rel = (dist.get("relationship") or "").strip().lower()
+            for keyword, cls_idx in rel_class_map.items():
+                if keyword in rel:
+                    class_counts[cls_idx] += 1
+                    break
+
+        first_surviving = None
+        for idx, count in enumerate(class_counts):
+            if count > 0:
+                first_surviving = idx
+                break
+
+        dropdown_vals = []
+        for idx, count in enumerate(class_counts):
+            if first_surviving is None:
+                dropdown_vals.append("No")
+            elif idx < first_surviving:
+                dropdown_vals.append("No")
+            elif idx == first_surviving:
+                dropdown_vals.append(str(count) if count > 0 else "Yes")
+            else:
+                dropdown_vals.append("X")
+    else:
+        # Use manual surviving fields
+        first_surviving = None
+        for idx, key in enumerate(surv_keys):
+            raw = data.get(key)
+            if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
+                first_surviving = idx
+                break
+        dropdown_vals = []
+        for idx, key in enumerate(surv_keys):
+            raw = data.get(key)
+            if first_surviving is None:
+                dropdown_vals.append("No")
+            elif idx < first_surviving:
+                dropdown_vals.append("No")
+            elif idx == first_surviving:
+                s = str(raw).strip()
+                dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
+            else:
+                dropdown_vals.append("X")
 
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
@@ -925,7 +972,7 @@ def _build_probate_fields(data):
         fields[p2_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
         fields[p2_6a_int[i]]  = _interest(dist)
 
-    # Page 2, section 7b — Primary beneficiaries under disability (6 rows)
+    # Page 2, section 6b — Primary beneficiaries under disability (6 rows)
     p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
     p2_7b_addr = ["1_5", "2_5", "3_4", "4_4", "5_4", "6_4"]
     p2_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_2" for i in range(1, 7)]
@@ -934,7 +981,7 @@ def _build_probate_fields(data):
         fields[p2_7b_addr[i]] = dist.get("address", "")
         fields[p2_7b_int[i]]  = _interest(dist)
 
-    # Page 3, section 6a cont — Successor/contingent beneficiaries (8 rows)
+    # Page 3, section 7a — Substitute executors, trustees, guardians, other beneficiaries (8 rows)
     p3_6a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3", "8_2"]
     p3_6a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4", "8_2"]
     p3_6a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
@@ -943,7 +990,7 @@ def _build_probate_fields(data):
         fields[p3_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
         fields[p3_6a_int[i]]  = _interest(dist)
 
-    # Page 3, section 7b cont — Successor beneficiaries under disability (7 rows)
+    # Page 3, section 7b — Persons under disability from section 7a (7 rows)
     p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]
     p3_7b_addr = ["1_12", "2_12", "3_8", "4_8", "5_8", "6_8", "7_6"]
     p3_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_4" for i in range(1, 8)]

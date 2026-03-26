@@ -1295,9 +1295,9 @@ function renderDists() {
         ${distributees.length>1?`<button class="btn btn-danger btn-sm" onclick="removeDist(${i})">Remove</button>`:""}
       </div>
       <div class="disp-row" style="margin-bottom:8px">
-        <span class="disp-label">Type:</span>
-        <button class="disp-btn ${(d.beneficiaryType||'primary')==='primary'?'waiver':''}" onclick="ud(${i},'beneficiaryType','primary');renderDists()">Primary</button>
-        <button class="disp-btn ${d.beneficiaryType==='successor'?'waiver':''}" onclick="ud(${i},'beneficiaryType','successor');renderDists()">Successor/Contingent</button>
+        <span class="disp-label">Section:</span>
+        <button class="disp-btn ${(d.beneficiaryType||'primary')==='primary'?'waiver':''}" onclick="ud(${i},'beneficiaryType','primary');renderDists()">\u00A76 — Primary</button>
+        <button class="disp-btn ${d.beneficiaryType==='successor'?'waiver':''}" onclick="ud(${i},'beneficiaryType','successor');renderDists()">\u00A77 — Substitute, trustee, guardian, other</button>
         <span style="margin-left:12px"></span>
         <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
           <input type="checkbox" ${d.isMinor?'checked':''} onchange="ud(${i},'isMinor',this.checked);renderDists()"> Minor/Under Disability
