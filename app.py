@@ -272,8 +272,6 @@ def generate_packet():
         print(f"[ERR] 01 Cover letter: {e}")
         traceback.print_exc()
         errors.append(f"Cover letter: {e}")
-        files.append((f"01_MISSING_Cover_Letter.txt",
-                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── 02-04. Main petition (and oath + witness for Probate) ────────────────────
     # Probate:         02=P-1, 03=Oath & Designation, 04=Attesting Witness
@@ -290,8 +288,6 @@ def generate_packet():
             print(f"[ERR] Probate docs: {e}")
             traceback.print_exc()
             errors.append(f"Probate docs: {e}")
-            files.append((f"02_MISSING_Probate_Docs.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
     else:
         try:
             print(f"[TRYING] 02 petition for proceeding={proceeding!r}")
@@ -316,8 +312,6 @@ def generate_packet():
             print(f"[ERR] 02 petition: {e}")
             traceback.print_exc()
             errors.append(f"Main petition: {e}")
-            files.append((f"02_MISSING_Main_Petition.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── 805 Affidavit (always)
     # Probate:    slot 05  (after petition 02, oath 03, witness 04)
@@ -331,8 +325,6 @@ def generate_packet():
         print(f"[ERR] {afft_num} 805 Affidavit: {e}")
         traceback.print_exc()
         errors.append(f"805 Affidavit: {e}")
-        files.append((f"{afft_num}_MISSING_805_Affidavit.txt",
-                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── Affidavit of Heirship ────────────────────────────────────────────────────
     # Non-probate: always (slot 04)
@@ -346,8 +338,6 @@ def generate_packet():
             print(f"[ERR] 04 Heirship affidavit: {e}")
             traceback.print_exc()
             errors.append(f"Heirship affidavit: {e}")
-            files.append((f"04_MISSING_Heirship_Affidavit.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # Rule 207.16(c) check for Probate
     probate_needs_ft_aff  = (proceeding == "Probate") and needs_family_tree_affidavit(data)
@@ -364,8 +354,6 @@ def generate_packet():
             print(f"[ERR] 06 Heirship affidavit (Probate): {e}")
             traceback.print_exc()
             errors.append(f"Heirship affidavit (Probate): {e}")
-            files.append((f"06_MISSING_Heirship_Affidavit.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── FT-1 Family Tree ─────────────────────────────────────────────────────────
     # Non-probate: always (slot 05)
@@ -380,8 +368,6 @@ def generate_packet():
             print(f"[ERR] 05 FT-1: {e}")
             traceback.print_exc()
             errors.append(f"FT-1: {e}")
-            files.append((f"05_MISSING_FT1_Family_Tree.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     if probate_needs_ft_diag:
         try:
@@ -392,8 +378,6 @@ def generate_packet():
             print(f"[ERR] 07 FT-1 (Probate): {e}")
             traceback.print_exc()
             errors.append(f"FT-1 (Probate): {e}")
-            files.append((f"07_MISSING_FT1_Family_Tree.txt",
-                           f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── Attorney certification ────────────────────────────────────────────────────
     # Slot 06 normally; shifts to 08 when Probate 207.16(c) docs are inserted
@@ -407,8 +391,6 @@ def generate_packet():
         print(f"[ERR] {cert_slot} Attorney cert: {e}")
         traceback.print_exc()
         errors.append(f"Attorney cert: {e}")
-        files.append((f"{cert_slot}_MISSING_Attorney_Cert.txt",
-                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── Waiver cover letters (all proceedings)
     # Slot 07 normally; shifts to 09 when Probate 207.16(c) inserts any docs (cert shifts to 08)
@@ -426,8 +408,6 @@ def generate_packet():
                 traceback.print_exc()
                 errors.append(f"Waiver cover for {dist.get('name')}: {e}")
                 safe = dist['name'].replace(' ', '_')
-                files.append((f"{waiver_slot}_MISSING_Waiver_{safe}.txt",
-                               f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── Waiver form PDFs (alongside cover letters)
     # Probate → P-4 (Word), Admin/NonDom/Ancillary/CTA → A-8 individual PDF
@@ -444,8 +424,6 @@ def generate_packet():
                     print(f"[ERR] {waiver_slot} Waiver P-4 {dist.get('name')}: {e}")
                     traceback.print_exc()
                     errors.append(f"Waiver P-4 for {dist.get('name')}: {e}")
-                    files.append((f"{waiver_slot}_MISSING_Waiver_P4_{safe}.txt",
-                                   f"FAILED TO GENERATE\n\nError: {e}".encode()))
             else:
                 # Admin proceeding — A-8 (individual) or A-9 (corporate)
                 is_corp = dist.get("isCorporate", False)
@@ -465,8 +443,6 @@ def generate_packet():
                     print(f"[ERR] {waiver_slot} Waiver {form_type} {dist.get('name')}: {e}")
                     traceback.print_exc()
                     errors.append(f"Waiver {form_type} for {dist.get('name')}: {e}")
-                    files.append((f"{waiver_slot}_MISSING_Waiver_{safe}.txt",
-                                   f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
     # ── Schedule D(a) — post-deceased distributees (same slot as waivers)
     for dist in distributees:
@@ -482,22 +458,8 @@ def generate_packet():
                 traceback.print_exc()
                 errors.append(f"Schedule D(a) for {dist.get('name')}: {e}")
                 safe = dist['name'].replace(' ', '_')
-                files.append((f"{waiver_slot}_MISSING_Schedule_Da_{safe}.txt",
-                               f"FAILED TO GENERATE\n\nError: {e}".encode()))
 
-    # ── Bond Affidavit (all proceeding types)
-    bond_slot = waiver_slot  # same slot grouping as waivers
-    try:
-        print(f"[TRYING] {bond_slot} generate_bond_affidavit()")
-        files.append((f"{bond_slot}_Bond_Affidavit_{last_name}.docx",
-                       generate_bond_affidavit(data)))
-        print(f"[OK] {bond_slot} Bond Affidavit")
-    except Exception as e:
-        print(f"[ERR] {bond_slot} Bond Affidavit: {e}")
-        traceback.print_exc()
-        errors.append(f"Bond Affidavit: {e}")
-        files.append((f"{bond_slot}_MISSING_Bond_Affidavit.txt",
-                       f"FAILED TO GENERATE\n\nError: {e}".encode()))
+    # Bond Affidavit removed — only needed for specific bond cases, not every packet
 
     # TODO: Schedules A-D (Nonmarital, Adoption, Infants, Disability)
     # These per-distributee schedules require additional UI fields not yet collected:
@@ -1164,7 +1126,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.4.4"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
