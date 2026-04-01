@@ -6,7 +6,20 @@ CRITICAL RULES:
 - If a field is not found, return null
 - Dates must be MM/DD/YYYY format
 - Money: numbers only, no $ signs or commas
+- Default citizenship: "U.S.A." unless documents state otherwise
 - Return ONLY valid JSON — no explanation, no markdown, no backticks
+
+=== DOCUMENT HIERARCHY (when documents conflict) ===
+When multiple documents contain conflicting information, trust in this order:
+1. Death Certificate — authoritative for: date of death, place of death, marital status, SSN, full legal name
+2. Last Will and Testament — authoritative for: beneficiaries, executor, dispositions
+3. Intake questionnaire / other documents — supplementary info only
+If the death certificate says "married" and another document suggests "divorced", use "married."
+
+=== ADDRESS RULES ===
+- Decedent's address (domicile): use the LAST ADDRESS where decedent lived, as stated on the death certificate. This is critical for jurisdiction.
+- Place of death: extract the FULL address (street, city, state) — not just the city or hospital name
+- If multiple addresses appear across documents, the death certificate controls for decedent domicile
 
 === WHAT TO IGNORE ===
 Do NOT extract or flag these as dispositive provisions:
@@ -31,10 +44,17 @@ The petitioner is the nominated Executor named in the Will.
 - If executor is deceased or has renounced → note in petitionerRelationship field
 - If no Will → petitioner is the person applying for Administration
 
-RULE 3 — WITNESSES:
-Found in the attestation clause at the END of the Will, after the testator's signature line.
-Look for language like "signed, published and declared" or "subscribed by the above-named testator."
-Extract PRINTED names only — not signatures.
+RULE 3 — WITNESSES (CRITICAL — do not miss these):
+The attestation clause is at the VERY END of the Will, AFTER the testator's signature.
+Look for: "signed, published and declared", "subscribed by the above-named testator", 
+"in our presence", "we have hereunto subscribed our names as witnesses."
+The witness names appear AFTER this language — usually 2 witnesses with addresses.
+Extract their PRINTED names (not signatures) AND their addresses.
+Names go in witness1/witness2. Addresses go in witness1Address/witness2Address.
+The addresses are critical — if there is no self-proving affidavit, we need to contact
+the witnesses to sign affidavits. The address usually appears as "residing at [address]" 
+after each witness name.
+Also check the self-proving affidavit (if present) — witness names appear there too.
 
 RULE 4 — SELF-PROVING AFFIDAVIT:
 Check if there is a notarized affidavit attached after the witness signatures.
@@ -130,7 +150,9 @@ Correct output:
 {
   "willDate": "03/14/2019",
   "witness1": "Patricia A. Hoffman",
+  "witness1Address": "42 Elm Street, Yonkers NY",
   "witness2": "David R. Chen",
+  "witness2Address": "891 Park Ave, New York NY",
   "selfProvingAffidavit": false,
   "willBeneficiaries": [
     {
@@ -221,7 +243,9 @@ Correct output:
   "willDate": null,
   "codicilDate": null,
   "witness1": null,
+  "witness1Address": null,
   "witness2": null,
+  "witness2Address": null,
   "lettersTo": null,
   "willBeneficiaries": [],
   "distributees": []

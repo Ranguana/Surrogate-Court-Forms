@@ -3089,7 +3089,9 @@ const SI_FIELD_LABELS = {
   petitionerZip:'Petitioner Zip', petitionerRelationship:'Petitioner Relationship',
   petitionerCitizenship:'Petitioner Citizenship', personalPropertyValue:'Personal Property ($)',
   realPropertyValue:'Real Property ($)', willDate:'Will Date', codicilDate:'Codicil Date',
-  witness1:'Witness 1', witness2:'Witness 2', lettersTo:'Letters To', successorExecutor:'Successor Executor',
+  witness1:'Witness 1', witness1Address:'Witness 1 Address',
+  witness2:'Witness 2', witness2Address:'Witness 2 Address',
+  lettersTo:'Letters To', successorExecutor:'Successor Executor',
   selfProvingAffidavit:'Self-Proving Affidavit', trustName:'Trust Name', trusteeName:'Trustee',
   guardianName:'Guardian', petitionerIsAttorney:'Petitioner is Attorney',
   survivingSpouse:'Surviving Spouse', survivingChildren:'Surviving Children',
@@ -3119,7 +3121,8 @@ function siRenderPreview(d) {
     'petitionerStreet','petitionerCity','petitionerState','petitionerZip',
     'petitionerRelationship','petitionerCitizenship'];
   const estateFields = ['personalPropertyValue','realPropertyValue','willDate','codicilDate',
-    'witness1','witness2','lettersTo','successorExecutor','selfProvingAffidavit',
+    'witness1','witness1Address','witness2','witness2Address',
+    'lettersTo','successorExecutor','selfProvingAffidavit',
     'trustName','trusteeName','guardianName'];
   const relFields = ['survivingSpouse','survivingChildren','survivingParents','survivingSiblings',
     'survivingGrandparents','survivingAuntsUncles','survivingFirstCousinsOnceRemoved'];
@@ -3260,6 +3263,25 @@ function siApply() {
   set('witness1', d.witness1);
   set('witness2', d.witness2);
   set('lettersTo', d.lettersTo);
+
+  // Auto-add witnesses as professional contacts (for affidavit follow-up)
+  const witnesses = [
+    {name: d.witness1, address: d.witness1Address},
+    {name: d.witness2, address: d.witness2Address},
+  ].filter(w => w.name);
+  for(const w of witnesses) {
+    if(!allContacts.find(c => c.name === w.name)) {
+      allContacts.push({
+        id: Date.now().toString() + Math.random().toString(36).slice(2,6),
+        type: 'professional',
+        name: w.name,
+        address: w.address || '',
+        phone: '', email: '', notes: 'Attesting witness to Will',
+        company: '', specialty: 'Witness',
+      });
+    }
+  }
+  if(witnesses.length) renderContacts('professional');
 
   // Family tree from surviving* fields
   const ftMap = {survivingSpouse:'spouse', survivingChildren:'children', survivingParents:'parents',

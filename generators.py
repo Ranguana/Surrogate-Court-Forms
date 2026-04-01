@@ -649,8 +649,10 @@ def generate_heirship(data):
     replace_in_doc(doc, {
         "COUNTY OF _____________": f"COUNTY OF {county.upper()}",
         "___________________\t\t\t\t\tAFFIDAVIT OF HEIRSHIP": f"{decedent}\t\t\t\t\tAFFIDAVIT OF HEIRSHIP",
-        "A/K/A ___________________": f"A/K/A {data.get('decedentAKA', '')}",
-        "COUNTY OF \t\t\t)": f"COUNTY OF {county.upper()}\t\t\t)",
+        "A/K/A ___________________\t\t\t\tFile No.:": f"A/K/A {data.get('decedentAKA', '')}\t\t\t\tFile No.: {data.get('fileNo', '')}",
+        "COUNTY OF \t\t\t)": "COUNTY OF \t\t\t)",  # Leave blank — affiant may be out of state
+        "STATE OF NEW YORK\t)": "STATE OF \t\t)",  # Leave blank — affiant may be out of state
+        "______day of __________, 2022": "______day of __________, 2026",
         "\tI, ______________, being duly sworn, deposes and says:": f"\tI, {deponent}, being duly sworn, deposes and says:",
         "I reside at _________________________.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent\u2019s family tree, as I am the ______________of the Decedent and have known the Decedent for over _____ years.":
             f"I reside at {deponent_address}.  I am over the age of eighteen (18) years and I am fully familiar with the facts and circumstances herein, the decedent\u2019s family tree, as I am the {deponent_rel} of the Decedent and have known the Decedent for over {years_known} years.",
