@@ -820,7 +820,7 @@ body {
 
     <div class="si-dropzone" id="si-dropzone" onclick="document.getElementById('si-file-input').click()"
          ondragover="siDragOver(event)" ondragleave="siDragLeave(event)" ondrop="siDrop(event)">
-      <input type="file" id="si-file-input" multiple accept=".pdf" onchange="siFilesAdded(this.files)">
+      <input type="file" id="si-file-input" multiple accept=".pdf,.xlsx,.xls,.csv" onchange="siFilesAdded(this.files)">
       <div style="font-size:28px;margin-bottom:8px">📄</div>
       <div style="font-size:14px;font-weight:bold;margin-bottom:4px">Drop PDFs here or click to browse</div>
       <div style="font-size:12px">Death certificate, existing petition, intake questionnaire, will…</div>
@@ -3012,7 +3012,9 @@ function siDrop(e) {
 }
 function siFilesAdded(fileList) {
   for(const f of fileList) {
-    if(f.type === 'application/pdf' && !siFiles.find(x=>x.name===f.name)) siFiles.push(f);
+    const name = f.name.toLowerCase();
+    const ok = name.endsWith('.pdf') || name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv');
+    if(ok && !siFiles.find(x=>x.name===f.name)) siFiles.push(f);
   }
   siRenderFiles();
 }
@@ -3020,10 +3022,12 @@ function siRenderFiles() {
   const list = document.getElementById('si-file-list');
   const btn = document.getElementById('si-analyze-btn');
   if(!siFiles.length) { list.innerHTML=''; btn.disabled=true; return; }
-  list.innerHTML = siFiles.map((f,i)=>`
-    <span class="si-file-chip">📄 ${f.name}
+  list.innerHTML = siFiles.map((f,i)=>{
+    const icon = f.name.toLowerCase().endsWith('.pdf') ? '📄' : '📊';
+    return `<span class="si-file-chip">${icon} ${f.name}
       <button onclick="siRemoveFile(${i})" title="Remove">✕</button>
-    </span>`).join('');
+    </span>`;
+  }).join('');
   btn.disabled = false;
 }
 function siRemoveFile(i) { siFiles.splice(i,1); siRenderFiles(); }

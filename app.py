@@ -664,11 +664,43 @@ def smart_intake():
     import pdfplumber
     import anthropic as _anthropic
 
-    # ── Extract text from all uploaded PDFs ───────────────────────────────────
+    # ── Extract text from all uploaded files (PDF, Excel, CSV) ────────────────
     doc_texts = []
     for key in request.files:
         f = request.files[key]
-        if not f.filename.lower().endswith(".pdf"):
+        fname = f.filename.lower()
+
+        # ── Excel / CSV extraction ────────────────────────────────────────────
+        if fname.endswith((".xlsx", ".xls", ".csv")):
+            try:
+                file_bytes = f.read()
+                if fname.endswith(".csv"):
+                    import csv as _csv
+                    reader = _csv.reader(io.StringIO(file_bytes.decode("utf-8", errors="replace")))
+                    rows = list(reader)
+                    text = "\n".join([", ".join(row) for row in rows])
+                else:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+                    sheets = []
+                    for ws in wb.worksheets:
+                        sheet_rows = []
+                        for row in ws.iter_rows(values_only=True):
+                            vals = [str(c) if c is not None else "" for c in row]
+                            if any(v.strip() for v in vals):
+                                sheet_rows.append(", ".join(vals))
+                        if sheet_rows:
+                            sheets.append(f"[Sheet: {ws.title}]\n" + "\n".join(sheet_rows))
+                    wb.close()
+                    text = "\n\n".join(sheets)
+                if text.strip():
+                    doc_texts.append(f"=== {f.filename} ===\n{text}")
+                    print(f"[SMART-INTAKE] Extracted {len(text)} chars from {f.filename}")
+            except Exception as exc:
+                print(f"[SMART-INTAKE] Failed to read {f.filename}: {exc}")
+            continue
+
+        if not fname.endswith(".pdf"):
             continue
         try:
             pdf_bytes = f.read()
