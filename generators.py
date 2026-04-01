@@ -520,10 +520,7 @@ def generate_805(data):
     # ── WHEREFORE clause ──────────────────────────────────────────────────────
     bond_status, bond_reason = compute_bond_status(data)
     pet_role = "Executor" if proceeding == "Probate" else "Administrator"
-    pet_rel = data.get("petitionerRelationship", "")
-    role_desc = f"{pet_role}"
-    if pet_rel:
-        role_desc += f" and {pet_rel}"
+    role_desc = pet_role
 
     if bond_status == "dispense":
         wherefore_text = (
@@ -822,6 +819,7 @@ def compute_bond_status(data):
 
 def _build_probate_fields(data):
     """Build field name→value dict for Probate Petition + Oath.pdf."""
+    proceeding = data.get("proceedingType", "Probate")
     # Auto-compute property values from asset tracker
     _auto_compute_property(data)
 
@@ -886,7 +884,7 @@ def _build_probate_fields(data):
             elif idx < first_surviving:
                 dropdown_vals.append("No")
             elif idx == first_surviving:
-                dropdown_vals.append(str(count) if count > 0 else "Yes")
+                dropdown_vals.append(str(count))
             else:
                 dropdown_vals.append("X")
     else:
@@ -906,7 +904,11 @@ def _build_probate_fields(data):
                 dropdown_vals.append("No")
             elif idx == first_surviving:
                 s = str(raw).strip()
-                dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
+                # Convert true/yes to "1", keep numbers as-is
+                if s.lower() in ("true", "yes"):
+                    dropdown_vals.append("1")
+                else:
+                    dropdown_vals.append(s)
             else:
                 dropdown_vals.append("X")
 
@@ -951,7 +953,7 @@ def _build_probate_fields(data):
         "Dropdown 5g": dropdown_vals[6],
         # Prayer / letters (page 4) — only fill the matching "to" field
         "Petitioner_1": letters_to if "Testamentary" in lt else "",
-        "Petitioner_2": letters_to if "Testamentary" in lt else "",
+        "Petitioner_2": "",  # Don't duplicate petitioner name
         "Letters of Trusteeship to 1": letters_to if "Trusteeship" in lt else "",
         "Letters of Administration cta to": letters_to if "c.t.a" in lt else "",
         "Dated": "",
@@ -963,7 +965,7 @@ def _build_probate_fields(data):
         "OATH OF": pet,
         "Surrogates Court of": county,
         "My domicile is": pet_addr,
-        "Street Address": data.get("petitionerStreet", ""),
+        "Street Address": "",  # signature line — leave blank for petitioner to sign
         "Print Name_3": data.get("attorneyName") or "Jessica Wilson, Esq.",
         "Print Name_4": data.get("attorneyName") or "Jessica Wilson, Esq.",
         "Firm Name": data.get("firmName") or "Law Office of Jessica Wilson",
@@ -981,24 +983,30 @@ def _build_probate_fields(data):
         "aka 1": data.get("decedentAKA", ""),
         "aka 2": "",  # second AKA line on attesting witness
         "File_2": data.get("fileNo", ""),
-        "STATE OF NEW YORK_5": "New York",
-        "COUNTY OF_8": county,
-        "I have been shown check one": "X",
+        "STATE OF NEW YORK_5": "",  # Leave blank — witness fills in their own state
+        "COUNTY OF_8": "",  # Leave blank — witness fills in their own county
+        "I have been shown check one": "X",  # "the original instrument" checkbox
         "the original instrument dated": data.get("willDate", ""),
-        "purporting to be the last Will and TestamentCodicil of the abovenamed decedent": "X",
+        "purporting to be the last Will and TestamentCodicil of the abovenamed decedent": "",  # "court-certified photographic reproduction" — leave unchecked
         "and I saw the other witness es": witnesses,
         "I am making this affidavit at the request of 1": pet,
     }
 
-    # Letters type checkboxes (text fields — fill with "X")
+    # Letters type checkboxes — set the correct one, explicitly blank the others
+    fields["EXECUTOR"] = ""
+    fields["ADMINISTRATOR cta"] = ""
+    fields["Executor"] = ""
+    fields["Administrator cta"] = ""
     if "Testamentary" in lt:
         fields["Letters Testamentary"] = "X"
         fields["EXECUTOR"] = "X"
+        fields["Executor"] = "X"
     elif "Trusteeship" in lt:
         fields["Letters of Trusteeship"] = "X"
     elif "c.t.a" in lt:
         fields["Letters of Administration cta"] = "X"
         fields["ADMINISTRATOR cta"] = "X"
+        fields["Administrator cta"] = "X"
     elif "Temporary" in lt:
         fields["Temporary Administration"] = "X"
 
@@ -1033,6 +1041,47 @@ def _build_probate_fields(data):
             "isMinor": False,
         })
 
+    # Auto-insert successor executor into §7 if provided and not already listed
+    succ_exec = (data.get("successorExecutor") or "").strip()
+    if succ_exec and not any(d.get("name", "").strip().lower() == succ_exec.lower() for d in all_dists):
+        all_dists.append({
+            "name": succ_exec,
+            "relationship": "",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": "Successor Executor named in Will",
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
+    # Auto-insert trustee into §7 if provided and not already listed
+    trustee = (data.get("trusteeName") or "").strip()
+    trust_name = (data.get("trustName") or "").strip()
+    if trustee and not any(d.get("name", "").strip().lower() == trustee.lower() for d in all_dists):
+        interest = f"Trustee of {trust_name}" if trust_name else "Trustee named in Will"
+        all_dists.append({
+            "name": trustee,
+            "relationship": "Trustee",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": interest,
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
+    # Auto-insert guardian into §7 if provided and not already listed
+    guardian = (data.get("guardianName") or "").strip()
+    if guardian and not any(d.get("name", "").strip().lower() == guardian.lower() for d in all_dists):
+        all_dists.append({
+            "name": guardian,
+            "relationship": "Guardian",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": "Guardian of minor(s) named in Will",
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
     # Split into 4 groups
     primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
     primary_minors    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and d.get("isMinor")]
@@ -1041,7 +1090,19 @@ def _build_probate_fields(data):
 
     def _interest(dist):
         interest = (dist.get("interest") or "").strip()
-        return interest if interest else dist.get("relationship", "Distributee")
+        if interest:
+            return interest
+        # Don't fall back to just "Spouse" or "Son" — that's the relationship, not the interest
+        rel = (dist.get("relationship") or "").strip()
+        if proceeding == "Probate":
+            return f"Legatee/Devisee — {rel}" if rel else "Legatee/Devisee"
+        else:
+            return f"EPTL 4-1.1 distributee — {rel}" if rel else "EPTL 4-1.1 distributee"
+
+    def _name_with_rel(dist):
+        name = dist.get("name", "")
+        rel = (dist.get("relationship") or "").strip()
+        return f"{name} ({rel})" if rel else name
 
     def _minor_desc(dist):
         """Build the 7b description: name, DOB, relationship, domicile, guardian."""
@@ -1061,7 +1122,7 @@ def _build_probate_fields(data):
     p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2", "8"]
     p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
     for i, dist in enumerate(primary_adults[:8]):
-        fields[p2_6a_name[i]] = dist["name"]
+        fields[p2_6a_name[i]] = _name_with_rel(dist)
         fields[p2_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
         fields[p2_6a_int[i]]  = _interest(dist)
 
@@ -1079,7 +1140,7 @@ def _build_probate_fields(data):
     p3_6a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4", "8_2"]
     p3_6a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
     for i, dist in enumerate(successor_adults[:8]):
-        fields[p3_6a_name[i]] = dist["name"]
+        fields[p3_6a_name[i]] = _name_with_rel(dist)
         fields[p3_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
         fields[p3_6a_int[i]]  = _interest(dist)
 
