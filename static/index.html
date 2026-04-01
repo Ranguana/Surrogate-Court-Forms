@@ -3090,6 +3090,8 @@ const SI_FIELD_LABELS = {
   petitionerCitizenship:'Petitioner Citizenship', personalPropertyValue:'Personal Property ($)',
   realPropertyValue:'Real Property ($)', willDate:'Will Date', codicilDate:'Codicil Date',
   witness1:'Witness 1', witness2:'Witness 2', lettersTo:'Letters To', successorExecutor:'Successor Executor',
+  selfProvingAffidavit:'Self-Proving Affidavit', trustName:'Trust Name', trusteeName:'Trustee',
+  guardianName:'Guardian', petitionerIsAttorney:'Petitioner is Attorney',
   survivingSpouse:'Surviving Spouse', survivingChildren:'Surviving Children',
   survivingParents:'Surviving Parents', survivingSiblings:'Surviving Siblings',
   survivingGrandparents:'Surviving Grandparents', survivingAuntsUncles:'Surviving Aunts/Uncles',
@@ -3117,7 +3119,8 @@ function siRenderPreview(d) {
     'petitionerStreet','petitionerCity','petitionerState','petitionerZip',
     'petitionerRelationship','petitionerCitizenship'];
   const estateFields = ['personalPropertyValue','realPropertyValue','willDate','codicilDate',
-    'witness1','witness2','lettersTo','successorExecutor'];
+    'witness1','witness2','lettersTo','successorExecutor','selfProvingAffidavit',
+    'trustName','trusteeName','guardianName'];
   const relFields = ['survivingSpouse','survivingChildren','survivingParents','survivingSiblings',
     'survivingGrandparents','survivingAuntsUncles','survivingFirstCousinsOnceRemoved'];
 

@@ -1,6 +1,6 @@
 {
   "name": "probate-hq",
-  "version": "1.3.4",
+  "version": "1.3.6",
   "description": "NY Surrogate's Court Probate HQ",
   "main": "main.js",
   "scripts": {
@@ -56,7 +56,8 @@
           "Accounting/**/*",
           "*.pdf",
           "favicon.svg",
-          ".env"
+          ".env",
+          "smart_intake_prompt.md"
         ]
       },
       {

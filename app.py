@@ -775,80 +775,11 @@ def smart_intake():
     combined = "\n\n".join(doc_texts)
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
-    prompt = f"""You are a New York probate attorney reading legal documents. Answer each question below by extracting information from the documents.
-
-QUESTION 1: What type of proceeding is this?
-- If a Last Will and Testament exists → "Probate"
-- If no Will → "Administration"
-
-QUESTION 2: Decedent information?
-Extract: full name, AKA, DOB, DOD, place of death, last address, SSN, citizenship, marital status.
-
-QUESTION 3: Who is the nominated Executor / Personal Representative?
-This person goes in the petitioner fields. Extract their name, address, relationship to decedent.
-
-QUESTION 4: Is there a Successor Executor named? If so, who?
-
-QUESTION 5: Read the Will article by article. For each article that DISPOSES of property, answer:
-- Who receives property? (this person is a legatee, devisee, or residuary beneficiary)
-- What do they receive? (quote the disposition — e.g. "all tangible personal property", "residuary estate in equal shares")
-- Under which Article?
-- Are they a specific legatee/devisee, or a residuary beneficiary?
-- Are there any CONTINGENT beneficiaries (someone who inherits if the primary predeceases)?
-
-QUESTION 6: Are any trusts created? Who are the trustees?
-
-QUESTION 7: Are any guardians named for minor children?
-
-QUESTION 8: Who are the EPTL 4-1.1 distributees (for citation/notice purposes)?
-These are the people who WOULD inherit if there were no Will, based on intestacy:
-- Surviving spouse and/or children come first
-- If no spouse and no children → parents
-- If no parents → siblings
-- STOP at the first class with living members
-
-QUESTION 9: Will details — date of Will, codicil date, attesting witnesses (names)?
-
-QUESTION 10: Estate values — personal property value, real property value?
-
-FORMATTING:
-- Dates: MM/DD/YYYY
-- Money: numbers only, no $ or commas
-- Unknown fields: null
-- maritalStatus: never_married, married, divorced, widowed
-
-Return ONLY valid JSON with this structure:
-
-{{
-  "proceedingType": "Probate or Administration",
-  "decedentFirstName": null, "decedentMiddleName": null, "decedentLastName": null,
-  "decedentAKA": null, "decedentDOB": null, "decedentDOD": null,
-  "decedentPlaceOfDeath": null, "decedentStreet": null, "decedentCity": null,
-  "decedentState": null, "decedentZip": null, "decedentCitizenship": null, "ssn": null,
-  "maritalStatus": null, "spouseName": null, "divorceYear": null, "priorSpouseDeathDate": null,
-  "motherName": null, "motherDOD": null, "fatherName": null, "fatherDOD": null,
-  "childrenNote": null,
-  "petitionerFirstName": null, "petitionerMiddleName": null, "petitionerLastName": null,
-  "petitionerStreet": null, "petitionerCity": null, "petitionerState": null, "petitionerZip": null,
-  "petitionerRelationship": null, "petitionerCitizenship": null,
-  "successorExecutor": null,
-  "personalPropertyValue": null, "realPropertyValue": null,
-  "willDate": null, "codicilDate": null, "witness1": null, "witness2": null, "lettersTo": null,
-  "survivingSpouse": null, "survivingChildren": null, "survivingParents": null,
-  "survivingSiblings": null, "survivingGrandparents": null,
-  "survivingAuntsUncles": null, "survivingFirstCousinsOnceRemoved": null,
-  "willBeneficiaries": [],
-  "distributees": []
-}}
-
-"willBeneficiaries" — persons who RECEIVE property under the Will (from Question 5):
-{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": null, "interest": "What they receive under which Article (e.g. 'Residuary estate in equal shares under Article FOURTH')", "type": "specific_legatee/specific_devisee/residuary_beneficiary/contingent_beneficiary", "isMinor": false}}
-
-"distributees" — EPTL 4-1.1 intestate distributees for citation (from Question 8). These may overlap with willBeneficiaries:
-{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": null, "citizenship": "US Citizen"}}
-
-=== DOCUMENTS ===
-{combined}"""
+    # Load prompt from external file
+    prompt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smart_intake_prompt.md")
+    with open(prompt_path, "r") as pf:
+        prompt_template = pf.read()
+    prompt = prompt_template.replace("{documents}", combined)
 
     # ── Call Claude ────────────────────────────────────────────────────────────
     try:
@@ -1156,7 +1087,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.5.9"
+APP_VERSION = "1.6.0"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

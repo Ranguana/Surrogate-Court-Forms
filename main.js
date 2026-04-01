@@ -184,7 +184,7 @@ async function checkAndUpdate() {
         "Probate-_NY_Court_Forms.pdf", "admin_ancil.pdf",
         "Petition_for_Non-Domciliary_Letters_of_Admin.pdf",
         "login.html", "preload.js", "favicon.svg",
-        "field_mappings.py",
+        "field_mappings.py", "smart_intake_prompt.md",
       ];
       for (const item of items) {
         const src = path.join(srcDir, item);
