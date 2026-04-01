@@ -3089,7 +3089,7 @@ const SI_FIELD_LABELS = {
   petitionerZip:'Petitioner Zip', petitionerRelationship:'Petitioner Relationship',
   petitionerCitizenship:'Petitioner Citizenship', personalPropertyValue:'Personal Property ($)',
   realPropertyValue:'Real Property ($)', willDate:'Will Date', codicilDate:'Codicil Date',
-  witness1:'Witness 1', witness2:'Witness 2', lettersTo:'Letters To',
+  witness1:'Witness 1', witness2:'Witness 2', lettersTo:'Letters To', successorExecutor:'Successor Executor',
   survivingSpouse:'Surviving Spouse', survivingChildren:'Surviving Children',
   survivingParents:'Surviving Parents', survivingSiblings:'Surviving Siblings',
   survivingGrandparents:'Surviving Grandparents', survivingAuntsUncles:'Surviving Aunts/Uncles',
@@ -3117,7 +3117,7 @@ function siRenderPreview(d) {
     'petitionerStreet','petitionerCity','petitionerState','petitionerZip',
     'petitionerRelationship','petitionerCitizenship'];
   const estateFields = ['personalPropertyValue','realPropertyValue','willDate','codicilDate',
-    'witness1','witness2','lettersTo'];
+    'witness1','witness2','lettersTo','successorExecutor'];
   const relFields = ['survivingSpouse','survivingChildren','survivingParents','survivingSiblings',
     'survivingGrandparents','survivingAuntsUncles','survivingFirstCousinsOnceRemoved'];
 
@@ -3140,8 +3140,26 @@ function siRenderPreview(d) {
   html += renderGroup('Estate & Will', estateFields);
   html += renderGroup('Surviving Relatives', relFields);
 
+  // Will Beneficiaries (legatees, devisees, residuary)
+  const bens = d.willBeneficiaries||[];
+  if(bens.length) {
+    const TYPE_LABELS = {specific_legatee:'Specific Legatee',specific_devisee:'Specific Devisee',residuary_beneficiary:'Residuary Beneficiary',contingent_beneficiary:'Contingent Beneficiary'};
+    html += `<div class="si-section-head">Will Beneficiaries (${bens.length})</div>`;
+    html += bens.map((b,i)=>`<div class="si-field si-dist-row" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div style="display:flex;gap:6px">
+        <input class="si-field-input" data-si-ben="${i}" data-si-ben-field="name" value="${(b.name||'').replace(/"/g,'&quot;')}" placeholder="Name" style="flex:2">
+        <input class="si-field-input" data-si-ben="${i}" data-si-ben-field="relationship" value="${(b.relationship||'').replace(/"/g,'&quot;')}" placeholder="Relationship" style="flex:1">
+      </div>
+      <div style="display:flex;gap:6px">
+        <input class="si-field-input" data-si-ben="${i}" data-si-ben-field="interest" value="${(b.interest||'').replace(/"/g,'&quot;')}" placeholder="Interest (Article & disposition)" style="flex:2">
+        <span style="font-size:11px;color:var(--text3);padding:6px 0;min-width:120px">${TYPE_LABELS[b.type]||b.type||''}</span>
+      </div>
+    </div>`).join('');
+  }
+
+  // EPTL 4-1.1 Distributees (for citation)
   if(dists.length) {
-    html += `<div class="si-section-head">Distributees (${dists.length})</div>`;
+    html += `<div class="si-section-head">EPTL Distributees — for Citation (${dists.length})</div>`;
     html += dists.map((dist,i)=>`<div class="si-field si-dist-row" style="flex-direction:column;align-items:stretch;gap:4px">
       <div style="display:flex;gap:6px">
         <input class="si-field-input" data-si-dist="${i}" data-si-dist-field="name" value="${(dist.name||'').replace(/"/g,'&quot;')}" placeholder="Name" style="flex:2">
@@ -3165,6 +3183,14 @@ function siApply() {
   document.querySelectorAll('.si-field-input[data-si-key]').forEach(inp => {
     d[inp.dataset.siKey] = inp.value;
   });
+  // Read edited will beneficiaries
+  if(d.willBeneficiaries && d.willBeneficiaries.length) {
+    document.querySelectorAll('.si-field-input[data-si-ben]').forEach(inp => {
+      const idx = parseInt(inp.dataset.siBen);
+      const field = inp.dataset.siBenField;
+      if(d.willBeneficiaries[idx]) d.willBeneficiaries[idx][field] = inp.value;
+    });
+  }
   // Read edited distributees
   if(d.distributees && d.distributees.length) {
     document.querySelectorAll('.si-field-input[data-si-dist]').forEach(inp => {
@@ -3242,21 +3268,44 @@ function siApply() {
   }
   renderFTW();
 
-  // Distributees — replace the default empty list
-  if(d.distributees && d.distributees.length) {
-    const incoming = d.distributees.filter(dist => dist.name).map(dist => ({
-      name: dist.name, relationship: dist.relationship||'',
-      address: dist.address||'', citizenship: dist.citizenship||'US Citizen',
-      interest: dist.interest||'', beneficiaryType: dist.beneficiaryType||'primary',
-      isMinor: dist.isMinor||false, dob: dist.dob||'', guardianInfo: dist.guardianInfo||'',
-      disposition: 'tbd'
-    }));
-    if(incoming.length) {
-      // Keep only non-empty existing entries, then add incoming
-      const existing = distributees.filter(x => x.name);
-      distributees = existing.length ? [...existing, ...incoming] : incoming;
-      renderDists();
+  // Merge Will beneficiaries + EPTL distributees into the distributees list
+  // Beneficiaries get their interest from the Will; EPTL distributees are for citation
+  const merged = new Map(); // key by name to deduplicate
+
+  // Will beneficiaries first (they have the interest/Article info)
+  for(const b of (d.willBeneficiaries||[]).filter(x=>x.name)) {
+    const TYPE_MAP = {specific_legatee:'Specific legatee',specific_devisee:'Specific devisee',
+      residuary_beneficiary:'Residuary beneficiary',contingent_beneficiary:'Contingent beneficiary'};
+    const benType = b.type==='contingent_beneficiary' ? 'successor' : 'primary';
+    merged.set(b.name, {
+      name: b.name, relationship: b.relationship||'',
+      address: b.address||'', citizenship: b.citizenship||'US Citizen',
+      interest: b.interest||'', beneficiaryType: benType,
+      isMinor: b.isMinor||false, dob:'', guardianInfo:'', disposition:'tbd'
+    });
+  }
+
+  // EPTL distributees — add if not already from Will
+  for(const dist of (d.distributees||[]).filter(x=>x.name)) {
+    if(!merged.has(dist.name)) {
+      merged.set(dist.name, {
+        name: dist.name, relationship: dist.relationship||'',
+        address: dist.address||'', citizenship: dist.citizenship||'US Citizen',
+        interest: 'EPTL 4-1.1 distributee', beneficiaryType: 'primary',
+        isMinor: false, dob:'', guardianInfo:'', disposition:'tbd'
+      });
+    } else {
+      // Fill in address/citizenship if missing from Will entry
+      const existing = merged.get(dist.name);
+      if(!existing.address && dist.address) existing.address = dist.address;
+      if(!existing.citizenship && dist.citizenship) existing.citizenship = dist.citizenship;
     }
+  }
+
+  if(merged.size) {
+    const existing = distributees.filter(x => x.name);
+    distributees = existing.length ? [...existing, ...merged.values()] : [...merged.values()];
+    renderDists();
   }
 
   updateSummary();

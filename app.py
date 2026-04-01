@@ -775,38 +775,49 @@ def smart_intake():
     combined = "\n\n".join(doc_texts)
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
-    prompt = f"""You are a New York probate attorney reading legal documents to extract case information.
+    prompt = f"""You are a New York probate attorney reading legal documents. Answer each question below by extracting information from the documents.
 
-STEP 1 — DETERMINE PROCEEDING TYPE:
+QUESTION 1: What type of proceeding is this?
 - If a Last Will and Testament exists → "Probate"
 - If no Will → "Administration"
 
-STEP 2 — EXTRACT DECEDENT AND PETITIONER INFO:
-Standard fields like name, DOB, DOD, address, etc.
+QUESTION 2: Decedent information?
+Extract: full name, AKA, DOB, DOD, place of death, last address, SSN, citizenship, marital status.
 
-STEP 3 — IDENTIFY DISTRIBUTEES (read carefully):
+QUESTION 3: Who is the nominated Executor / Personal Representative?
+This person goes in the petitioner fields. Extract their name, address, relationship to decedent.
 
-If PROBATE (Will exists), read the Will article by article:
-- Find each DISPOSITIVE clause — who receives property and what do they receive?
-- For each person who RECEIVES something (money, property, residuary estate, specific bequest), add them as a distributee
-- Record their "interest" by quoting what they receive and the Article number (e.g. "All personal effects under Article SECOND", "Residuary estate under Article FOURTH")
-- A person named ONLY as executor, trustee, guardian, witness, or attorney is NOT a distributee unless they ALSO receive property
-- The executor/petitioner should go in petitioner fields, not distributees, unless they also inherit
+QUESTION 4: Is there a Successor Executor named? If so, who?
 
-If ADMINISTRATION (no Will), apply EPTL 4-1.1 strictly:
-- Surviving spouse + no children → spouse is SOLE distributee, list NO ONE ELSE
-- Surviving spouse + children → spouse + children only
-- No spouse → children only
-- No spouse, no children → parents only
-- Continue down the chain ONLY if all higher classes are empty
+QUESTION 5: Read the Will article by article. For each article that DISPOSES of property, answer:
+- Who receives property? (this person is a legatee, devisee, or residuary beneficiary)
+- What do they receive? (quote the disposition — e.g. "all tangible personal property", "residuary estate in equal shares")
+- Under which Article?
+- Are they a specific legatee/devisee, or a residuary beneficiary?
+- Are there any CONTINGENT beneficiaries (someone who inherits if the primary predeceases)?
 
-FORMATTING RULES:
+QUESTION 6: Are any trusts created? Who are the trustees?
+
+QUESTION 7: Are any guardians named for minor children?
+
+QUESTION 8: Who are the EPTL 4-1.1 distributees (for citation/notice purposes)?
+These are the people who WOULD inherit if there were no Will, based on intestacy:
+- Surviving spouse and/or children come first
+- If no spouse and no children → parents
+- If no parents → siblings
+- STOP at the first class with living members
+
+QUESTION 9: Will details — date of Will, codicil date, attesting witnesses (names)?
+
+QUESTION 10: Estate values — personal property value, real property value?
+
+FORMATTING:
 - Dates: MM/DD/YYYY
 - Money: numbers only, no $ or commas
-- Missing fields: null
+- Unknown fields: null
 - maritalStatus: never_married, married, divorced, widowed
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with this structure:
 
 {{
   "proceedingType": "Probate or Administration",
@@ -820,16 +831,21 @@ Return ONLY valid JSON:
   "petitionerFirstName": null, "petitionerMiddleName": null, "petitionerLastName": null,
   "petitionerStreet": null, "petitionerCity": null, "petitionerState": null, "petitionerZip": null,
   "petitionerRelationship": null, "petitionerCitizenship": null,
+  "successorExecutor": null,
   "personalPropertyValue": null, "realPropertyValue": null,
   "willDate": null, "codicilDate": null, "witness1": null, "witness2": null, "lettersTo": null,
   "survivingSpouse": null, "survivingChildren": null, "survivingParents": null,
   "survivingSiblings": null, "survivingGrandparents": null,
   "survivingAuntsUncles": null, "survivingFirstCousinsOnceRemoved": null,
+  "willBeneficiaries": [],
   "distributees": []
 }}
 
-Each distributee object:
-{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "WHAT they receive and under which Article or EPTL section", "beneficiaryType": "primary or successor", "isMinor": false}}
+"willBeneficiaries" — persons who RECEIVE property under the Will (from Question 5):
+{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": null, "interest": "What they receive under which Article (e.g. 'Residuary estate in equal shares under Article FOURTH')", "type": "specific_legatee/specific_devisee/residuary_beneficiary/contingent_beneficiary", "isMinor": false}}
+
+"distributees" — EPTL 4-1.1 intestate distributees for citation (from Question 8). These may overlap with willBeneficiaries:
+{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": null, "citizenship": "US Citizen"}}
 
 === DOCUMENTS ===
 {combined}"""
@@ -1140,7 +1156,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.5.9"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
