@@ -390,7 +390,7 @@ body {
 <!-- HEADER -->
 <div id="header">
   <div>
-    <h1>⚖️ NY Surrogate's Court <span class="sub">Probate HQ</span></h1>
+    <h1>⚖️ NY Surrogate's Court <span class="sub">Probate HQ</span> <span id="app-ver" style="font-size:11px;color:var(--text3);font-weight:normal;margin-left:6px"></span></h1>
     <div id="estate-label"></div>
   </div>
   <div class="hbtns">
@@ -2912,6 +2912,12 @@ document.getElementById("modal-overlay").addEventListener("click",function(e){ i
 
 // Ctrl/Cmd+S to save
 document.addEventListener("keydown",function(e){ if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();openSave();} });
+
+// Show version in header
+fetch('/app-version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('app-ver');
+  if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
 
 // ── STATUS ────────────────────────────────────────────────────────────────────
 function showStatus(text,type){
