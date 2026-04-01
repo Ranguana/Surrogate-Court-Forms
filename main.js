@@ -137,84 +137,98 @@ function getLocalVersion() {
 }
 
 async function checkAndUpdate() {
-  try {
-    sendStatus("Checking for updates...");
-    const releaseData = await httpGet(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-    const release = JSON.parse(releaseData.toString());
-    const latest = (release.tag_name || "").replace(/^v/, "");
-    const current = getLocalVersion();
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      sendStatus("Checking for updates...");
+      const releaseData = await httpGet(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+      const release = JSON.parse(releaseData.toString());
+      const latest = (release.tag_name || "").replace(/^v/, "");
+      const current = getLocalVersion();
 
-    if (!latest || latest === current) {
-      console.log(`[UPDATE] Up to date (v${current})`);
-      return;
-    }
-
-    console.log(`[UPDATE] New version available: v${latest} (current: v${current})`);
-    sendStatus(`Updating to v${latest}...`);
-
-    const zipUrl = `https://github.com/${GITHUB_REPO}/archive/refs/tags/${release.tag_name}.zip`;
-    const zipData = await httpGet(zipUrl);
-
-    const tmpZip = path.join(app.getPath("temp"), "probate_update.zip");
-    fs.writeFileSync(tmpZip, zipData);
-
-    const liveDir = getLiveAppDir();
-    const tmpExtract = path.join(app.getPath("temp"), "probate_extract");
-
-    if (fs.existsSync(tmpExtract)) {
-      fs.rmSync(tmpExtract, { recursive: true, force: true });
-    }
-
-    await run(`unzip -o -q "${tmpZip}" -d "${tmpExtract}"`, 30000);
-
-    const extracted = fs.readdirSync(tmpExtract);
-    const srcDir = path.join(tmpExtract, extracted[0]);
-
-    if (fs.existsSync(liveDir)) {
-      fs.rmSync(liveDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(liveDir, { recursive: true });
-
-    const items = [
-      "app.py", "generators.py", "requirements.txt",
-      "static", "templates", "Accounting",
-      "Probate-_NY_Court_Forms.pdf", "admin_ancil.pdf",
-      "Petition_for_Non-Domciliary_Letters_of_Admin.pdf",
-      "login.html", "preload.js", "favicon.svg",
-    ];
-    for (const item of items) {
-      const src = path.join(srcDir, item);
-      const dst = path.join(liveDir, item);
-      if (fs.existsSync(src)) {
-        await run(`cp -R "${src}" "${dst}"`, 10000);
+      if (!latest || latest === current) {
+        console.log(`[UPDATE] Up to date (v${current})`);
+        sendStatus(`v${current} — up to date`);
+        return;
       }
-    }
 
-    const bundledEnv = path.join(getBundledAppDir(), ".env");
-    const liveEnv = path.join(liveDir, ".env");
-    if (fs.existsSync(bundledEnv)) {
-      fs.copyFileSync(bundledEnv, liveEnv);
-    }
+      console.log(`[UPDATE] New version available: v${latest} (current: v${current})`);
+      sendStatus(`Updating to v${latest}...`);
 
-    for (const f of ["cases.json", "contacts.json"]) {
-      const dst = path.join(liveDir, f);
-      if (!fs.existsSync(dst)) {
-        const bundled = path.join(getBundledAppDir(), f);
-        if (fs.existsSync(bundled)) {
-          fs.copyFileSync(bundled, dst);
-        } else {
-          fs.writeFileSync(dst, "{}");
+      const zipUrl = `https://github.com/${GITHUB_REPO}/archive/refs/tags/${release.tag_name}.zip`;
+      const zipData = await httpGet(zipUrl);
+
+      const tmpZip = path.join(app.getPath("temp"), "probate_update.zip");
+      fs.writeFileSync(tmpZip, zipData);
+
+      const liveDir = getLiveAppDir();
+      const tmpExtract = path.join(app.getPath("temp"), "probate_extract");
+
+      if (fs.existsSync(tmpExtract)) {
+        fs.rmSync(tmpExtract, { recursive: true, force: true });
+      }
+
+      await run(`unzip -o -q "${tmpZip}" -d "${tmpExtract}"`, 30000);
+
+      const extracted = fs.readdirSync(tmpExtract);
+      const srcDir = path.join(tmpExtract, extracted[0]);
+
+      if (fs.existsSync(liveDir)) {
+        fs.rmSync(liveDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(liveDir, { recursive: true });
+
+      const items = [
+        "app.py", "generators.py", "requirements.txt",
+        "static", "templates", "Accounting",
+        "Probate-_NY_Court_Forms.pdf", "admin_ancil.pdf",
+        "Petition_for_Non-Domciliary_Letters_of_Admin.pdf",
+        "login.html", "preload.js", "favicon.svg",
+        "field_mappings.py",
+      ];
+      for (const item of items) {
+        const src = path.join(srcDir, item);
+        const dst = path.join(liveDir, item);
+        if (fs.existsSync(src)) {
+          await run(`cp -R "${src}" "${dst}"`, 10000);
         }
       }
+
+      const bundledEnv = path.join(getBundledAppDir(), ".env");
+      const liveEnv = path.join(liveDir, ".env");
+      if (fs.existsSync(bundledEnv)) {
+        fs.copyFileSync(bundledEnv, liveEnv);
+      }
+
+      for (const f of ["cases.json", "contacts.json"]) {
+        const dst = path.join(liveDir, f);
+        if (!fs.existsSync(dst)) {
+          const bundled = path.join(getBundledAppDir(), f);
+          if (fs.existsSync(bundled)) {
+            fs.copyFileSync(bundled, dst);
+          } else {
+            fs.writeFileSync(dst, "{}");
+          }
+        }
+      }
+
+      try { fs.unlinkSync(tmpZip); } catch (e) { /* ok */ }
+      try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch (e) { /* ok */ }
+
+      console.log(`[UPDATE] Updated to v${latest}`);
+      sendStatus(`Updated to v${latest}! Starting...`);
+      return;
+    } catch (e) {
+      console.log(`[UPDATE] Attempt ${attempt}/${maxRetries} failed: ${e.message}`);
+      if (attempt < maxRetries) {
+        sendStatus(`Update check failed, retrying (${attempt}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        const current = getLocalVersion();
+        sendStatus(`⚠ Could not check for updates — running v${current}`);
+        console.log(`[UPDATE] All retries failed: ${e.message}`);
+      }
     }
-
-    try { fs.unlinkSync(tmpZip); } catch (e) { /* ok */ }
-    try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch (e) { /* ok */ }
-
-    console.log(`[UPDATE] Updated to v${latest}`);
-    sendStatus(`Updated to v${latest}! Starting...`);
-  } catch (e) {
-    console.log(`[UPDATE] Check failed (continuing with current version): ${e.message}`);
   }
 }
 
