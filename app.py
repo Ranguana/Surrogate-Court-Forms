@@ -784,7 +784,7 @@ RULES:
 - maritalStatus must be one of: never_married, married, divorced, widowed
 - proceedingType must be one of: Probate, Administration (Probate if a Will exists, Administration if no Will)
 - survivingX fields: "Yes" if that class survives, "No" if they existed but predeceased, null if unknown
-- For distributees: include EVERY person named in the Will — executors, beneficiaries, trustees, guardians, contingent/successor beneficiaries, and all known heirs
+- For distributees: include ONLY persons who are actual distributees under EPTL 4-1.1 intestate succession OR beneficiaries/fiduciaries named in the Will. Follow EPTL rules: if there is a surviving spouse and no children, the spouse is the SOLE distributee — do NOT include parents, siblings, grandparents, aunts/uncles, or cousins. If there is a surviving spouse AND children, include only spouse and children. Only go further down the chain (parents, siblings, etc.) if the higher classes do not exist
 - "interest" field is CRITICAL for Probate: describe each person's specific legacy, devise, or fiduciary role under the Will, citing the Article number. Examples:
   - "Nominated Executor under Article SIXTH"
   - "Residuary legatee under Article FOURTH"

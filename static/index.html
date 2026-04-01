@@ -3036,6 +3036,7 @@ function siClear() {
   siRenderFiles();
   document.getElementById('si-preview').innerHTML='';
   document.getElementById('si-status').textContent='';
+  document.getElementById('si-file-input').value='';
 }
 
 async function siAnalyze() {
@@ -3225,6 +3226,16 @@ function siApply() {
   set('witness2', d.witness2);
   set('lettersTo', d.lettersTo);
 
+  // Family tree from surviving* fields
+  const ftMap = {survivingSpouse:'spouse', survivingChildren:'children', survivingParents:'parents',
+    survivingSiblings:'siblings', survivingGrandparents:'grandparents', survivingAuntsUncles:'auntsUncles',
+    survivingFirstCousinsOnceRemoved:'firstCousins'};
+  for(const [src, dst] of Object.entries(ftMap)) {
+    if(d[src] === 'Yes' || d[src] === true) ft[dst] = true;
+    else if(d[src] === 'No' || d[src] === false) ft[dst] = false;
+  }
+  renderFTW();
+
   // Distributees — replace the default empty list
   if(d.distributees && d.distributees.length) {
     const incoming = d.distributees.filter(dist => dist.name).map(dist => ({
@@ -3244,6 +3255,13 @@ function siApply() {
 
   updateSummary();
   showStatus('✓ Fields applied from Smart Intake. Please review before generating.', 'ok');
+
+  // Reset Smart Intake so user can analyze another document
+  siFiles = []; siExtracted = null;
+  siRenderFiles();
+  document.getElementById('si-preview').innerHTML = '';
+  document.getElementById('si-status').textContent = '';
+  document.getElementById('si-file-input').value = '';
 
   // Navigate to first populated section
   const firstBtn = [...document.querySelectorAll('.nav-btn')].find(b=>b.textContent.includes('Proceeding'));
