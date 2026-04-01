@@ -776,10 +776,17 @@ def smart_intake():
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
     # Load prompt from external file
-    prompt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smart_intake_prompt.md")
-    with open(prompt_path, "r") as pf:
-        prompt_template = pf.read()
-    prompt = prompt_template.replace("{documents}", combined)
+    try:
+        # Try working directory first (where runner.py sets cwd), then __file__ dir
+        for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]:
+            prompt_path = os.path.join(base, "smart_intake_prompt.md")
+            if os.path.isfile(prompt_path):
+                break
+        with open(prompt_path, "r") as pf:
+            prompt_template = pf.read()
+        prompt = prompt_template.replace("{documents}", combined)
+    except Exception as e:
+        return jsonify({"error": f"Could not load prompt file: {e}"}), 500
 
     # ── Call Claude ────────────────────────────────────────────────────────────
     try:
@@ -1087,7 +1094,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
