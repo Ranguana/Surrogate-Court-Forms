@@ -784,16 +784,12 @@ RULES:
 - maritalStatus must be one of: never_married, married, divorced, widowed
 - proceedingType must be one of: Probate, Administration (Probate if a Will exists, Administration if no Will)
 - survivingX fields: "Yes" if that class survives, "No" if they existed but predeceased, null if unknown
-- For distributees: include ONLY persons who are actual distributees under EPTL 4-1.1 intestate succession OR beneficiaries/fiduciaries named in the Will. Follow EPTL rules: if there is a surviving spouse and no children, the spouse is the SOLE distributee — do NOT include parents, siblings, grandparents, aunts/uncles, or cousins. If there is a surviving spouse AND children, include only spouse and children. Only go further down the chain (parents, siblings, etc.) if the higher classes do not exist
-- "interest" field is CRITICAL for Probate: describe each person's specific legacy, devise, or fiduciary role under the Will, citing the Article number. Examples:
-  - "Nominated Executor under Article SIXTH"
-  - "Residuary legatee under Article FOURTH"
-  - "Specific bequest of personal effects under Article THIRD"
-  - "Contingent beneficiary under Articles THIRD & FOURTH (equal share if [name] predeceases)"
-  - "Successor Executor under Article SIXTH"
-  - "Trustee under Article FIFTH"
-- "beneficiaryType": use "primary" for persons in the main disposition (executor, direct beneficiaries, contingent beneficiaries). Use "successor" for substitute executors, trustees, guardians, and other persons named in the Will who are not primary beneficiaries.
-- If someone appears in BOTH roles (e.g. contingent beneficiary AND successor executor), list them TWICE — once as "primary" and once as "successor" with different interest descriptions.
+- DISTRIBUTEES — this is critical, do NOT over-include:
+  - For PROBATE (Will exists): distributees are ONLY the persons who actually receive property under the Will (beneficiaries) plus EPTL 4-1.1 distributees. Do NOT include executors, trustees, guardians, witnesses, or attorneys UNLESS they are also beneficiaries.
+  - For ADMINISTRATION (no Will): distributees are ONLY persons entitled under EPTL 4-1.1 intestate succession. Follow the chain strictly: (1) surviving spouse, (2) children/issue, (3) parents, (4) siblings/issue, (5) grandparents, (6) aunts/uncles/cousins. STOP at the first class that has living members. If spouse survives with no children, spouse is the SOLE distributee — do NOT list parents, siblings, etc.
+  - The nominated executor should be listed as the PETITIONER, not as a distributee (unless they are also a beneficiary)
+- "interest" field: describe the person's entitlement. For Probate, cite the Will Article (e.g. "Residuary legatee under Article FOURTH"). For Administration, state the EPTL relationship (e.g. "Surviving spouse — sole distributee under EPTL 4-1.1")
+- "beneficiaryType": "primary" for direct beneficiaries, "successor" for contingent/alternate beneficiaries
 - "isMinor": set to true if the person is identified as a minor/infant in the documents
 
 Return ONLY valid JSON with this exact structure (use null for unknown fields):
@@ -848,8 +844,8 @@ Return ONLY valid JSON with this exact structure (use null for unknown fields):
   "distributees": []
 }}
 
-Each distributee in the array should be:
-{{"name": "Full Name", "relationship": "Son/Daughter/Spouse/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "describe legacy/devise/fiduciary role citing Article number", "beneficiaryType": "primary or successor", "isMinor": false}}
+Each distributee in the array should be (ONLY actual beneficiaries/heirs — NOT executors, trustees, witnesses, or attorneys):
+{{"name": "Full Name", "relationship": "Son/Daughter/Spouse/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "describe entitlement citing Will Article or EPTL section", "beneficiaryType": "primary or successor", "isMinor": false}}
 
 === DOCUMENTS ===
 {combined}"""
@@ -1160,7 +1156,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
