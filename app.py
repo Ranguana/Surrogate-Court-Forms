@@ -658,6 +658,8 @@ def smart_intake():
         return jsonify({"error": "No files uploaded"}), 400
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured. Check .env file."}), 500
 
     import pdfplumber
     import anthropic as _anthropic
@@ -715,7 +717,7 @@ def smart_intake():
                     if image_contents:
                         # Send images directly to Claude for extraction
                         _api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                        client = _anthropic.Anthropic(api_key=_api_key)
+                        client = _anthropic.Anthropic(api_key=_api_key, timeout=120.0)
                         vision_prompt = image_contents + [{"type": "text", "text": "Extract ALL text from these scanned document pages. Return the full text content."}]
                         msg = client.messages.create(
                             model="claude-sonnet-4-6",
@@ -822,7 +824,7 @@ Each distributee in the array should be:
 
     # ── Call Claude ────────────────────────────────────────────────────────────
     try:
-        client = _anthropic.Anthropic(api_key=api_key)
+        client = _anthropic.Anthropic(api_key=api_key, timeout=120.0)
         message = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,

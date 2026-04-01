@@ -3045,15 +3045,21 @@ async function siAnalyze() {
   const fd = new FormData();
   siFiles.forEach((f,i) => fd.append(`file${i}`, f));
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 150000); // 2.5 min timeout
+
   try {
-    const res = await fetch('/smart-intake', {method:'POST', body:fd});
+    const res = await fetch('/smart-intake', {method:'POST', body:fd, signal:controller.signal});
+    clearTimeout(timeoutId);
     const json = await res.json();
     if(!res.ok || json.error) throw new Error(json.error||'Unknown error');
     siExtracted = json.data;
     status.textContent='';
     siRenderPreview(siExtracted);
   } catch(e) {
-    status.textContent='⚠ '+e.message;
+    clearTimeout(timeoutId);
+    const msg = e.name==='AbortError' ? 'Request timed out. Please try again.' : e.message;
+    status.textContent='⚠ '+msg;
   }
   btn.disabled=false; btn.textContent='🤖 Analyze Documents';
 }
