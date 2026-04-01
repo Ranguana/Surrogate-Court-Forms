@@ -777,11 +777,20 @@ def smart_intake():
     # ── Claude prompt ──────────────────────────────────────────────────────────
     # Load prompt from external file
     try:
-        # Try working directory first (where runner.py sets cwd), then __file__ dir
-        for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]:
-            prompt_path = os.path.join(base, "smart_intake_prompt.md")
-            if os.path.isfile(prompt_path):
+        # Check: argv[1] app dir, cwd, __file__ dir, PyInstaller _MEIPASS
+        search_dirs = [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]
+        if len(os.sys.argv) > 1:
+            search_dirs.insert(0, os.sys.argv[1])
+        if hasattr(os.sys, '_MEIPASS'):
+            search_dirs.append(os.sys._MEIPASS)
+        prompt_path = None
+        for base in search_dirs:
+            candidate = os.path.join(base, "smart_intake_prompt.md")
+            if os.path.isfile(candidate):
+                prompt_path = candidate
                 break
+        if not prompt_path:
+            return jsonify({"error": "smart_intake_prompt.md not found. Searched: " + ", ".join(search_dirs)}), 500
         with open(prompt_path, "r") as pf:
             prompt_template = pf.read()
         prompt = prompt_template.replace("{documents}", combined)
@@ -1094,7 +1103,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

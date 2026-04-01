@@ -5,7 +5,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('static', 'static'), ('templates', 'templates'), ('Accounting', 'Accounting'), ('generators.py', '.'), ('cases.json', '.'), ('contacts.json', '.'), ('favicon.svg', '.'), ('.env', '.'), ('Probate-_NY_Court_Forms.pdf', '.'), ('admin_ancil.pdf', '.'), ('Petition_for_Non-Domciliary_Letters_of_Admin.pdf', '.')],
+    datas=[('static', 'static'), ('templates', 'templates'), ('Accounting', 'Accounting'), ('generators.py', '.'), ('cases.json', '.'), ('contacts.json', '.'), ('favicon.svg', '.'), ('.env', '.'), ('Probate-_NY_Court_Forms.pdf', '.'), ('admin_ancil.pdf', '.'), ('Petition_for_Non-Domciliary_Letters_of_Admin.pdf', '.'), ('smart_intake_prompt.md', '.')],
     hiddenimports=['flask', 'dotenv', 'docx', 'pypdf', 'pdfplumber', 'fitz', 'openpyxl', 'anthropic', 'pytesseract', 'pdf2image', 'requests', 'pdfplumber.utils', 'pdfplumber.page'],
     hookspath=[],
     hooksconfig={},
