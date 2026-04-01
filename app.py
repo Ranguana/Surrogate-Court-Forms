@@ -775,77 +775,61 @@ def smart_intake():
     combined = "\n\n".join(doc_texts)
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
-    prompt = f"""You are a New York probate attorney's assistant. Extract information from the uploaded legal documents and return it as JSON to pre-fill a Surrogate's Court petition.
+    prompt = f"""You are a New York probate attorney reading legal documents to extract case information.
 
-RULES:
-- Dates: MM/DD/YYYY format
-- Money: numbers only, no $ or commas (e.g. "150000")
-- Missing fields: use null
-- maritalStatus must be one of: never_married, married, divorced, widowed
-- proceedingType must be one of: Probate, Administration (Probate if a Will exists, Administration if no Will)
-- survivingX fields: "Yes" if that class survives, "No" if they existed but predeceased, null if unknown
-- DISTRIBUTEES — this is critical, do NOT over-include:
-  - For PROBATE (Will exists): distributees are ONLY the persons who actually receive property under the Will (beneficiaries) plus EPTL 4-1.1 distributees. Do NOT include executors, trustees, guardians, witnesses, or attorneys UNLESS they are also beneficiaries.
-  - For ADMINISTRATION (no Will): distributees are ONLY persons entitled under EPTL 4-1.1 intestate succession. Follow the chain strictly: (1) surviving spouse, (2) children/issue, (3) parents, (4) siblings/issue, (5) grandparents, (6) aunts/uncles/cousins. STOP at the first class that has living members. If spouse survives with no children, spouse is the SOLE distributee — do NOT list parents, siblings, etc.
-  - The nominated executor should be listed as the PETITIONER, not as a distributee (unless they are also a beneficiary)
-- "interest" field: describe the person's entitlement. For Probate, cite the Will Article (e.g. "Residuary legatee under Article FOURTH"). For Administration, state the EPTL relationship (e.g. "Surviving spouse — sole distributee under EPTL 4-1.1")
-- "beneficiaryType": "primary" for direct beneficiaries, "successor" for contingent/alternate beneficiaries
-- "isMinor": set to true if the person is identified as a minor/infant in the documents
+STEP 1 — DETERMINE PROCEEDING TYPE:
+- If a Last Will and Testament exists → "Probate"
+- If no Will → "Administration"
 
-Return ONLY valid JSON with this exact structure (use null for unknown fields):
+STEP 2 — EXTRACT DECEDENT AND PETITIONER INFO:
+Standard fields like name, DOB, DOD, address, etc.
+
+STEP 3 — IDENTIFY DISTRIBUTEES (read carefully):
+
+If PROBATE (Will exists), read the Will article by article:
+- Find each DISPOSITIVE clause — who receives property and what do they receive?
+- For each person who RECEIVES something (money, property, residuary estate, specific bequest), add them as a distributee
+- Record their "interest" by quoting what they receive and the Article number (e.g. "All personal effects under Article SECOND", "Residuary estate under Article FOURTH")
+- A person named ONLY as executor, trustee, guardian, witness, or attorney is NOT a distributee unless they ALSO receive property
+- The executor/petitioner should go in petitioner fields, not distributees, unless they also inherit
+
+If ADMINISTRATION (no Will), apply EPTL 4-1.1 strictly:
+- Surviving spouse + no children → spouse is SOLE distributee, list NO ONE ELSE
+- Surviving spouse + children → spouse + children only
+- No spouse → children only
+- No spouse, no children → parents only
+- Continue down the chain ONLY if all higher classes are empty
+
+FORMATTING RULES:
+- Dates: MM/DD/YYYY
+- Money: numbers only, no $ or commas
+- Missing fields: null
+- maritalStatus: never_married, married, divorced, widowed
+
+Return ONLY valid JSON:
 
 {{
   "proceedingType": "Probate or Administration",
-  "decedentFirstName": null,
-  "decedentMiddleName": null,
-  "decedentLastName": null,
-  "decedentAKA": null,
-  "decedentDOB": null,
-  "decedentDOD": null,
-  "decedentPlaceOfDeath": null,
-  "decedentStreet": null,
-  "decedentCity": null,
-  "decedentState": null,
-  "decedentZip": null,
-  "decedentCitizenship": null,
-  "ssn": null,
-  "maritalStatus": null,
-  "spouseName": null,
-  "divorceYear": null,
-  "priorSpouseDeathDate": null,
-  "motherName": null,
-  "motherDOD": null,
-  "fatherName": null,
-  "fatherDOD": null,
+  "decedentFirstName": null, "decedentMiddleName": null, "decedentLastName": null,
+  "decedentAKA": null, "decedentDOB": null, "decedentDOD": null,
+  "decedentPlaceOfDeath": null, "decedentStreet": null, "decedentCity": null,
+  "decedentState": null, "decedentZip": null, "decedentCitizenship": null, "ssn": null,
+  "maritalStatus": null, "spouseName": null, "divorceYear": null, "priorSpouseDeathDate": null,
+  "motherName": null, "motherDOD": null, "fatherName": null, "fatherDOD": null,
   "childrenNote": null,
-  "petitionerFirstName": null,
-  "petitionerMiddleName": null,
-  "petitionerLastName": null,
-  "petitionerStreet": null,
-  "petitionerCity": null,
-  "petitionerState": null,
-  "petitionerZip": null,
-  "petitionerRelationship": null,
-  "petitionerCitizenship": null,
-  "personalPropertyValue": null,
-  "realPropertyValue": null,
-  "willDate": null,
-  "codicilDate": null,
-  "witness1": null,
-  "witness2": null,
-  "lettersTo": null,
-  "survivingSpouse": null,
-  "survivingChildren": null,
-  "survivingParents": null,
-  "survivingSiblings": null,
-  "survivingGrandparents": null,
-  "survivingAuntsUncles": null,
-  "survivingFirstCousinsOnceRemoved": null,
+  "petitionerFirstName": null, "petitionerMiddleName": null, "petitionerLastName": null,
+  "petitionerStreet": null, "petitionerCity": null, "petitionerState": null, "petitionerZip": null,
+  "petitionerRelationship": null, "petitionerCitizenship": null,
+  "personalPropertyValue": null, "realPropertyValue": null,
+  "willDate": null, "codicilDate": null, "witness1": null, "witness2": null, "lettersTo": null,
+  "survivingSpouse": null, "survivingChildren": null, "survivingParents": null,
+  "survivingSiblings": null, "survivingGrandparents": null,
+  "survivingAuntsUncles": null, "survivingFirstCousinsOnceRemoved": null,
   "distributees": []
 }}
 
-Each distributee in the array should be (ONLY actual beneficiaries/heirs — NOT executors, trustees, witnesses, or attorneys):
-{{"name": "Full Name", "relationship": "Son/Daughter/Spouse/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "describe entitlement citing Will Article or EPTL section", "beneficiaryType": "primary or successor", "isMinor": false}}
+Each distributee object:
+{{"name": "Full Name", "relationship": "Spouse/Son/Daughter/etc", "address": "full address or null", "citizenship": "US Citizen", "interest": "WHAT they receive and under which Article or EPTL section", "beneficiaryType": "primary or successor", "isMinor": false}}
 
 === DOCUMENTS ===
 {combined}"""
@@ -1156,7 +1140,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.5.8"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
