@@ -736,8 +736,9 @@ def fill_pdf(template_path, fields):
                 h = widget.rect.height
                 w = widget.rect.width
                 if s == "X":
-                    # Size the X to fit the field box, centered
-                    widget.text_fontsize = max(4, min(h - 1, 8))
+                    # Size the X to visibly fill the checkbox box
+                    # These are tiny ~6pt boxes; use a large font so X overflows and fills visually
+                    widget.text_fontsize = max(10, h * 2)
                 elif len(s) > 0:
                     current_size = widget.text_fontsize
                     # If template has 0 font size, set 10pt default
@@ -886,7 +887,7 @@ def _build_probate_fields(data):
             elif idx < first_surviving:
                 dropdown_vals.append("No")
             elif idx == first_surviving:
-                dropdown_vals.append(str(count))
+                dropdown_vals.append("Yes")
             else:
                 dropdown_vals.append("X")
     else:
@@ -905,12 +906,7 @@ def _build_probate_fields(data):
             elif idx < first_surviving:
                 dropdown_vals.append("No")
             elif idx == first_surviving:
-                s = str(raw).strip()
-                # Convert true/yes to "1", keep numbers as-is
-                if s.lower() in ("true", "yes"):
-                    dropdown_vals.append("1")
-                else:
-                    dropdown_vals.append(s)
+                dropdown_vals.append("Yes")
             else:
                 dropdown_vals.append("X")
 
@@ -918,6 +914,8 @@ def _build_probate_fields(data):
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
         "To the Surrogates Court County of": county,
+        "PROBATE PROCEEDING 1": dec,
+        "File No": data.get("fileNo", ""),
         "decedent": dec,
         "a Name": dec,
         "aka": data.get("decedentAKA", ""),
@@ -1024,6 +1022,12 @@ def _build_probate_fields(data):
     else:
         fields["is not an attorney"] = "X"
 
+    # ¶1(c) — Attorney-draftsperson / then-affiliated attorney
+    if data.get("petitionerIsDraftsperson") == "Yes":
+        fields["is_2"] = "X"
+    else:
+        fields["is not the attorneydraftsperson a thenaffiliated attorney"] = "X"
+
     # ── Distributees — route to correct petition section ─────────────────────
     # For probate: "interest" = description of legacy/devise under the will
     # For administration: fall back to relationship
@@ -1084,6 +1088,46 @@ def _build_probate_fields(data):
             "isMinor": False,
         })
 
+    # ── Enhance interest descriptions with roles ─────────────────────────────
+    # Append Distributee, Executor, Petitioner herein, etc. like the court expects
+    pet_lower = pet.strip().lower()
+    exec_lower = letters_to.strip().lower()
+    succ_exec_lower = succ_exec.lower()
+    trustee_lower = trustee.lower()
+    for dist in all_dists:
+        name_lower = dist.get("name", "").strip().lower()
+        interest = (dist.get("interest") or "").strip()
+        is_primary = (dist.get("beneficiaryType") or "primary") == "primary"
+        additions = []
+
+        # Add "Distributee" for ¶6 people if not already stated
+        if is_primary and "distributee" not in interest.lower():
+            additions.append("Distributee")
+
+        # Add executor role
+        if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
+            additions.append("Executor named in Will")
+
+        # Add successor executor role
+        if name_lower and succ_exec_lower and name_lower == succ_exec_lower and "successor executor" not in interest.lower():
+            additions.append("Successor Executor named in Will")
+
+        # Add trustee role
+        if name_lower and trustee_lower and name_lower == trustee_lower and "trustee" not in interest.lower():
+            trust_label = f"Trustee of {trust_name}" if trust_name else "Trustee named in Will"
+            additions.append(trust_label)
+
+        # Add petitioner status
+        if name_lower and name_lower == pet_lower and "petitioner" not in interest.lower():
+            additions.append("Petitioner herein")
+
+        # Build compound interest: additions first, then existing interest
+        if additions:
+            if interest:
+                dist["interest"] = "; ".join(additions) + "; " + interest
+            else:
+                dist["interest"] = "; ".join(additions)
+
     # Split into 4 groups
     primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
     primary_minors    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and d.get("isMinor")]
@@ -1094,12 +1138,11 @@ def _build_probate_fields(data):
         interest = (dist.get("interest") or "").strip()
         if interest:
             return interest
-        # Don't fall back to just "Spouse" or "Son" — that's the relationship, not the interest
         rel = (dist.get("relationship") or "").strip()
         if proceeding == "Probate":
-            return f"Legatee/Devisee — {rel}" if rel else "Legatee/Devisee"
+            return f"Legatee/Devisee under Will" if not rel else f"Legatee/Devisee under Will ({rel})"
         else:
-            return f"EPTL 4-1.1 distributee — {rel}" if rel else "EPTL 4-1.1 distributee"
+            return f"EPTL 4-1.1 distributee" if not rel else f"EPTL 4-1.1 distributee ({rel})"
 
     def _name_with_rel(dist):
         name = dist.get("name", "")
@@ -1119,14 +1162,19 @@ def _build_probate_fields(data):
             parts.append(f"Guardian: {dist['guardianInfo']}")
         return "; ".join(parts)
 
-    # Page 2, section 6a — Primary beneficiaries (8 rows)
-    p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7", "8"]
-    p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2", "8"]
+    # Page 2, section 6a — Distributees + executor (7 full rows; field "8" is shared)
+    p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7"]
+    p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
     p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
-    for i, dist in enumerate(primary_adults[:8]):
+    for i, dist in enumerate(primary_adults[:7]):
         fields[p2_6a_name[i]] = _name_with_rel(dist)
         fields[p2_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
         fields[p2_6a_int[i]]  = _interest(dist)
+    # 8th row: only interest field available (name/addr share field "8")
+    if len(primary_adults) > 7:
+        dist = primary_adults[7]
+        fields["8"] = _name_with_rel(dist)
+        fields[p2_6a_int[7]] = _interest(dist)
 
     # Page 2, section 6b — Primary beneficiaries under disability (6 rows)
     p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
@@ -1137,14 +1185,19 @@ def _build_probate_fields(data):
         fields[p2_7b_addr[i]] = dist.get("address", "")
         fields[p2_7b_int[i]]  = _interest(dist)
 
-    # Page 3, section 7a — Substitute executors, trustees, guardians, other beneficiaries (8 rows)
-    p3_6a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3", "8_2"]
-    p3_6a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4", "8_2"]
-    p3_6a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
-    for i, dist in enumerate(successor_adults[:8]):
-        fields[p3_6a_name[i]] = _name_with_rel(dist)
-        fields[p3_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-        fields[p3_6a_int[i]]  = _interest(dist)
+    # Page 3, section 7a — Other beneficiaries, trustees, successor executors (7 full rows; "8_2" shared)
+    p3_7a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3"]
+    p3_7a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4"]
+    p3_7a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
+    for i, dist in enumerate(successor_adults[:7]):
+        fields[p3_7a_name[i]] = _name_with_rel(dist)
+        fields[p3_7a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
+        fields[p3_7a_int[i]]  = _interest(dist)
+    # 8th row: only interest field available (name/addr share field "8_2")
+    if len(successor_adults) > 7:
+        dist = successor_adults[7]
+        fields["8_2"] = _name_with_rel(dist)
+        fields[p3_7a_int[7]] = _interest(dist)
 
     # Page 3, section 7b — Persons under disability from section 7a (7 rows)
     p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]

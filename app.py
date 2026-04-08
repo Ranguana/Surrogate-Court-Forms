@@ -749,7 +749,7 @@ def smart_intake():
                     if image_contents:
                         # Send images directly to Claude for extraction
                         _api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                        client = _anthropic.Anthropic(api_key=_api_key, timeout=120.0)
+                        client = _anthropic.Anthropic(api_key=_api_key, timeout=300.0)
                         vision_prompt = image_contents + [{"type": "text", "text": "Extract ALL text from these scanned document pages. Return the full text content."}]
                         msg = client.messages.create(
                             model="claude-sonnet-4-6",
@@ -799,7 +799,7 @@ def smart_intake():
 
     # ── Call Claude ────────────────────────────────────────────────────────────
     try:
-        client = _anthropic.Anthropic(api_key=api_key, timeout=120.0)
+        client = _anthropic.Anthropic(api_key=api_key, timeout=300.0)
         message = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
@@ -1103,7 +1103,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.4"
+APP_VERSION = "1.6.5"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

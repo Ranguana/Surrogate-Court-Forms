@@ -70,6 +70,16 @@ For residuary clauses — the residuary beneficiary gets "everything not otherwi
 For contingent beneficiaries — extract separately with type "contingent_beneficiary."
 For trusts — name the trust as beneficiary, note trustee separately.
 
+INTEREST DESCRIPTIONS (critical for petition ¶6 and ¶7):
+The "interest" field must be a detailed, court-ready description that references specific Articles.
+- For specific bequests: "Specific bequest of [item/amount] under Article [X]"
+- For residuary: "Legatee of net residuary estate under Article [X]"
+- For trust beneficiaries: "Income and principal beneficiary of [Trust Name] under Article [X]"
+- For contingent beneficiaries: "Contingent residuary beneficiary under Article [X] (if [condition])"
+- If a person has MULTIPLE interests (e.g., specific bequest AND contingent residuary AND trust beneficiary), combine ALL with semicolons
+- Always reference the Article number/letter (e.g., "Article FIRST", "Article THREE(a)(1)")
+- If a person is both executor AND beneficiary, include both roles
+
 RULE 6 — MARITAL STATUS:
 - "never_married" — Will makes no reference to spouse or prior marriage
 - "married" — Will references "my husband/wife [name]" as living
@@ -106,7 +116,7 @@ Correct output:
       "name": "Mary Jane Smith",
       "relationship": "Spouse",
       "address": null,
-      "interest": "Entire residuary estate under Article FIRST",
+      "interest": "Legatee of entire residuary estate under Article FIRST; Executor named in Will under Article SECOND",
       "type": "residuary_beneficiary",
       "isMinor": false
     },
@@ -114,7 +124,7 @@ Correct output:
       "name": "John Smith",
       "relationship": "Son",
       "address": null,
-      "interest": "Equal share of residuary estate if spouse predeceases, under Article FIRST",
+      "interest": "Contingent residuary beneficiary in equal shares under Article FIRST (if spouse predeceases); Successor Executor named in Will under Article SECOND",
       "type": "contingent_beneficiary",
       "isMinor": false
     },
@@ -122,7 +132,7 @@ Correct output:
       "name": "Sarah Smith Jones",
       "relationship": "Daughter",
       "address": null,
-      "interest": "Equal share of residuary estate if spouse predeceases, under Article FIRST",
+      "interest": "Contingent residuary beneficiary in equal shares under Article FIRST (if spouse predeceases)",
       "type": "contingent_beneficiary",
       "isMinor": false
     }

@@ -611,9 +611,15 @@ body {
         <div class="field"><label>Is Petitioner an Attorney?</label>
           <select id="petitionerIsAttorney"><option>No</option><option>Yes</option></select>
         </div>
+        <div class="field"><label>Is Petitioner the Attorney-Draftsperson?</label>
+          <select id="petitionerIsDraftsperson"><option>No</option><option>Yes</option></select>
+        </div>
+      </div>
+      <div class="grid2">
         <div class="field"><label>Relationship to Decedent</label>
           <input id="petitionerRelationship" placeholder="e.g. Spouse, Child, Sibling, Designee">
         </div>
+        <div class="field"></div>
       </div>
       <div class="sub-head">Deponent for Heirship Affidavit (if different from petitioner)</div>
       <div class="grid2">
@@ -1455,7 +1461,8 @@ function getFormData() {
     petitionerLastName:g("petitionerLastName"), petitionerStreet:g("petitionerStreet"),
     petitionerCity:g("petitionerCity"), petitionerState:g("petitionerState"), petitionerZip:g("petitionerZip"),
     petitionerCitizenship:g("petitionerCitizenship"), petitionerInterest:g("petitionerInterest"),
-    petitionerIsAttorney:g("petitionerIsAttorney"), petitionerRelationship:g("petitionerRelationship"),
+    petitionerIsAttorney:g("petitionerIsAttorney"), petitionerIsDraftsperson:g("petitionerIsDraftsperson"),
+    petitionerRelationship:g("petitionerRelationship"),
     deponentName:g("deponentName"), deponentRelationship:g("deponentRelationship"),
     deponentAddress:g("deponentAddress"), yearsKnown:g("yearsKnown"), soleDistributee:g("soleDistributee"),
     personalPropertyValue:g("personalPropertyValue"), realPropertyValue:g("realPropertyValue"),
@@ -1661,7 +1668,7 @@ Return raw JSON only — no markdown, no backticks, no explanation.`,
     const textF=["decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","ssn","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","foreignState","motherName","motherDOD","fatherName","fatherDOD","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerRelationship","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","willDate","witness1","witness2","lettersTo","soleDistributee","yearsKnown"];
     for(const k of textF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
 
-    const selF=["county","lettersType","petitionerInterest","petitionerCitizenship","decedentCitizenship","petitionerIsAttorney","maritalStatus"];
+    const selF=["county","lettersType","petitionerInterest","petitionerCitizenship","decedentCitizenship","petitionerIsAttorney","petitionerIsDraftsperson","maritalStatus"];
     for(const k of selF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
 
     if(parsed.proceedingType){
@@ -3057,7 +3064,7 @@ async function siAnalyze() {
   siFiles.forEach((f,i) => fd.append(`file${i}`, f));
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 150000); // 2.5 min timeout
+  const timeoutId = setTimeout(() => controller.abort(), 360000); // 6 min timeout
 
   try {
     const res = await fetch('/smart-intake', {method:'POST', body:fd, signal:controller.signal});
@@ -3093,7 +3100,7 @@ const SI_FIELD_LABELS = {
   witness2:'Witness 2', witness2Address:'Witness 2 Address',
   lettersTo:'Letters To', successorExecutor:'Successor Executor',
   selfProvingAffidavit:'Self-Proving Affidavit', trustName:'Trust Name', trusteeName:'Trustee',
-  guardianName:'Guardian', petitionerIsAttorney:'Petitioner is Attorney',
+  guardianName:'Guardian', petitionerIsAttorney:'Petitioner is Attorney', petitionerIsDraftsperson:'Petitioner is Draftsperson',
   survivingSpouse:'Surviving Spouse', survivingChildren:'Surviving Children',
   survivingParents:'Surviving Parents', survivingSiblings:'Surviving Siblings',
   survivingGrandparents:'Surviving Grandparents', survivingAuntsUncles:'Surviving Aunts/Uncles',
@@ -3301,7 +3308,10 @@ function siApply() {
   for(const b of (d.willBeneficiaries||[]).filter(x=>x.name)) {
     const TYPE_MAP = {specific_legatee:'Specific legatee',specific_devisee:'Specific devisee',
       residuary_beneficiary:'Residuary beneficiary',contingent_beneficiary:'Contingent beneficiary'};
-    const benType = b.type==='contingent_beneficiary' ? 'successor' : 'primary';
+    // ¶6 = distributees + executor only; ¶7 = all other legatees/devisees/trustees
+    // Residuary beneficiaries are usually also distributees → ¶6
+    // Specific legatees and contingent beneficiaries are usually NOT distributees → ¶7
+    const benType = (b.type==='residuary_beneficiary') ? 'primary' : 'successor';
     merged.set(b.name, {
       name: b.name, relationship: b.relationship||'',
       address: b.address||'', citizenship: b.citizenship||'US Citizen',
