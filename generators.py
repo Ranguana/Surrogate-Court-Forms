@@ -1089,44 +1089,28 @@ def _build_probate_fields(data):
         })
 
     # ── Enhance interest descriptions with roles ─────────────────────────────
-    # Append Distributee, Executor, Petitioner herein, etc. like the court expects
+    # Prepend key roles (Distributee, Executor, Petitioner) — keep concise
     pet_lower = pet.strip().lower()
     exec_lower = letters_to.strip().lower()
     succ_exec_lower = succ_exec.lower()
-    trustee_lower = trustee.lower()
     for dist in all_dists:
         name_lower = dist.get("name", "").strip().lower()
         interest = (dist.get("interest") or "").strip()
         is_primary = (dist.get("beneficiaryType") or "primary") == "primary"
-        additions = []
+        prefix_parts = []
 
-        # Add "Distributee" for ¶6 people if not already stated
         if is_primary and "distributee" not in interest.lower():
-            additions.append("Distributee")
-
-        # Add executor role
+            prefix_parts.append("Distributee")
         if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
-            additions.append("Executor named in Will")
-
-        # Add successor executor role
+            prefix_parts.append("Executor")
         if name_lower and succ_exec_lower and name_lower == succ_exec_lower and "successor executor" not in interest.lower():
-            additions.append("Successor Executor named in Will")
-
-        # Add trustee role
-        if name_lower and trustee_lower and name_lower == trustee_lower and "trustee" not in interest.lower():
-            trust_label = f"Trustee of {trust_name}" if trust_name else "Trustee named in Will"
-            additions.append(trust_label)
-
-        # Add petitioner status
+            prefix_parts.append("Successor Executor")
         if name_lower and name_lower == pet_lower and "petitioner" not in interest.lower():
-            additions.append("Petitioner herein")
+            prefix_parts.append("Petitioner herein")
 
-        # Build compound interest: additions first, then existing interest
-        if additions:
-            if interest:
-                dist["interest"] = "; ".join(additions) + "; " + interest
-            else:
-                dist["interest"] = "; ".join(additions)
+        if prefix_parts:
+            prefix = ", ".join(prefix_parts)
+            dist["interest"] = f"{prefix}; {interest}" if interest else prefix
 
     # Split into 4 groups
     primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
@@ -1162,19 +1146,45 @@ def _build_probate_fields(data):
             parts.append(f"Guardian: {dist['guardianInfo']}")
         return "; ".join(parts)
 
-    # Page 2, section 6a — Distributees + executor (7 full rows; field "8" is shared)
+    def _split_interest(text, max_chars=60):
+        """Split long interest text into multiple lines for narrow PDF fields."""
+        if len(text) <= max_chars:
+            return [text]
+        lines = []
+        remaining = text
+        while remaining:
+            if len(remaining) <= max_chars:
+                lines.append(remaining)
+                break
+            # Split at semicolon first, then space
+            split_at = remaining.rfind(';', 0, max_chars)
+            if split_at == -1:
+                split_at = remaining.rfind(' ', 0, max_chars)
+            if split_at == -1:
+                split_at = max_chars
+            lines.append(remaining[:split_at + 1].strip())
+            remaining = remaining[split_at + 1:].strip()
+        return lines
+
+    # Page 2, section 6a — Distributees + executor
+    # Long interest descriptions span multiple rows (name/addr only on first row)
     p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7"]
     p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
     p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
-    for i, dist in enumerate(primary_adults[:7]):
-        fields[p2_6a_name[i]] = _name_with_rel(dist)
-        fields[p2_6a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-        fields[p2_6a_int[i]]  = _interest(dist)
-    # 8th row: only interest field available (name/addr share field "8")
-    if len(primary_adults) > 7:
-        dist = primary_adults[7]
-        fields["8"] = _name_with_rel(dist)
-        fields[p2_6a_int[7]] = _interest(dist)
+    row = 0
+    for dist in primary_adults:
+        if row >= 7:
+            break
+        interest_lines = _split_interest(_interest(dist))
+        fields[p2_6a_name[row]] = _name_with_rel(dist)
+        fields[p2_6a_addr[row]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
+        fields[p2_6a_int[row]] = interest_lines[0]
+        row += 1
+        for line in interest_lines[1:]:
+            if row >= 8:
+                break
+            fields[p2_6a_int[row]] = line
+            row += 1
 
     # Page 2, section 6b — Primary beneficiaries under disability (6 rows)
     p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
@@ -1185,19 +1195,32 @@ def _build_probate_fields(data):
         fields[p2_7b_addr[i]] = dist.get("address", "")
         fields[p2_7b_int[i]]  = _interest(dist)
 
-    # Page 3, section 7a — Other beneficiaries, trustees, successor executors (7 full rows; "8_2" shared)
+    # Page 3, section 7a — Other beneficiaries, trustees, successor executors
+    # Long interest descriptions span multiple rows (name/addr only on first row)
     p3_7a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3"]
     p3_7a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4"]
-    p3_7a_int  = [f"Interest or Nature of Fiduciary Status {i}_3" for i in range(1, 9)]
-    for i, dist in enumerate(successor_adults[:7]):
-        fields[p3_7a_name[i]] = _name_with_rel(dist)
-        fields[p3_7a_addr[i]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-        fields[p3_7a_int[i]]  = _interest(dist)
-    # 8th row: only interest field available (name/addr share field "8_2")
-    if len(successor_adults) > 7:
-        dist = successor_adults[7]
-        fields["8_2"] = _name_with_rel(dist)
-        fields[p3_7a_int[7]] = _interest(dist)
+    p3_7a_int  = ["Interest or Nature of Fiduciary Status 1_3",
+                  "Interest or Nature of Fiduciary Status 2_3",
+                  "Interest or Nature of Fiduciary Status 3_3",
+                  "Interest or Nature of Fiduciary Status 4_3",
+                  "Interest or Nature of Fiduciary Status 5_3",
+                  "Interest or Nature of Fiduciary Status 6_3",
+                  "Interest or Nature of Fiduciary Status 7_2",  # not 7_3!
+                  "Interest or Nature of Fiduciary Status 8_2"]  # not 8_3!
+    row = 0
+    for dist in successor_adults:
+        if row >= 7:
+            break
+        interest_lines = _split_interest(_interest(dist))
+        fields[p3_7a_name[row]] = _name_with_rel(dist)
+        fields[p3_7a_addr[row]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
+        fields[p3_7a_int[row]] = interest_lines[0]
+        row += 1
+        for line in interest_lines[1:]:
+            if row >= 8:
+                break
+            fields[p3_7a_int[row]] = line
+            row += 1
 
     # Page 3, section 7b — Persons under disability from section 7a (7 rows)
     p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]
