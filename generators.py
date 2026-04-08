@@ -712,13 +712,16 @@ def generate_attorney_cert(data):
 
 # ─── PDF FILLING (pymupdf/fitz) ──────────────────────────────────────────────
 
-def fill_pdf(template_path, fields):
+def fill_pdf(template_path, fields, font_overrides=None):
     """Universal PDF form filler using pymupdf/fitz.
 
     Handles text, checkboxes (True/False), radio buttons (export value like '/0'),
     and combo/dropdown fields. Calls widget.update() on every filled field to bake
     in appearance streams so fields render in any viewer including macOS Preview.
+
+    font_overrides: dict of field_name → font_size for fields that need a specific size.
     """
+    font_overrides = font_overrides or {}
     doc = fitz.open(template_path)
     for page in doc:
         for widget in page.widgets():
@@ -735,9 +738,10 @@ def fill_pdf(template_path, fields):
                 widget.field_value = s
                 h = widget.rect.height
                 w = widget.rect.width
-                if s == "X":
+                if name in font_overrides:
+                    widget.text_fontsize = font_overrides[name]
+                elif s == "X":
                     # Size the X to visibly fill the checkbox box
-                    # These are tiny ~6pt boxes; use a large font so X overflows and fills visually
                     widget.text_fontsize = max(10, h * 2)
                 elif len(s) > 0:
                     current_size = widget.text_fontsize
@@ -826,7 +830,7 @@ def _build_probate_fields(data):
     # Auto-compute property values from asset tracker
     _auto_compute_property(data)
 
-    county   = data.get("county", "")
+    county   = data.get("county", "").upper()
     dec      = decedent_full(data)
     pet      = petitioner_full(data)
     lt       = data.get("lettersType", "")
@@ -965,7 +969,7 @@ def _build_probate_fields(data):
         # ── Oath and Designation (page 5) ───────────────────────────────────────
         "STATE OF NEW YORK": "New York",
         "COUNTY OF_2": county,
-        "OATH OF": pet,
+        "OATH OF": "X",  # checkbox — always checked (the oath applies to the petitioner)
         "Surrogates Court of": county,
         "My domicile is": pet_addr,
         "Street Address": "",  # signature line — leave blank for petitioner to sign
@@ -1247,7 +1251,12 @@ def generate_probate_docs(data):
     """
     template = os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf")
     fields = _build_probate_fields(data)
-    filled = fill_pdf(template, fields)
+    # Match template font sizes for caption fields (template uses 10pt Arial)
+    font_overrides = {
+        "COUNTY OF": 10,
+        "PROBATE PROCEEDING 1": 10,
+    }
+    filled = fill_pdf(template, fields, font_overrides=font_overrides)
     last = data.get("decedentLastName", "estate").replace(" ", "_")
     docs = [
         (f"02_Petition_P1_{last}.pdf",        _extract_pages(filled, [0, 1, 2, 3])),
