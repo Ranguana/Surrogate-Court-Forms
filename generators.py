@@ -951,10 +951,13 @@ def _build_probate_fields(data):
         "Dropdown 5e": dropdown_vals[4],
         "Dropdown 5f": dropdown_vals[5],
         "Dropdown 5g": dropdown_vals[6],
-        # Prayer / letters (page 4) — only fill the matching "to" field
+        # Prayer / letters (page 4) — checkboxes + "to" fields
+        "requested": "X" if "Testamentary" in lt else "",           # Letters Testamentary checkbox
         "Petitioner_1": letters_to if "Testamentary" in lt else "",
-        "Petitioner_2": "",  # Don't duplicate petitioner name
+        "Petitioner_2": "",
+        "undefined_7": "X" if "Trusteeship" in lt else "",          # Letters of Trusteeship checkbox
         "Letters of Trusteeship to 1": letters_to if "Trusteeship" in lt else "",
+        "undefined_8": "X" if "c.t.a" in lt else "",                # Letters of Admin c.t.a. checkbox
         "Letters of Administration cta to": letters_to if "c.t.a" in lt else "",
         "Dated": "",
         "Print Name": pet,
