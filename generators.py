@@ -3303,13 +3303,21 @@ def generate_notice_of_probate(data):
                 _set_cell_text(cells[0], nm, addr or "___________")
                 # Cell 2: nature of interest / status
                 _set_cell_text(cells[2], role)
+            if len(cells) >= 4:
+                # Cell 3: description of legacy/devise/interest (replaces the
+                # bracketed instruction text). Use the role if no separate
+                # interest description; otherwise prefer the interest text.
+                _set_cell_text(cells[3], role)
 
-        # Clear underscore placeholders in unused rows
+        # Clear placeholders (underscores or [Description] instruction) in unused rows
         for ri in range(len(recipients), existing):
             row = notice_tbl.rows[ri]
-            for ci, cell in enumerate(row.cells[:3]):
+            for cell in row.cells:
                 for p in cell.paragraphs:
-                    if p.text.strip() and all(c == "_" for c in p.text.strip()):
+                    s = p.text.strip()
+                    is_underscore = s and all(c == "_" for c in s)
+                    is_bracket = s.startswith("[") and s.endswith("]")
+                    if is_underscore or is_bracket:
                         if p.runs:
                             p.runs[0].text = ""
                             for r in p.runs[1:]:
