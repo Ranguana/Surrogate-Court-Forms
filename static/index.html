@@ -2471,43 +2471,16 @@ async function modalAction(){
   showStatus(`✓ Saved: "${name}"`, "ok");
 }
 
-// ── Auto-save: debounced save-on-edit + beforeunload + 15s safety net ────────
-let _saveTimer = null;
+// ── Auto-save DISABLED ────────────────────────────────────────────────────────
+// Auto-save was overwriting good saved drafts with partial form state, because
+// loadCaseFromDash doesn't fully restore every field that getFormData() writes.
+// Until load/save round-trip is verified for ALL fields, saves only happen
+// when the user explicitly triggers them via Cmd+S or the Save button.
 function _saveNow() {
   if(!_currentCaseName) return Promise.resolve();
   return saveCaseToServer(_currentCaseName, _buildCaseData())
     .catch(e => console.warn('[SAVE] Failed:', e));
 }
-function _scheduleSave() {
-  if(!_currentCaseName) return;
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(_saveNow, 1500);
-}
-// Save on any form-field edit when a case is loaded
-document.addEventListener('input', e => {
-  const t = e.target;
-  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) _scheduleSave();
-}, true);
-document.addEventListener('change', e => {
-  const t = e.target;
-  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) _scheduleSave();
-}, true);
-// Best-effort save right before the window closes/reloads
-window.addEventListener('beforeunload', () => {
-  if(!_currentCaseName) return;
-  try {
-    const payload = JSON.stringify({name: _currentCaseName, data: _buildCaseData()});
-    navigator.sendBeacon('/cases', new Blob([payload], {type:'application/json'}));
-  } catch(e) { /* best-effort */ }
-});
-// Safety-net periodic save every 15 seconds
-setInterval(async () => {
-  if(!_currentCaseName) return;
-  try {
-    await saveCaseToServer(_currentCaseName, _buildCaseData());
-    console.log('[AUTO-SAVE] Saved:', _currentCaseName);
-  } catch(e) { console.warn('[AUTO-SAVE] Failed:', e); }
-}, 15000);
 
 function closeModal(){
   document.getElementById("modal-overlay").classList.remove("open");
@@ -2957,17 +2930,9 @@ async function deleteCaseFromDash(name){
 document.getElementById("dashboard-overlay").addEventListener("click",function(e){ if(e.target===this) closeDashboard(); });
 document.getElementById("modal-overlay").addEventListener("click",function(e){ if(e.target===this) closeModal(); });
 
-// Ctrl/Cmd+S: save directly to loaded case (else open Save As modal)
-document.addEventListener("keydown",function(e){
-  if((e.ctrlKey||e.metaKey)&&e.key==="s"){
-    e.preventDefault();
-    if(_currentCaseName){
-      _saveNow().then(()=>showStatus(`✓ Saved: "${_currentCaseName}"`,"ok"));
-    } else {
-      openSave();
-    }
-  }
-});
+// Ctrl/Cmd+S: open the Save modal so the user must explicitly confirm.
+// Direct save is disabled to prevent partial-state overwrites of good drafts.
+document.addEventListener("keydown",function(e){ if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();openSave();} });
 
 // Show version in header
 fetch('/app-version').then(r=>r.json()).then(d=>{
