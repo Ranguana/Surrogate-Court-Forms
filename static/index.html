@@ -1482,6 +1482,7 @@ function getFormData() {
     lettersType:g("lettersType"), lettersTo:g("lettersTo"),
     efileDate:g("efileDate"), fileNo:g("fileNo"), caseStatus:g("caseStatus"), dateSubmitted:g("dateSubmitted"),
     enclosures:buildEnclosures(), distributees,
+    willBeneficiaries: JSON.parse(JSON.stringify(_willBeneficiaries||[])),
   };
 }
 
@@ -2869,6 +2870,9 @@ async function loadCaseFromDash(name){
   // Restore distributees
   if(saved.distributees){ distributees=saved.distributees; renderDists(); }
 
+  // Restore will beneficiaries (saved inside data via getFormData, or top-level for older saves)
+  _willBeneficiaries = (data && data.willBeneficiaries) || saved.willBeneficiaries || [];
+
   // Restore checklist
   if(saved.proceedingChecklist){ Object.assign(proceedingChecklist, saved.proceedingChecklist); }
   renderChecklist();
@@ -3029,6 +3033,9 @@ fetch("/check-update").then(r=>r.json()).then(d=>{
 // ── SMART INTAKE ──────────────────────────────────────────────────────────────
 let siFiles = [];
 let siExtracted = null;
+// Persisted will-beneficiaries list (round-trips through save/load and
+// flows into the petition via getFormData()).
+let _willBeneficiaries = [];
 
 function siDragOver(e) { e.preventDefault(); document.getElementById('si-dropzone').classList.add('drag'); }
 function siDragLeave(e) { document.getElementById('si-dropzone').classList.remove('drag'); }
@@ -3076,6 +3083,8 @@ async function siAnalyze() {
 
   const fd = new FormData();
   siFiles.forEach((f,i) => fd.append(`file${i}`, f));
+  // Tell the server which case to archive these files under
+  if(_currentCaseName) fd.append('case_name', _currentCaseName);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 360000); // 6 min timeout
@@ -3218,6 +3227,8 @@ function siApply() {
       if(d.willBeneficiaries[idx]) d.willBeneficiaries[idx][field] = inp.value;
     });
   }
+  // Persist the (possibly edited) will beneficiaries to the case
+  _willBeneficiaries = JSON.parse(JSON.stringify(d.willBeneficiaries || []));
   // Read edited distributees
   if(d.distributees && d.distributees.length) {
     document.querySelectorAll('.si-field-input[data-si-dist]').forEach(inp => {

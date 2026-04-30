@@ -10,6 +10,7 @@ import io
 import ipaddress
 import json
 import os
+import re
 import traceback
 import zipfile
 from datetime import datetime
@@ -19,7 +20,7 @@ try:
     load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 except ImportError:
     pass
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 
 # ── Output folder settings ────────────────────────────────────────────────────
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
@@ -702,9 +703,30 @@ def gen_formal_accounting():
     return resp
 
 
+def _case_files_root():
+    """Per-case file storage. Lives OUTSIDE live_app so auto-updates don't wipe it."""
+    cwd = os.path.abspath(os.getcwd())
+    parent = os.path.dirname(cwd)
+    return os.path.join(parent, "case_files")
+
+
+def _case_files_dir(case_name):
+    if not case_name:
+        return None
+    safe = re.sub(r'[^A-Za-z0-9 _—\-]', '_', case_name).strip()[:200]
+    if not safe:
+        return None
+    return os.path.join(_case_files_root(), safe)
+
+
 @app.route("/smart-intake", methods=["POST"])
 def smart_intake():
-    """Accept one or more PDFs, extract text, send to Claude, return probate field JSON."""
+    """Accept one or more PDFs, extract text, send to Claude, return probate field JSON.
+
+    If a case_name form field is provided, archive the uploaded files and the
+    extracted text under <case_files>/<case_name>/ so the source is recoverable
+    in future sessions.
+    """
     if not request.files:
         return jsonify({"error": "No files uploaded"}), 400
 
@@ -715,8 +737,19 @@ def smart_intake():
     import pdfplumber
     import anthropic as _anthropic
 
+    # If a case name is provided, archive the uploaded files + extracted text
+    case_name = (request.form.get("case_name") or "").strip()
+    archive_dir = _case_files_dir(case_name) if case_name else None
+    if archive_dir:
+        try:
+            os.makedirs(archive_dir, exist_ok=True)
+        except Exception as exc:
+            print(f"[SMART-INTAKE] Could not create archive dir {archive_dir}: {exc}")
+            archive_dir = None
+
     # ── Extract text from all uploaded files (PDF, Excel, CSV) ────────────────
     doc_texts = []
+    archived_files = []
     for key in request.files:
         f = request.files[key]
         fname = f.filename.lower()
@@ -725,6 +758,13 @@ def smart_intake():
         if fname.endswith((".xlsx", ".xls", ".csv")):
             try:
                 file_bytes = f.read()
+                if archive_dir:
+                    try:
+                        safe_name = re.sub(r'[^A-Za-z0-9._\- ]', '_', f.filename)[:200]
+                        with open(os.path.join(archive_dir, safe_name), "wb") as out:
+                            out.write(file_bytes)
+                        archived_files.append(safe_name)
+                    except Exception as ax: print(f"[SMART-INTAKE] archive failed: {ax}")
                 if fname.endswith(".csv"):
                     import csv as _csv
                     reader = _csv.reader(io.StringIO(file_bytes.decode("utf-8", errors="replace")))
@@ -755,6 +795,13 @@ def smart_intake():
             continue
         try:
             pdf_bytes = f.read()
+            if archive_dir:
+                try:
+                    safe_name = re.sub(r'[^A-Za-z0-9._\- ]', '_', f.filename)[:200]
+                    with open(os.path.join(archive_dir, safe_name), "wb") as out:
+                        out.write(pdf_bytes)
+                    archived_files.append(safe_name)
+                except Exception as ax: print(f"[SMART-INTAKE] archive failed: {ax}")
             pages = []
             # Try text extraction first
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -824,6 +871,15 @@ def smart_intake():
         return jsonify({"error": "Could not extract any text from the uploaded PDFs."}), 400
 
     combined = "\n\n".join(doc_texts)
+
+    # Archive the combined extracted text alongside the source files
+    if archive_dir:
+        try:
+            with open(os.path.join(archive_dir, "extracted_text.txt"), "w", encoding="utf-8") as out:
+                out.write(combined)
+            print(f"[SMART-INTAKE] Archived {len(archived_files)} file(s) + extracted text to {archive_dir}")
+        except Exception as ax:
+            print(f"[SMART-INTAKE] Archive write failed: {ax}")
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
     # Load prompt from external file
@@ -939,6 +995,41 @@ def save_case():
 def delete_case(name):
     _supa_delete(f"cases?name=eq.{_requests.utils.quote(name)}")
     return jsonify({"ok": True})
+
+
+# ── Per-case file storage (uploaded source documents + extracted text) ──────
+
+@app.route("/case-files/<path:case_name>", methods=["GET"])
+def list_case_files(case_name):
+    d = _case_files_dir(case_name)
+    if not d or not os.path.isdir(d):
+        return jsonify({"files": []})
+    out = []
+    for fn in sorted(os.listdir(d)):
+        full = os.path.join(d, fn)
+        if os.path.isfile(full):
+            try:
+                out.append({"name": fn, "size": os.path.getsize(full)})
+            except Exception:
+                pass
+    return jsonify({"files": out, "dir": d})
+
+
+@app.route("/case-files/<path:case_name>/<path:filename>", methods=["GET"])
+def get_case_file(case_name, filename):
+    d = _case_files_dir(case_name)
+    if not d:
+        return jsonify({"error": "Invalid case name"}), 400
+    # Prevent path traversal
+    if "/" in filename or "\\" in filename or filename.startswith(".."):
+        return jsonify({"error": "Invalid filename"}), 400
+    full = os.path.join(d, filename)
+    if not os.path.isfile(full):
+        return jsonify({"error": "File not found"}), 404
+    if filename.lower().endswith(".txt"):
+        with open(full, "r", encoding="utf-8", errors="replace") as fp:
+            return Response(fp.read(), mimetype="text/plain; charset=utf-8")
+    return send_file(full, as_attachment=False, download_name=filename)
 
 
 # ── Accounting entries (Supabase) ─────────────────────────────────────────────
@@ -1157,7 +1248,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.14"
+APP_VERSION = "1.6.15"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
