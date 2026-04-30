@@ -899,12 +899,15 @@ def _supa_get(path, params=None):
     r.raise_for_status()
     return r.json()
 
-def _supa_post(path, payload, upsert=False):
+def _supa_post(path, payload, upsert=False, on_conflict=None):
     h = _supa_headers()
     if upsert:
         h["Prefer"] = "resolution=merge-duplicates,return=minimal"
-    r = _requests.post(f"{SUPABASE_URL}/rest/v1/{path}",
-                       headers=h, json=payload, timeout=10)
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    if on_conflict:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}on_conflict={on_conflict}"
+    r = _requests.post(url, headers=h, json=payload, timeout=10)
     r.raise_for_status()
 
 def _supa_delete(path):
@@ -928,7 +931,7 @@ def save_case():
         return jsonify({"error": "name and data required"}), 400
     _supa_post("cases", {"name": name, "data": data,
                          "updated_at": datetime.now().isoformat()},
-               upsert=True)
+               upsert=True, on_conflict="name")
     return jsonify({"ok": True})
 
 
@@ -957,7 +960,7 @@ def save_accounting_entry():
     if not entry.get("case_name") or not entry.get("schedule"):
         return jsonify({"error": "case_name and schedule required"}), 400
     entry["updated_at"] = datetime.now().isoformat()
-    _supa_post("accounting_entries", entry, upsert=True)
+    _supa_post("accounting_entries", entry, upsert=True, on_conflict="id")
     return jsonify({"ok": True})
 
 
@@ -1154,7 +1157,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.9"
+APP_VERSION = "1.6.10"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
