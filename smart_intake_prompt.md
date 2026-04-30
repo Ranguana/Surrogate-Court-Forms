@@ -70,15 +70,46 @@ For residuary clauses — the residuary beneficiary gets "everything not otherwi
 For contingent beneficiaries — extract separately with type "contingent_beneficiary."
 For trusts — name the trust as beneficiary, note trustee separately.
 
-INTEREST DESCRIPTIONS (critical for petition ¶6 and ¶7):
-The "interest" field must be a detailed, court-ready description that references specific Articles.
-- For specific bequests: "Specific bequest of [item/amount] under Article [X]"
-- For residuary: "Legatee of net residuary estate under Article [X]"
-- For trust beneficiaries: "Income and principal beneficiary of [Trust Name] under Article [X]"
-- For contingent beneficiaries: "Contingent residuary beneficiary under Article [X] (if [condition])"
-- If a person has MULTIPLE interests (e.g., specific bequest AND contingent residuary AND trust beneficiary), combine ALL with semicolons
-- Always reference the Article number/letter (e.g., "Article FIRST", "Article THREE(a)(1)")
-- If a person is both executor AND beneficiary, include both roles
+5a. MULTIPLE-RECIPIENT LISTS (CRITICAL — do not collapse to one entry):
+When an article names MORE THAN ONE recipient for the same disposition (whether
+separated by commas, semicolons, "and", or any combination — e.g.
+"to A; B; and C" or "to A, B, and C, in equal shares"), extract EACH named
+person as a SEPARATE willBeneficiaries entry. Do not pick only the first
+name. Do not summarize as "and others." Do not include the word "and" or a
+list of names inside the `name` field of one entry — split into one entry
+per person.
+
+5b. ONE PERSON IN MULTIPLE ARTICLES:
+If the same person is named in multiple articles (e.g., specific bequest in
+Article THIRD AND residuary in Article FOURTH), produce ONE willBeneficiaries
+entry whose `interest` field combines all their roles separated by `; `.
+
+5c. INTEREST FIELD — STANDARDIZED FORMAT (no prose, no conditions):
+The `interest` field must be assembled ONLY from these short, standardized
+phrases. Do not paraphrase. Do not write the conditional ("if X
+predeceases") — the word "Contingent" already conveys the condition.
+
+| Will role                                           | Standardized interest text                       |
+|-----------------------------------------------------|--------------------------------------------------|
+| Specific bequest of personal property               | `Legatee, Article [X]`                           |
+| Specific cash / pecuniary bequest                   | `Pecuniary Legatee, Article [X]`                 |
+| Specific real property                              | `Devisee, Article [X]`                           |
+| Residuary beneficiary                               | `Residuary Beneficiary, Article [X]`             |
+| Contingent specific personal property               | `Contingent Legatee, Article [X]`                |
+| Contingent specific cash bequest                    | `Contingent Pecuniary Legatee, Article [X]`      |
+| Contingent specific real property                   | `Contingent Devisee, Article [X]`                |
+| Contingent residuary                                | `Contingent Residuary Beneficiary, Article [X]`  |
+| Trust beneficiary                                   | `Beneficiary of [Trust Name], Article [X]`       |
+| Executor named in Will                              | `Executor named in Will, Article [X]`            |
+| Successor / substitute Executor                     | `Successor Executor, Article [X]`                |
+| Successor / substitute Trustee                      | `Successor Trustee, Article [X]`                 |
+| Successor / substitute Guardian                     | `Successor Guardian, Article [X]`                |
+
+When a person has MULTIPLE roles, join the standardized phrases with `; ` in
+the order they appear in the will. Example:
+`Legatee, Article THIRD; Residuary Beneficiary, Article FOURTH`
+or
+`Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH; Successor Executor, Article SIXTH`
 
 RULE 6 — MARITAL STATUS:
 - "never_married" — Will makes no reference to spouse or prior marriage
@@ -93,47 +124,70 @@ Do NOT attempt to determine who inherits under EPTL 4-1.1.
 
 === FEW-SHOT EXAMPLES ===
 
-EXAMPLE 1 — Simple Will, married testator, residuary to spouse then children:
+EXAMPLE 1 — Will with multi-name semicolon-separated contingent list (mirrors typical drafting style):
 
 Will language:
-"ARTICLE FIRST: I give my entire residuary estate to my beloved wife, MARY JANE SMITH. 
-If my wife shall predecease me, I give my residuary estate in equal shares to my children, 
-JOHN SMITH and SARAH SMITH JONES.
-ARTICLE SECOND: I nominate my wife, MARY JANE SMITH, as Executor. If she shall be unable 
-or unwilling to serve, I nominate my son, JOHN SMITH, as Successor Executor."
+"ARTICLE THIRD: DISPOSITION OF PERSONAL EFFECTS — I give and bequeath the
+entirety of my physical personal effects to my son SPENCER CHARLES SPAHR
+JACOBS. Should SPENCER CHARLES SPAHR JACOBS predecease me, and only under
+those circumstances, I bequeath the entirety of my personal effects to be
+divided equally among my three siblings, ROBERT JERALD JACOBS; CAROLYN
+DIANE JACOBS; and STEVEN CRAIG JACOBS.
+ARTICLE FOURTH: I give the rest, residue, and remainder of my estate to
+SPENCER CHARLES SPAHR JACOBS. If SPENCER CHARLES SPAHR JACOBS does not
+survive me, my estate is to be divided equally among my three siblings,
+ROBERT JERALD JACOBS; CAROLYN DIANE JACOBS; and STEVEN CRAIG JACOBS.
+ARTICLE SIXTH: I nominate JORDIN REY ISIP as Executor. If he shall be
+unable to serve, I nominate ROBERT JERALD JACOBS as Successor Executor."
 
-Correct output:
+Correct output (NOTE: Spencer collapsed into ONE entry across THIRD+FOURTH;
+each of the three siblings extracted SEPARATELY despite being listed together;
+no prose / no "(if X predeceases)" appended to interest):
 {
-  "petitionerFirstName": "Mary",
-  "petitionerMiddleName": "Jane", 
-  "petitionerLastName": "Smith",
-  "petitionerRelationship": "Spouse",
-  "successorExecutor": "John Smith",
-  "maritalStatus": "married",
-  "spouseName": "Mary Jane Smith",
+  "petitionerFirstName": "Jordin",
+  "petitionerMiddleName": "Rey",
+  "petitionerLastName": "Isip",
+  "petitionerRelationship": "Friend",
+  "successorExecutor": "Robert Jerald Jacobs",
   "willBeneficiaries": [
     {
-      "name": "Mary Jane Smith",
-      "relationship": "Spouse",
+      "name": "Spencer Charles Spahr Jacobs",
+      "relationship": "Son",
       "address": null,
-      "interest": "Legatee of entire residuary estate under Article FIRST; Executor named in Will under Article SECOND",
+      "interest": "Legatee, Article THIRD; Residuary Beneficiary, Article FOURTH",
       "type": "residuary_beneficiary",
       "isMinor": false
     },
     {
-      "name": "John Smith",
-      "relationship": "Son",
+      "name": "Robert Jerald Jacobs",
+      "relationship": "Sibling",
       "address": null,
-      "interest": "Contingent residuary beneficiary in equal shares under Article FIRST (if spouse predeceases); Successor Executor named in Will under Article SECOND",
+      "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH; Successor Executor, Article SIXTH",
       "type": "contingent_beneficiary",
       "isMinor": false
     },
     {
-      "name": "Sarah Smith Jones",
-      "relationship": "Daughter",
+      "name": "Carolyn Diane Jacobs",
+      "relationship": "Sibling",
       "address": null,
-      "interest": "Contingent residuary beneficiary in equal shares under Article FIRST (if spouse predeceases)",
+      "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH",
       "type": "contingent_beneficiary",
+      "isMinor": false
+    },
+    {
+      "name": "Steven Craig Jacobs",
+      "relationship": "Sibling",
+      "address": null,
+      "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH",
+      "type": "contingent_beneficiary",
+      "isMinor": false
+    },
+    {
+      "name": "Jordin Rey Isip",
+      "relationship": "Friend",
+      "address": null,
+      "interest": "Executor named in Will, Article SIXTH",
+      "type": "executor",
       "isMinor": false
     }
   ]
@@ -169,7 +223,7 @@ Correct output:
       "name": "Robert James Wilson",
       "relationship": "Nephew",
       "address": null,
-      "interest": "Cash bequest of $25,000 under Article THIRD",
+      "interest": "Pecuniary Legatee, Article THIRD",
       "type": "specific_legatee",
       "isMinor": false
     },
@@ -177,7 +231,7 @@ Correct output:
       "name": "Elena Wilson Garcia",
       "relationship": "Daughter",
       "address": null,
-      "interest": "Entire residuary estate, real and personal, under Article FOURTH",
+      "interest": "Residuary Beneficiary, Article FOURTH",
       "type": "residuary_beneficiary",
       "isMinor": false
     }
@@ -200,7 +254,7 @@ Correct output:
       "name": "The Johnson Living Trust",
       "relationship": "Trust",
       "address": null,
-      "interest": "Entire residuary estate poured over to The Johnson Living Trust dated 01/05/2018 under Article SECOND",
+      "interest": "Beneficiary of The Johnson Living Trust, Article SECOND",
       "type": "residuary_beneficiary",
       "isMinor": false
     }

@@ -719,13 +719,18 @@ def generate_attorney_cert(data):
 def fill_pdf(template_path, fields, font_overrides=None):
     """Universal PDF form filler using pymupdf/fitz.
 
-    Handles text, checkboxes (True/False), radio buttons (export value like '/0'),
-    and combo/dropdown fields. Calls widget.update() on every filled field to bake
-    in appearance streams so fields render in any viewer including macOS Preview.
+    Behavior:
+    - Every text field defaults to 10pt (unless template explicitly sets a non-zero size).
+    - Multiline flag (PDF AcroForm bit 13, value 4096) is enabled on every text widget
+      whose value isn't a single 'X', so long values wrap to a new line within the
+      field box instead of being shrunk to fit one line.
+    - Checkbox-style 'X' values are sized to the box height so they fill the box.
+    - font_overrides parameter is accepted for backwards compatibility but ignored.
 
-    font_overrides: dict of field_name → font_size for fields that need a specific size.
+    Handles text, checkboxes (True/False), radio buttons, and combo/dropdown fields.
+    Calls widget.update() to bake appearance streams so fields render in all viewers.
     """
-    font_overrides = font_overrides or {}
+    MULTILINE_FLAG = 1 << 12  # PDF AcroForm field flag for multiline text
     doc = fitz.open(template_path)
     for page in doc:
         for widget in page.widgets():
@@ -740,24 +745,19 @@ def fill_pdf(template_path, fields, font_overrides=None):
             else:
                 s = str(value) if value is not None else ""
                 widget.field_value = s
-                h = widget.rect.height
-                w = widget.rect.width
-                if name in font_overrides:
-                    widget.text_fontsize = font_overrides[name]
-                elif s == "X":
-                    # Size the X to fill the checkbox — use box height so it's visible but not clipped
-                    widget.text_fontsize = max(8, h)
-                elif len(s) > 0:
-                    current_size = widget.text_fontsize
-                    # If template has 0 font size, set 10pt default
-                    if not current_size or current_size < 1:
-                        current_size = 10
-                        widget.text_fontsize = current_size
-                    # Auto-shrink font for long text in narrow fields
-                    est_width = len(s) * current_size * 0.5
-                    if est_width > w and w > 0:
-                        fitted = w / (len(s) * 0.5)
-                        widget.text_fontsize = max(5, min(fitted, current_size))
+                if s == "X":
+                    # Checkbox-simulated as text: size X to fill the box height
+                    widget.text_fontsize = max(8, widget.rect.height)
+                else:
+                    # Default 10pt unless the template set a real size
+                    cur = widget.text_fontsize
+                    if not cur or cur < 1:
+                        widget.text_fontsize = 10
+                    # Enable multiline so long text wraps within the field
+                    try:
+                        widget.field_flags = (widget.field_flags or 0) | MULTILINE_FLAG
+                    except Exception:
+                        pass
             widget.update()
     buf = io.BytesIO()
     doc.save(buf)
@@ -1104,6 +1104,52 @@ def _build_probate_fields(data):
             "isMinor": False,
         })
 
+    # ── Merge will beneficiaries (extracted by Smart Intake) ─────────────────
+    # The structured willBeneficiaries list is the source of truth for legacy
+    # descriptions. Match by name (case-insensitive); if the person already
+    # appears in all_dists (e.g., a distributee who is also a will legatee),
+    # replace their generic interest with the standardized willBenef text.
+    # If they don't appear, append as a new entry routed to ¶7.
+    def _norm_name(n):
+        return re.sub(r'\s+', ' ', (n or '').strip().lower())
+
+    will_benefs = data.get("willBeneficiaries") or []
+    for wb in will_benefs:
+        wb_name = (wb.get("name") or "").strip()
+        if not wb_name:
+            continue
+        wb_interest = (wb.get("interest") or "").strip()
+        wb_type = (wb.get("type") or "").lower()
+        wb_rel = (wb.get("relationship") or "").strip()
+        wb_minor = bool(wb.get("isMinor"))
+        wb_norm = _norm_name(wb_name)
+        # Find existing entry
+        match = None
+        for d in all_dists:
+            if _norm_name(d.get("name", "")) == wb_norm:
+                match = d
+                break
+        if match is not None:
+            # Replace generic auto-inserted interest with the standardized one
+            if wb_interest:
+                match["interest"] = wb_interest
+            if wb_minor:
+                match["isMinor"] = True
+            if wb_rel and not match.get("relationship"):
+                match["relationship"] = wb_rel
+        else:
+            # Type "executor" stays primary (Para 6); everything else routes to Para 7
+            ben_type = "primary" if wb_type == "executor" else "successor"
+            all_dists.append({
+                "name": wb_name,
+                "relationship": wb_rel,
+                "address": "",
+                "citizenship": "U.S.A.",
+                "interest": wb_interest,
+                "beneficiaryType": ben_type,
+                "isMinor": wb_minor,
+            })
+
     # ── Enhance interest descriptions with roles ─────────────────────────────
     # Prepend Executor/Petitioner roles. Only add "Distributee" if relationship
     # matches a class at or before the first surviving EPTL class.
@@ -1218,20 +1264,11 @@ def _build_probate_fields(data):
     p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7"]
     p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
     p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
-    row = 0
-    for dist in primary_adults:
-        if row >= 7:
-            break
-        interest_lines = _split_interest(_interest(dist))
+    # One row per person; long interest text wraps within the cell (multiline)
+    for row, dist in enumerate(primary_adults[:7]):
         fields[p2_6a_name[row]] = _name_with_rel(dist)
-        fields[p2_6a_addr[row]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-        fields[p2_6a_int[row]] = interest_lines[0]
-        row += 1
-        for line in interest_lines[1:]:
-            if row >= 8:
-                break
-            fields[p2_6a_int[row]] = line
-            row += 1
+        fields[p2_6a_addr[row]] = dist.get('address', '')
+        fields[p2_6a_int[row]] = _interest(dist)
 
     # Page 2, section 6b — Primary beneficiaries under disability (6 rows)
     p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
@@ -1254,20 +1291,11 @@ def _build_probate_fields(data):
                   "Interest or Nature of Fiduciary Status 6_3",
                   "Interest or Nature of Fiduciary Status 7_2",  # not 7_3!
                   "Interest or Nature of Fiduciary Status 8_2"]  # not 8_3!
-    row = 0
-    for dist in successor_adults:
-        if row >= 7:
-            break
-        interest_lines = _split_interest(_interest(dist))
+    # One row per person; long interest text wraps within the cell (multiline)
+    for row, dist in enumerate(successor_adults[:7]):
         fields[p3_7a_name[row]] = _name_with_rel(dist)
-        fields[p3_7a_addr[row]] = f"{dist.get('address', '')} | {dist.get('citizenship', '')}"
-        fields[p3_7a_int[row]] = interest_lines[0]
-        row += 1
-        for line in interest_lines[1:]:
-            if row >= 8:
-                break
-            fields[p3_7a_int[row]] = line
-            row += 1
+        fields[p3_7a_addr[row]] = dist.get('address', '')
+        fields[p3_7a_int[row]] = _interest(dist)
 
     # Page 3, section 7b — Persons under disability from section 7a (7 rows)
     p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]
