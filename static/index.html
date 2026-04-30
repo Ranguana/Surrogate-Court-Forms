@@ -697,6 +697,16 @@ body {
       <div class="field"><label>No Other Will / Codicil</label>
         <textarea id="noOtherWill" rows="2">NONE</textarea>
       </div>
+
+      <!-- WILL BENEFICIARIES -->
+      <div class="sub-head" style="margin-top:12px">Will Beneficiaries (named in the Will)</div>
+      <div style="font-size:12px;color:var(--text3);font-family:Arial,sans-serif;margin-bottom:6px">
+        Each named legatee, devisee, or executor in the will. Smart Intake pre-populates these,
+        but you confirm the details and decide whether each person is also an EPTL distributee.
+      </div>
+      <div id="wb-list"></div>
+      <button class="btn btn-outline" onclick="addWb()" id="add-wb-btn" style="width:100%;margin-top:4px">+ Add Will Beneficiary</button>
+
       <div id="ancillary-fields" style="display:none">
         <div class="sub-head">Ancillary — Foreign Letters Info (Para 3)</div>
         <div class="grid2">
@@ -1402,6 +1412,111 @@ function renderDists() {
 function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,dob:"",guardianInfo:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
 function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
+
+// ── WILL BENEFICIARIES ────────────────────────────────────────────────────────
+const WB_TYPES = [
+  {value:"specific_legatee",          label:"Specific Legatee",                 phrase:"Legatee"},
+  {value:"pecuniary_legatee",         label:"Pecuniary Legatee",                phrase:"Pecuniary Legatee"},
+  {value:"specific_devisee",          label:"Specific Devisee",                 phrase:"Devisee"},
+  {value:"residuary_beneficiary",     label:"Residuary Beneficiary",            phrase:"Residuary Beneficiary"},
+  {value:"contingent_legatee",        label:"Contingent Legatee",               phrase:"Contingent Legatee"},
+  {value:"contingent_pecuniary_legatee", label:"Contingent Pecuniary Legatee",  phrase:"Contingent Pecuniary Legatee"},
+  {value:"contingent_devisee",        label:"Contingent Devisee",               phrase:"Contingent Devisee"},
+  {value:"contingent_beneficiary",    label:"Contingent Residuary Beneficiary", phrase:"Contingent Residuary Beneficiary"},
+  {value:"trust_beneficiary",         label:"Trust Beneficiary",                phrase:"Beneficiary"},
+  {value:"executor",                  label:"Executor named in Will",           phrase:"Executor named in Will"},
+  {value:"successor_executor",        label:"Successor Executor",               phrase:"Successor Executor"},
+  {value:"successor_trustee",         label:"Successor Trustee",                phrase:"Successor Trustee"},
+  {value:"successor_guardian",        label:"Successor Guardian",               phrase:"Successor Guardian"},
+];
+function _wbPhraseFor(typeVal, articles) {
+  const t = WB_TYPES.find(x=>x.value===typeVal);
+  if(!t) return "";
+  const arts = (articles||"").trim();
+  if(!arts) return t.phrase;
+  // Multiple articles like "THIRD; FOURTH" → produce phrase per article joined with semicolons
+  const list = arts.split(/[;,]/).map(s=>s.trim()).filter(Boolean);
+  return list.map(a=>`${t.phrase}, Article ${a}`).join("; ");
+}
+function _wbParaPlacement(wb) {
+  const isDist = !!wb.isDistributee;
+  const isMinor = !!wb.isMinor;
+  if(isDist && isMinor)  return "Para 6(b)";
+  if(isDist && !isMinor) return "Para 6(a)";
+  if(!isDist && isMinor) return "Para 7(b)";
+  return "Para 7(a)";
+}
+function renderWb() {
+  const c = document.getElementById("wb-list");
+  if(!c) return;
+  c.innerHTML = "";
+  _willBeneficiaries.forEach((wb,i)=>{
+    const typeOpts = WB_TYPES.map(t=>`<option value="${t.value}" ${wb.type===t.value?'selected':''}>${t.label}</option>`).join("");
+    const placement = _wbParaPlacement(wb);
+    const el = document.createElement("div");
+    el.className = "dist-card";
+    el.innerHTML = `
+      <div class="dist-card-header">
+        <span class="dist-num">Will Beneficiary #${i+1} <span style="font-weight:normal;color:var(--text3);font-size:12px">→ ${placement}</span></span>
+        <button class="btn btn-danger btn-sm" onclick="removeWb(${i})">Remove</button>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Full Name</label><input value="${(wb.name||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'name',this.value)"></div>
+        <div class="field"><label>Relationship to Decedent</label><input value="${(wb.relationship||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'relationship',this.value)" placeholder="e.g. Son, Sibling, Friend"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Type</label>
+          <select onchange="udWbType(${i},this.value)">${typeOpts}</select>
+        </div>
+        <div class="field"><label>Article(s)</label>
+          <input value="${(wb.articles||'').replace(/"/g,'&quot;')}" oninput="udWbArticles(${i},this.value)" placeholder="e.g. THIRD or THIRD; FOURTH">
+        </div>
+      </div>
+      <div class="field"><label>Interest text (auto-built from Type + Article — edit if needed)</label>
+        <input value="${(wb.interest||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'interest',this.value)" placeholder="e.g. Legatee, Article THIRD; Residuary Beneficiary, Article FOURTH">
+      </div>
+      <div class="field"><label>Address (if known)</label>
+        <input value="${(wb.address||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'address',this.value)" placeholder="Optional">
+      </div>
+      <div class="disp-row" style="gap:16px">
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" ${wb.isDistributee?'checked':''} onchange="udWb(${i},'isDistributee',this.checked);renderWb()"> Is also an EPTL distributee?
+        </label>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" ${wb.isMinor?'checked':''} onchange="udWb(${i},'isMinor',this.checked);renderWb()"> Minor / Under Disability
+        </label>
+      </div>
+      ${wb.isMinor?`
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Date of Birth</label><input value="${(wb.dob||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
+        <div class="field"><label>Resides with / Guardian</label><input value="${(wb.guardianInfo||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'guardianInfo',this.value)" placeholder="Name + address of guardian or person they reside with"></div>
+      </div>
+      `:''}
+    `;
+    c.appendChild(el);
+  });
+}
+function addWb() {
+  _willBeneficiaries.push({name:"",relationship:"",type:"residuary_beneficiary",articles:"",interest:"",address:"",isDistributee:false,isMinor:false,dob:"",guardianInfo:""});
+  renderWb();
+}
+function removeWb(i) { _willBeneficiaries.splice(i,1); renderWb(); }
+function udWb(i,k,v) { _willBeneficiaries[i][k]=v; }
+function udWbType(i,v) {
+  _willBeneficiaries[i].type = v;
+  // Auto-rebuild interest text from Type + Article when both are set
+  const wb = _willBeneficiaries[i];
+  const phrase = _wbPhraseFor(v, wb.articles);
+  if(phrase) wb.interest = phrase;
+  renderWb();
+}
+function udWbArticles(i,v) {
+  _willBeneficiaries[i].articles = v;
+  const wb = _willBeneficiaries[i];
+  const phrase = _wbPhraseFor(wb.type, v);
+  if(phrase) wb.interest = phrase;
+  renderWb();
+}
 function setDisp(i,v)  {
   distributees[i].disposition=v;
   if(v==='postDeceased' && !distributees[i].postDeceasedDistributees){
@@ -2872,6 +2987,7 @@ async function loadCaseFromDash(name){
 
   // Restore will beneficiaries (saved inside data via getFormData, or top-level for older saves)
   _willBeneficiaries = (data && data.willBeneficiaries) || saved.willBeneficiaries || [];
+  renderWb();
 
   // Restore checklist
   if(saved.proceedingChecklist){ Object.assign(proceedingChecklist, saved.proceedingChecklist); }
@@ -2998,6 +3114,7 @@ async function generatePacket(){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderDists();
+renderWb();
 updateSummary();
 updateDocList();
 renderChecklist();
@@ -3227,8 +3344,23 @@ function siApply() {
       if(d.willBeneficiaries[idx]) d.willBeneficiaries[idx][field] = inp.value;
     });
   }
-  // Persist the (possibly edited) will beneficiaries to the case
-  _willBeneficiaries = JSON.parse(JSON.stringify(d.willBeneficiaries || []));
+  // Persist the (possibly edited) will beneficiaries to the case.
+  // Smart Intake's `type` is just a hint — leave isDistributee unchecked
+  // (the user explicitly decides). Default articles/interest text from what
+  // Claude returned, but the user can edit in the Will Beneficiaries section.
+  _willBeneficiaries = (d.willBeneficiaries||[]).map(b => ({
+    name: b.name || "",
+    relationship: b.relationship || "",
+    type: b.type || "residuary_beneficiary",
+    articles: b.articles || "",
+    interest: b.interest || "",
+    address: b.address || "",
+    isDistributee: false,
+    isMinor: !!b.isMinor,
+    dob: b.dob || "",
+    guardianInfo: b.guardianInfo || "",
+  }));
+  renderWb();
   // Read edited distributees
   if(d.distributees && d.distributees.length) {
     document.querySelectorAll('.si-field-input[data-si-dist]').forEach(inp => {

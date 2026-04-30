@@ -1119,9 +1119,12 @@ def _build_probate_fields(data):
         if not wb_name:
             continue
         wb_interest = (wb.get("interest") or "").strip()
-        wb_type = (wb.get("type") or "").lower()
         wb_rel = (wb.get("relationship") or "").strip()
+        wb_addr = (wb.get("address") or "").strip()
         wb_minor = bool(wb.get("isMinor"))
+        wb_is_dist = bool(wb.get("isDistributee"))
+        wb_dob = (wb.get("dob") or "").strip()
+        wb_guard = (wb.get("guardianInfo") or "").strip()
         wb_norm = _norm_name(wb_name)
         # Find existing entry
         match = None
@@ -1137,17 +1140,25 @@ def _build_probate_fields(data):
                 match["isMinor"] = True
             if wb_rel and not match.get("relationship"):
                 match["relationship"] = wb_rel
+            if wb_addr and not match.get("address"):
+                match["address"] = wb_addr
+            if wb_dob:
+                match["dob"] = wb_dob
+            if wb_guard:
+                match["guardianInfo"] = wb_guard
         else:
-            # Type "executor" stays primary (Para 6); everything else routes to Para 7
-            ben_type = "primary" if wb_type == "executor" else "successor"
+            # Para 6 if user marked them as a distributee, else Para 7
+            ben_type = "primary" if wb_is_dist else "successor"
             all_dists.append({
                 "name": wb_name,
                 "relationship": wb_rel,
-                "address": "",
+                "address": wb_addr,
                 "citizenship": "U.S.A.",
                 "interest": wb_interest,
                 "beneficiaryType": ben_type,
                 "isMinor": wb_minor,
+                "dob": wb_dob,
+                "guardianInfo": wb_guard,
             })
 
     # ── Enhance interest descriptions with roles ─────────────────────────────
