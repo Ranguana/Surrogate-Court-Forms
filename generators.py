@@ -147,18 +147,22 @@ def nonzero(v):
 
 def replace_in_doc(doc, replacements):
     """Replace placeholder text throughout a Word document.
-    Handles placeholders split across multiple runs by normalizing para text first."""
+    Handles placeholders split across multiple runs and multiple occurrences
+    of the same placeholder within a paragraph."""
     def replace_in_para(para):
         for key, value in replacements.items():
             if key not in para.text:
                 continue
-            # If key is in a single run, do fast replacement
+            # First pass: replace within each run that contains the key.
+            # (Don't break — the same key may appear in multiple runs.)
+            replaced_in_run = False
             for run in para.runs:
                 if key in run.text:
                     run.text = run.text.replace(key, value or "")
-                    break
-            else:
-                # Key is split across runs — consolidate into first run
+                    replaced_in_run = True
+            # If the key still appears (e.g., split across runs), consolidate
+            # the full paragraph text into the first run.
+            if key in para.text:
                 full_text = para.text.replace(key, value or "")
                 if para.runs:
                     para.runs[0].text = full_text
@@ -3247,6 +3251,9 @@ def generate_notice_of_probate(data):
             d.get("street", ""), d.get("city", ""), d.get("state", ""), d.get("zip", "")
         ]))
 
+    # Each recipient: (name, address, role, description)
+    # role -> NATURE OF INTEREST OR STATUS (col 2)
+    # description -> [Description of Legacy, Devise...] (col 3); blank for distributees
     recipients = []
     seen = set()
     for d in data.get("distributees", []) or []:
@@ -3255,9 +3262,9 @@ def generate_notice_of_probate(data):
             continue
         seen.add(nm.lower())
         addr = _addr_parts(d) or ""
-        rel = (d.get("relationship") or "").strip() or "Distributee"
-        role = f"Distributee ({rel})" if rel.lower() != "distributee" else "Distributee"
-        recipients.append((nm, addr, role))
+        rel = (d.get("relationship") or "").strip()
+        role = f"Distributee ({rel})" if rel and rel.lower() != "distributee" else "Distributee"
+        recipients.append((nm, addr, role, ""))
     for b in data.get("willBeneficiaries", []) or []:
         nm = (b.get("name") or "").strip()
         if not nm or nm.lower() in seen:
@@ -3265,8 +3272,7 @@ def generate_notice_of_probate(data):
         seen.add(nm.lower())
         kind = (b.get("type") or "").replace("_", " ").title() or "Beneficiary"
         interest = (b.get("interest") or "").strip()
-        role = f"{kind}: {interest}" if interest else kind
-        recipients.append((nm, "", role))
+        recipients.append((nm, "", kind, interest))
 
     # ── Fill the recipient table (table 0) ────────────────────────────────────
     # NOTE: In the template, cells [0] and [1] are MERGED (one cell visually
@@ -3295,19 +3301,18 @@ def generate_notice_of_probate(data):
         while len(notice_tbl.rows) < len(recipients):
             notice_tbl.add_row()
 
-        for ri, (nm, addr, role) in enumerate(recipients):
+        for ri, (nm, addr, role, desc) in enumerate(recipients):
             row = notice_tbl.rows[ri]
             cells = row.cells
             if len(cells) >= 3:
                 # Merged NAME+ADDRESS cell — name on line 1, address on line 2
                 _set_cell_text(cells[0], nm, addr or "___________")
-                # Cell 2: nature of interest / status
+                # Cell 2: nature of interest / status (e.g., "Distributee")
                 _set_cell_text(cells[2], role)
             if len(cells) >= 4:
-                # Cell 3: description of legacy/devise/interest (replaces the
-                # bracketed instruction text). Use the role if no separate
-                # interest description; otherwise prefer the interest text.
-                _set_cell_text(cells[3], role)
+                # Cell 3: description of legacy/devise (only for beneficiaries).
+                # Always replace the bracketed instruction text — empty if no desc.
+                _set_cell_text(cells[3], desc)
 
         # Clear placeholders (underscores or [Description] instruction) in unused rows
         for ri in range(len(recipients), existing):
