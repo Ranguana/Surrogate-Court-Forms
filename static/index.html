@@ -3345,9 +3345,9 @@ function siApply() {
     });
   }
   // Persist the (possibly edited) will beneficiaries to the case.
-  // Smart Intake's `type` is just a hint — leave isDistributee unchecked
-  // (the user explicitly decides). Default articles/interest text from what
-  // Claude returned, but the user can edit in the Will Beneficiaries section.
+  // Smart Intake infers isDistributee where unambiguous (e.g., child of
+  // decedent with no spouse → true; sibling when there's a child → false).
+  // The user can override the checkbox in the Will Beneficiaries cards.
   _willBeneficiaries = (d.willBeneficiaries||[]).map(b => ({
     name: b.name || "",
     relationship: b.relationship || "",
@@ -3355,7 +3355,7 @@ function siApply() {
     articles: b.articles || "",
     interest: b.interest || "",
     address: b.address || "",
-    isDistributee: false,
+    isDistributee: !!b.isDistributee,
     isMinor: !!b.isMinor,
     dob: b.dob || "",
     guardianInfo: b.guardianInfo || "",

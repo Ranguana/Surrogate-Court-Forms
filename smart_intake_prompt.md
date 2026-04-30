@@ -111,6 +111,41 @@ the order they appear in the will. Example:
 or
 `Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH; Successor Executor, Article SIXTH`
 
+5d. isDistributee — INFER ONLY WHEN UNAMBIGUOUS:
+A "distributee" is someone who would inherit under EPTL 4-1.1 (NY intestacy)
+if there were no will. The determination depends on which class of relative
+survived the decedent. Per EPTL 4-1.1 priority order:
+
+  1. Spouse + Children share (or spouse alone if no children, or children alone
+     if no spouse).
+  2. Parents — only if no spouse and no children.
+  3. Siblings (and issue of predeceased siblings) — only if no spouse, no
+     children, and no parents.
+  4. Grandparents / aunts / uncles / cousins — further down, only if all
+     prior classes exhausted.
+
+Set `isDistributee: true` for a will beneficiary when their relationship to
+the decedent puts them in the FIRST surviving class given the facts in the
+documents, AND that determination is unambiguous:
+
+- Surviving spouse who is named in the will → true
+- Surviving child(ren) who are named in the will → true
+- A sibling, niece/nephew, parent, or further-removed relative → true ONLY
+  when documents show ALL closer classes are absent (no spouse, no children
+  for siblings; no spouse/children/parents for nieces/nephews; etc.)
+
+Set `isDistributee: false` in all of these cases:
+- The relationship is not stated in the will and cannot be confidently
+  inferred
+- A sibling is named but the decedent is also survived by a spouse or
+  children
+- The beneficiary is purely contingent (only takes if a primary fails)
+- A friend, charity, trust, or anyone with no blood/marriage relation
+- The classification depends on facts not visible in the documents
+
+When in doubt, set false. The user has a checkbox in the form to override
+to true; an over-conservative false is far safer than a wrong true.
+
 RULE 6 — MARITAL STATUS:
 - "never_married" — Will makes no reference to spouse or prior marriage
 - "married" — Will references "my husband/wife [name]" as living
@@ -156,7 +191,8 @@ no prose / no "(if X predeceases)" appended to interest):
       "address": null,
       "interest": "Legatee, Article THIRD; Residuary Beneficiary, Article FOURTH",
       "type": "residuary_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": true
     },
     {
       "name": "Robert Jerald Jacobs",
@@ -164,7 +200,8 @@ no prose / no "(if X predeceases)" appended to interest):
       "address": null,
       "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH; Successor Executor, Article SIXTH",
       "type": "contingent_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     },
     {
       "name": "Carolyn Diane Jacobs",
@@ -172,7 +209,8 @@ no prose / no "(if X predeceases)" appended to interest):
       "address": null,
       "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH",
       "type": "contingent_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     },
     {
       "name": "Steven Craig Jacobs",
@@ -180,7 +218,8 @@ no prose / no "(if X predeceases)" appended to interest):
       "address": null,
       "interest": "Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH",
       "type": "contingent_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     },
     {
       "name": "Jordin Rey Isip",
@@ -188,10 +227,16 @@ no prose / no "(if X predeceases)" appended to interest):
       "address": null,
       "interest": "Executor named in Will, Article SIXTH",
       "type": "executor",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     }
   ]
 }
+
+NOTE on isDistributee for this example: a child is a distributee under EPTL
+4-1.1 (the children class is the first surviving class — there is no spouse).
+Siblings are NOT distributees because the decedent left a child. Jordin (the
+friend who is also Executor) is not a relative, so isDistributee=false.
 
 ---
 
@@ -225,7 +270,8 @@ Correct output:
       "address": null,
       "interest": "Pecuniary Legatee, Article THIRD",
       "type": "specific_legatee",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     },
     {
       "name": "Elena Wilson Garcia",
@@ -233,10 +279,16 @@ Correct output:
       "address": null,
       "interest": "Residuary Beneficiary, Article FOURTH",
       "type": "residuary_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": true
     }
   ]
 }
+
+NOTE on isDistributee: Elena (Daughter) is a distributee — first surviving
+class is children. Robert (Nephew) is not — nephews only inherit by
+intestacy when there are no spouse, children, or parents, and we don't
+have facts confirming that.
 
 ---
 
@@ -256,7 +308,8 @@ Correct output:
       "address": null,
       "interest": "Beneficiary of The Johnson Living Trust, Article SECOND",
       "type": "residuary_beneficiary",
-      "isMinor": false
+      "isMinor": false,
+      "isDistributee": false
     }
   ]
 }
