@@ -38,9 +38,10 @@ def main():
     except ImportError:
         pass
 
-    # Import and run the Flask app
-    spec = importlib.util.spec_from_file_location("app", os.path.join(app_dir, "app.py"))
+    # Import and run the Flask app — load as __main__ so app.run() fires
+    spec = importlib.util.spec_from_file_location("__main__", os.path.join(app_dir, "app.py"))
     module = importlib.util.module_from_spec(spec)
+    sys.modules["__main__"] = module
     sys.modules["app"] = module
     spec.loader.exec_module(module)
 
