@@ -202,7 +202,8 @@ from generators import (
     fill_schedule_c_pdf, fill_schedule_d_pdf,
     # New Word template generators
     generate_waiver_probate, generate_bond_affidavit,
-    generate_notice_of_probate, generate_petition_scpa_2203,
+    generate_notice_of_probate, generate_affidavit_of_comparison,
+    generate_petition_scpa_2203,
     generate_refunding_agreement, generate_formal_accounting,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
@@ -461,6 +462,59 @@ def generate_packet():
 
     # Bond Affidavit removed — only needed for specific bond cases, not every packet
 
+    # ── Notice of Probate + Affidavit of Comparison (Probate proceedings only)
+    # Slots 08/09 normally; shift to 10/11 when Probate 207.16(c) docs are inserted
+    if proceeding == "Probate":
+        notice_slot     = "10" if probate_needs_ft_aff else "08"
+        comparison_slot = "11" if probate_needs_ft_aff else "09"
+        try:
+            print(f"[TRYING] {notice_slot} generate_notice_of_probate()")
+            fname = f"{notice_slot}_Notice_of_Probate_{last_name}.docx"
+            files.append((fname, generate_notice_of_probate(data)))
+            print(f"[OK] {notice_slot} Notice of Probate")
+        except Exception as e:
+            print(f"[ERR] {notice_slot} Notice of Probate: {e}")
+            traceback.print_exc()
+            errors.append(f"Notice of Probate: {e}")
+        try:
+            print(f"[TRYING] {comparison_slot} generate_affidavit_of_comparison()")
+            fname = f"{comparison_slot}_Affidavit_of_Comparison_{last_name}.docx"
+            files.append((fname, generate_affidavit_of_comparison(data)))
+            print(f"[OK] {comparison_slot} Affidavit of Comparison")
+        except Exception as e:
+            print(f"[ERR] {comparison_slot} Affidavit of Comparison: {e}")
+            traceback.print_exc()
+            errors.append(f"Affidavit of Comparison: {e}")
+
+    # ── Citation + Affidavit of Service ─────────────────────────────────────
+    # Only when at least one distributee is being served by citation (no waiver).
+    # Affidavit of Service is a blank-ready template — person-served details are
+    # completed by hand after service is actually made.
+    if any(d.get("disposition") == "citation" for d in distributees):
+        if proceeding == "Probate":
+            cite_slot = "12" if probate_needs_ft_aff else "10"
+            aos_slot  = "13" if probate_needs_ft_aff else "11"
+        else:
+            cite_slot = "08"
+            aos_slot  = "09"
+        try:
+            print(f"[TRYING] {cite_slot} fill_citation_pdf()")
+            files.append((f"{cite_slot}_Citation_{last_name}.pdf", fill_citation_pdf(data)))
+            print(f"[OK] {cite_slot} Citation")
+        except Exception as e:
+            print(f"[ERR] {cite_slot} Citation: {e}")
+            traceback.print_exc()
+            errors.append(f"Citation: {e}")
+        try:
+            print(f"[TRYING] {aos_slot} fill_affidavit_of_service_pdf()")
+            files.append((f"{aos_slot}_Affidavit_of_Service_{last_name}.pdf",
+                          fill_affidavit_of_service_pdf(data)))
+            print(f"[OK] {aos_slot} Affidavit of Service")
+        except Exception as e:
+            print(f"[ERR] {aos_slot} Affidavit of Service: {e}")
+            traceback.print_exc()
+            errors.append(f"Affidavit of Service: {e}")
+
     # TODO: Schedules A-D (Nonmarital, Adoption, Infants, Disability)
     # These per-distributee schedules require additional UI fields not yet collected:
     #   - fill_schedule_a_pdf(data, dist) — for nonmarital distributees
@@ -471,13 +525,10 @@ def generate_packet():
 
     # NOTE: The following post-filing forms are available as standalone functions
     # but are NOT auto-generated in the initial packet:
-    #   - fill_citation_pdf(data)
-    #   - fill_affidavit_of_service_pdf(data)
     #   - fill_notice_of_application_pdf(data)
     #   - fill_affidavit_of_mailing_pdf(data)
     #   - fill_affidavit_of_regularity_pdf(data)
     #   - fill_proposed_decree_pdf(data)
-    #   - generate_notice_of_probate(data)
     #   - generate_petition_scpa_2203(data)
     # These can be wired up later as standalone API endpoints.
 
@@ -1103,7 +1154,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.5"
+APP_VERSION = "1.6.9"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

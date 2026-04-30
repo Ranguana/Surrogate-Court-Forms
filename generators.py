@@ -741,8 +741,8 @@ def fill_pdf(template_path, fields, font_overrides=None):
                 if name in font_overrides:
                     widget.text_fontsize = font_overrides[name]
                 elif s == "X":
-                    # Size the X to visibly fill the checkbox box
-                    widget.text_fontsize = max(10, h * 2)
+                    # Size the X to fill the checkbox — use box height so it's visible but not clipped
+                    widget.text_fontsize = max(8, h)
                 elif len(s) > 0:
                     current_size = widget.text_fontsize
                     # If template has 0 font size, set 10pt default
@@ -835,7 +835,7 @@ def _build_probate_fields(data):
     pet      = petitioner_full(data)
     lt       = data.get("lettersType", "")
     letters_to = data.get("lettersTo", "") or pet
-    witnesses = ", ".join(filter(None, [data.get("witness1", ""), data.get("witness2", "")]))
+    witnesses = " and ".join(filter(None, [data.get("witness1", ""), data.get("witness2", "")]))
     pet_addr  = ", ".join(filter(None, [
         data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
         data.get("petitionerState", ""), data.get("petitionerZip", ""),
@@ -891,7 +891,7 @@ def _build_probate_fields(data):
             elif idx < first_surviving:
                 dropdown_vals.append("No")
             elif idx == first_surviving:
-                dropdown_vals.append("Yes")
+                dropdown_vals.append(str(count))  # actual number of survivors
             else:
                 dropdown_vals.append("X")
     else:
@@ -910,7 +910,12 @@ def _build_probate_fields(data):
             elif idx < first_surviving:
                 dropdown_vals.append("No")
             elif idx == first_surviving:
-                dropdown_vals.append("Yes")
+                s = str(raw).strip()
+                # Convert true/yes to "1", keep numbers as-is
+                if s.lower() in ("true", "yes"):
+                    dropdown_vals.append("1")
+                else:
+                    dropdown_vals.append(s)
             else:
                 dropdown_vals.append("X")
 
@@ -1096,27 +1101,60 @@ def _build_probate_fields(data):
         })
 
     # ── Enhance interest descriptions with roles ─────────────────────────────
-    # Prepend key roles (Distributee, Executor, Petitioner) — keep concise
+    # Prepend Executor/Petitioner roles. Only add "Distributee" if relationship
+    # matches a class at or before the first surviving EPTL class.
     pet_lower = pet.strip().lower()
     exec_lower = letters_to.strip().lower()
     succ_exec_lower = succ_exec.lower()
+
+    # Determine first surviving class for distributee check
+    _dist_rel_map = {
+        "spouse": 0, "husband": 0, "wife": 0,
+        "son": 1, "daughter": 1, "child": 1, "children": 1,
+        "mother": 2, "father": 2, "parent": 2,
+        "sister": 3, "brother": 3, "sibling": 3, "niece": 3, "nephew": 3,
+        "grandmother": 4, "grandfather": 4, "grandparent": 4,
+        "aunt": 5, "uncle": 5, "cousin": 5,
+    }
+    _first_surv = None
+    for idx in range(7):
+        for d in all_dists:
+            rel = (d.get("relationship") or "").strip().lower()
+            for kw, ci in _dist_rel_map.items():
+                if kw in rel and ci == idx:
+                    _first_surv = idx
+                    break
+            if _first_surv is not None:
+                break
+        if _first_surv is not None:
+            break
+
     for dist in all_dists:
         name_lower = dist.get("name", "").strip().lower()
         interest = (dist.get("interest") or "").strip()
         is_primary = (dist.get("beneficiaryType") or "primary") == "primary"
         prefix_parts = []
 
+        # Only add "Distributee" if person's relationship is in a qualifying EPTL class
         if is_primary and "distributee" not in interest.lower():
-            prefix_parts.append("Distributee")
+            rel = (dist.get("relationship") or "").strip().lower()
+            rel_class = None
+            for kw, ci in _dist_rel_map.items():
+                if kw in rel:
+                    rel_class = ci
+                    break
+            if rel_class is not None and _first_surv is not None and rel_class <= _first_surv:
+                prefix_parts.append("Distributee")
+
         if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
             prefix_parts.append("Executor")
-        if name_lower and succ_exec_lower and name_lower == succ_exec_lower and "successor executor" not in interest.lower():
-            prefix_parts.append("Successor Executor")
-        if name_lower and name_lower == pet_lower and "petitioner" not in interest.lower():
-            prefix_parts.append("Petitioner herein")
+        # Successor Executor noted via auto-insert in ¶7, not prepended here
+        # "Petitioner herein" is redundant — form identifies petitioner separately
 
         if prefix_parts:
             prefix = ", ".join(prefix_parts)
+            # If interest already starts with a role, use semicolon; otherwise comma-join
+            # Keep compact to avoid multi-row overflow
             dist["interest"] = f"{prefix}; {interest}" if interest else prefix
 
     # Split into 4 groups
@@ -1153,7 +1191,7 @@ def _build_probate_fields(data):
             parts.append(f"Guardian: {dist['guardianInfo']}")
         return "; ".join(parts)
 
-    def _split_interest(text, max_chars=60):
+    def _split_interest(text, max_chars=48):
         """Split long interest text into multiple lines for narrow PDF fields."""
         if len(text) <= max_chars:
             return [text]
@@ -1163,10 +1201,8 @@ def _build_probate_fields(data):
             if len(remaining) <= max_chars:
                 lines.append(remaining)
                 break
-            # Split at semicolon first, then space
-            split_at = remaining.rfind(';', 0, max_chars)
-            if split_at == -1:
-                split_at = remaining.rfind(' ', 0, max_chars)
+            # Split at space (keeps lines full); semicolons stay inline
+            split_at = remaining.rfind(' ', 0, max_chars)
             if split_at == -1:
                 split_at = max_chars
             lines.append(remaining[:split_at + 1].strip())
@@ -1251,11 +1287,19 @@ def generate_probate_docs(data):
     """
     template = os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf")
     fields = _build_probate_fields(data)
-    # Match template font sizes for caption fields (template uses 10pt Arial)
+    # Font overrides: caption fields match template (10pt), interest fields consistent (8pt)
     font_overrides = {
         "COUNTY OF": 10,
         "PROBATE PROCEEDING 1": 10,
     }
+    # All interest/description fields at consistent 7pt for readability + fit
+    for i in range(1, 9):
+        font_overrides[f"Interest or Nature of Fiduciary Status {i}"] = 7
+        font_overrides[f"Interest or Nature of Fiduciary Status {i}_2"] = 7
+        font_overrides[f"Interest or Nature of Fiduciary Status {i}_3"] = 7
+        font_overrides[f"Interest or Nature of Fiduciary Status {i}_4"] = 7
+    font_overrides["Interest or Nature of Fiduciary Status 7_2"] = 7
+    font_overrides["Interest or Nature of Fiduciary Status 8_2"] = 7
     filled = fill_pdf(template, fields, font_overrides=font_overrides)
     last = data.get("decedentLastName", "estate").replace(" ", "_")
     docs = [
@@ -3133,6 +3177,36 @@ def generate_notice_of_probate(data):
         "[DECEDENT AKA]": aka,
         "[county]":       county,
         "[Petitioner]":   pet,
+    })
+
+    return make_docx_bytes(doc)
+
+
+def generate_affidavit_of_comparison(data):
+    """Generate the Affidavit of Comparison (P-13) Word document.
+
+    Template placeholders (Affiv of Comparison.docx):
+    - [COUNTY]:        Caption county (uppercase)
+    - [DECEDENT]:      Decedent full name
+    - [DECEDENT AKA]:  a/k/a
+    - [FILE NO]:       File number
+    - [STATE]:         Jurat state (defaults to NEW YORK)
+    - [county]:        Jurat county (lowercase placeholder)
+    - [AFFIANT]:       Person executing the affidavit (defaults to attorney name)
+    """
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Affiv of Comparison.docx"))
+    dec = decedent_full(data)
+    county = data.get("county", "")
+    affiant = data.get("affiant") or data.get("attorneyName") or "Jessica Wilson, Esq."
+
+    replace_in_doc(doc, {
+        "[COUNTY]":       county.upper(),
+        "[DECEDENT]":     dec,
+        "[DECEDENT AKA]": data.get("decedentAKA", ""),
+        "[FILE NO]":      data.get("fileNo", ""),
+        "[STATE]":        data.get("affiantState", "NEW YORK"),
+        "[county]":       data.get("affiantCounty", county),
+        "[AFFIANT]":      affiant,
     })
 
     return make_docx_bytes(doc)

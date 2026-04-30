@@ -2471,14 +2471,43 @@ async function modalAction(){
   showStatus(`✓ Saved: "${name}"`, "ok");
 }
 
-// Auto-save every 60 seconds if a case is loaded
+// ── Auto-save: debounced save-on-edit + beforeunload + 15s safety net ────────
+let _saveTimer = null;
+function _saveNow() {
+  if(!_currentCaseName) return Promise.resolve();
+  return saveCaseToServer(_currentCaseName, _buildCaseData())
+    .catch(e => console.warn('[SAVE] Failed:', e));
+}
+function _scheduleSave() {
+  if(!_currentCaseName) return;
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(_saveNow, 1500);
+}
+// Save on any form-field edit when a case is loaded
+document.addEventListener('input', e => {
+  const t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) _scheduleSave();
+}, true);
+document.addEventListener('change', e => {
+  const t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) _scheduleSave();
+}, true);
+// Best-effort save right before the window closes/reloads
+window.addEventListener('beforeunload', () => {
+  if(!_currentCaseName) return;
+  try {
+    const payload = JSON.stringify({name: _currentCaseName, data: _buildCaseData()});
+    navigator.sendBeacon('/cases', new Blob([payload], {type:'application/json'}));
+  } catch(e) { /* best-effort */ }
+});
+// Safety-net periodic save every 15 seconds
 setInterval(async () => {
   if(!_currentCaseName) return;
   try {
     await saveCaseToServer(_currentCaseName, _buildCaseData());
     console.log('[AUTO-SAVE] Saved:', _currentCaseName);
   } catch(e) { console.warn('[AUTO-SAVE] Failed:', e); }
-}, 60000);
+}, 15000);
 
 function closeModal(){
   document.getElementById("modal-overlay").classList.remove("open");
@@ -2872,8 +2901,19 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
+  // CTA: ctaPetitionerInterest may hold custom "Other" text — re-route into Other input
+  const _cpiSel = document.getElementById('ctaPetitionerInterest');
+  const _cpiVal = data.ctaPetitionerInterest;
+  if(_cpiSel && _cpiVal) {
+    const _opts = Array.from(_cpiSel.options).map(o => o.value);
+    if(!_opts.includes(_cpiVal)) {
+      _cpiSel.value = 'Other';
+      const _other = document.getElementById('ctaPetitionerInterestOther');
+      if(_other) { _other.value = _cpiVal; _other.style.display = 'block'; }
+    }
+  }
   updateMaritalFields();
 
   // Restore assets
@@ -2917,8 +2957,17 @@ async function deleteCaseFromDash(name){
 document.getElementById("dashboard-overlay").addEventListener("click",function(e){ if(e.target===this) closeDashboard(); });
 document.getElementById("modal-overlay").addEventListener("click",function(e){ if(e.target===this) closeModal(); });
 
-// Ctrl/Cmd+S to save
-document.addEventListener("keydown",function(e){ if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();openSave();} });
+// Ctrl/Cmd+S: save directly to loaded case (else open Save As modal)
+document.addEventListener("keydown",function(e){
+  if((e.ctrlKey||e.metaKey)&&e.key==="s"){
+    e.preventDefault();
+    if(_currentCaseName){
+      _saveNow().then(()=>showStatus(`✓ Saved: "${_currentCaseName}"`,"ok"));
+    } else {
+      openSave();
+    }
+  }
+});
 
 // Show version in header
 fetch('/app-version').then(r=>r.json()).then(d=>{
