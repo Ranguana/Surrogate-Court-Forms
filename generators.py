@@ -3158,19 +3158,38 @@ def generate_waiver_probate(data, dist):
 def generate_notice_of_probate(data):
     """Generate the Notice of Probate + Affidavit of Mailing Word document.
 
-    Template placeholders (Notice_of_Probate.docx):
-    - [COUNTY]:        County name
-    - [DECEDENT]:      Decedent full name
-    - [DECEDENT AKA]:  a/k/a
-    - [county]:        County (lowercase placeholder)
-    - [Petitioner]:    Petitioner name
+    Fills caption, will date, decedent domicile, petitioner address, today's
+    date, and the recipient table (distributees + will beneficiaries with
+    addresses and roles).
     """
+    import re as _re
     doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Notice_of_Probate.docx"))
-    dec = decedent_full(data)
-    pet = petitioner_full(data)
-    county = data.get("county", "")
-    aka = data.get("decedentAKA", "")
+    dec       = decedent_full(data)
+    pet       = petitioner_full(data)
+    county    = data.get("county", "")
+    aka       = data.get("decedentAKA", "")
+    will_date = data.get("willDate", "") or "___________"
 
+    def _addr_str(street, city, state, zipc, blank):
+        # Only fill if at least street is present — partial fragments look broken
+        if not street:
+            return blank
+        return ", ".join(filter(None, [street, city, state, zipc]))
+
+    dec_addr = _addr_str(
+        data.get("decedentStreet", ""), data.get("decedentCity", ""),
+        data.get("decedentState", ""), data.get("decedentZip", ""),
+        "_________________",
+    )
+    pet_addr = _addr_str(
+        data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
+        data.get("petitionerState", ""), data.get("petitionerZip", ""),
+        "_______________________",
+    )
+
+    today_str = datetime.now().strftime("%B %d, %Y")
+
+    # Caption + token-style replacements
     replace_in_doc(doc, {
         "[COUNTY]":       county.upper(),
         "[DECEDENT]":     dec,
@@ -3178,6 +3197,123 @@ def generate_notice_of_probate(data):
         "[county]":       county,
         "[Petitioner]":   pet,
     })
+
+    # Regex replacements over body paragraphs (underscored blanks)
+    def _rewrite_para(p, new_text):
+        if p.runs:
+            p.runs[0].text = new_text
+            for r in p.runs[1:]:
+                r.text = ""
+        else:
+            p.add_run(new_text)
+
+    patterns = [
+        (_re.compile(r"The Will dated _+"),
+         f"The Will dated {will_date}"),
+        (_re.compile(r"domiciled at _+(?=, County of)"),
+         f"domiciled at {dec_addr}"),
+        (_re.compile(r"whose address is _+(?=\.)"),
+         f"whose address is {pet_addr}"),
+        (_re.compile(r"^Dated: _+\s*$"),
+         f"Dated: {today_str}"),
+        # Affidavit of mailing — re-stamp the will date there too
+        (_re.compile(r"copy of the Will dated _+"),
+         f"copy of the Will dated {will_date}"),
+    ]
+
+    def _apply_patterns(p):
+        txt = p.text
+        if not txt:
+            return
+        new = txt
+        for rx, repl in patterns:
+            new = rx.sub(repl, new)
+        if new != txt:
+            _rewrite_para(p, new)
+
+    for p in doc.paragraphs:
+        _apply_patterns(p)
+    for t in doc.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    _apply_patterns(p)
+
+    # ── Build recipients list: distributees + will beneficiaries ──────────────
+    def _addr_parts(d):
+        if d.get("address"):
+            return d["address"]
+        return ", ".join(filter(None, [
+            d.get("street", ""), d.get("city", ""), d.get("state", ""), d.get("zip", "")
+        ]))
+
+    recipients = []
+    seen = set()
+    for d in data.get("distributees", []) or []:
+        nm = (d.get("name") or "").strip()
+        if not nm or nm.lower() in seen:
+            continue
+        seen.add(nm.lower())
+        addr = _addr_parts(d) or ""
+        rel = (d.get("relationship") or "").strip() or "Distributee"
+        role = f"Distributee ({rel})" if rel.lower() != "distributee" else "Distributee"
+        recipients.append((nm, addr, role))
+    for b in data.get("willBeneficiaries", []) or []:
+        nm = (b.get("name") or "").strip()
+        if not nm or nm.lower() in seen:
+            continue
+        seen.add(nm.lower())
+        kind = (b.get("type") or "").replace("_", " ").title() or "Beneficiary"
+        interest = (b.get("interest") or "").strip()
+        role = f"{kind}: {interest}" if interest else kind
+        recipients.append((nm, "", role))
+
+    # ── Fill the recipient table (table 0) ────────────────────────────────────
+    # NOTE: In the template, cells [0] and [1] are MERGED (one cell visually
+    # holding both NAME and MAILING ADDRESS). Cell [2] is NATURE OF INTEREST,
+    # cell [3] is the [Description...] instruction text we leave alone.
+    def _set_cell_text(cell, *lines):
+        """Replace cell content with the given lines, one per paragraph."""
+        # Clear all existing paragraphs by zeroing their runs
+        for p in cell.paragraphs:
+            for r in p.runs:
+                r.text = ""
+        # Write the first line into the first paragraph
+        first_p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+        if first_p.runs:
+            first_p.runs[0].text = lines[0] if lines else ""
+        else:
+            first_p.add_run(lines[0] if lines else "")
+        # Add remaining lines as new paragraphs
+        for line in lines[1:]:
+            cell.add_paragraph(line)
+
+    if doc.tables and recipients:
+        notice_tbl = doc.tables[0]
+        existing = len(notice_tbl.rows)
+        # Add rows if more recipients than rows
+        while len(notice_tbl.rows) < len(recipients):
+            notice_tbl.add_row()
+
+        for ri, (nm, addr, role) in enumerate(recipients):
+            row = notice_tbl.rows[ri]
+            cells = row.cells
+            if len(cells) >= 3:
+                # Merged NAME+ADDRESS cell — name on line 1, address on line 2
+                _set_cell_text(cells[0], nm, addr or "___________")
+                # Cell 2: nature of interest / status
+                _set_cell_text(cells[2], role)
+
+        # Clear underscore placeholders in unused rows
+        for ri in range(len(recipients), existing):
+            row = notice_tbl.rows[ri]
+            for ci, cell in enumerate(row.cells[:3]):
+                for p in cell.paragraphs:
+                    if p.text.strip() and all(c == "_" for c in p.text.strip()):
+                        if p.runs:
+                            p.runs[0].text = ""
+                            for r in p.runs[1:]:
+                                r.text = ""
 
     return make_docx_bytes(doc)
 
