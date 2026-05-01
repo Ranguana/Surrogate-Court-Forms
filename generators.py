@@ -808,8 +808,14 @@ def fill_pdf(template_path, fields, font_overrides=None):
                 s = str(value) if value is not None else ""
                 widget.field_value = s
                 if s == "X":
-                    # Checkbox-simulated as text: size X to fill the box height
-                    widget.text_fontsize = max(8, widget.rect.height)
+                    # Checkbox-simulated as text. Size the X to the smaller
+                    # of the two box dimensions so it fits the box, with a
+                    # generous floor so very small checkboxes (6x6px on
+                    # paragraph-1 of the petition) still render a visible X.
+                    h = widget.rect.height
+                    w = widget.rect.width
+                    box = min(h, w) if (h and w) else max(h, w, 8)
+                    widget.text_fontsize = max(10, box * 1.3)
                 else:
                     # Default 10pt unless the template set a real size
                     cur = widget.text_fontsize
@@ -992,7 +998,11 @@ def _build_probate_fields(data):
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
         "COUNTY OF": county,
         "To the Surrogates Court County of": county,
-        "PROBATE PROCEEDING 1": dec,
+        # The "PROBATE PROCEEDING 1" widget sits on the second line of the
+        # caption block right after "PROBATE PROCEEDING,". The line is meant
+        # to be blank — the decedent name belongs in the "decedent" /
+        # "WILL OF:" field, not here.
+        "PROBATE PROCEEDING 1": "",
         "File No": data.get("fileNo", ""),
         "decedent": dec,
         "a Name": dec,
