@@ -566,10 +566,17 @@ def generate_heirship(data):
     decedent = decedent_full(data)
     county = data.get("county", "")
     petitioner = petitioner_full(data)
-    deponent = data.get("deponentName", petitioner)
-    deponent_address = data.get("deponentAddress", data.get("petitionerStreet", ""))
-    deponent_rel = data.get("deponentRelationship", "")
-    years_known = data.get("yearsKnown", "")
+    # `.get(key, default)` only uses default when the key is MISSING; it does
+    # NOT trigger when value is "". Saved cases populate every field as ""
+    # so we need `or` fallbacks instead.
+    petitioner_full_addr = ", ".join(filter(None, [
+        data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
+        data.get("petitionerState", ""), data.get("petitionerZip", ""),
+    ]))
+    deponent = (data.get("deponentName") or "").strip() or petitioner
+    deponent_address = (data.get("deponentAddress") or "").strip() or petitioner_full_addr or "_________________________"
+    deponent_rel = (data.get("deponentRelationship") or "").strip() or (data.get("petitionerRelationship") or "").strip() or "______________"
+    years_known = (data.get("yearsKnown") or "").strip() or "_____"
     dob = data.get("decedentDOB", "")
     dod = data.get("decedentDOD", "")
     marital_status    = (data.get("maritalStatus") or "").strip()      # never_married / married / divorced / widowed
@@ -581,7 +588,7 @@ def generate_heirship(data):
     mother_dod = data.get("motherDOD", "")
     father_name = data.get("fatherName", "")
     father_dod = data.get("fatherDOD", "")
-    sole_distributee = data.get("soleDistributee", petitioner)
+    sole_distributee = (data.get("soleDistributee") or "").strip() or petitioner
 
     was_married = marital_status in ("married", "divorced", "widowed")
     has_children = bool(children_note and "never had" not in children_note.lower())
@@ -3348,71 +3355,90 @@ def generate_notice_of_probate(data):
             d.get("street", ""), d.get("city", ""), d.get("state", ""), d.get("zip", "")
         ]))
 
-    # Each recipient: (name, address, role, description)
-    # role -> NATURE OF INTEREST OR STATUS (col 2)
-    # description -> [Description of Legacy, Devise...] (col 3); blank for distributees
+    # Each recipient: (name, address, nature_text)
+    # nature_text combines role + interest into ONE line for cell 2; cell 3 is cleared
+    def _norm(n): return _re.sub(r'\s+', ' ', (n or '').strip().lower())
+    will_lookup = {_norm(b.get("name", "")): b for b in (data.get("willBeneficiaries") or []) if b.get("name")}
+
     recipients = []
     seen = set()
     for d in data.get("distributees", []) or []:
         nm = (d.get("name") or "").strip()
-        if not nm or nm.lower() in seen:
+        if not nm or _norm(nm) in seen:
             continue
-        seen.add(nm.lower())
-        addr = _addr_parts(d) or ""
+        seen.add(_norm(nm))
+        addr = _addr_parts(d) or "___________"
         rel = (d.get("relationship") or "").strip()
         role = f"Distributee ({rel})" if rel and rel.lower() != "distributee" else "Distributee"
-        recipients.append((nm, addr, role, ""))
+        # If this distributee is also a will beneficiary, combine their interest text
+        wb = will_lookup.get(_norm(nm))
+        if wb and wb.get("interest"):
+            nature = f"{role}; {wb['interest'].strip()}"
+        else:
+            nature = role
+        recipients.append((nm, addr, nature))
     for b in data.get("willBeneficiaries", []) or []:
         nm = (b.get("name") or "").strip()
-        if not nm or nm.lower() in seen:
+        if not nm or _norm(nm) in seen:
             continue
-        seen.add(nm.lower())
-        kind = (b.get("type") or "").replace("_", " ").title() or "Beneficiary"
-        interest = (b.get("interest") or "").strip()
-        recipients.append((nm, "", kind, interest))
+        seen.add(_norm(nm))
+        addr = (b.get("address") or "").strip() or "___________"
+        nature = (b.get("interest") or "").strip()
+        if not nature:
+            # Fallback if interest is missing
+            kind = (b.get("type") or "").replace("_", " ").title() or "Beneficiary"
+            nature = kind
+        recipients.append((nm, addr, nature))
 
     # ── Fill the recipient table (table 0) ────────────────────────────────────
-    # NOTE: In the template, cells [0] and [1] are MERGED (one cell visually
-    # holding both NAME and MAILING ADDRESS). Cell [2] is NATURE OF INTEREST,
-    # cell [3] is the [Description...] instruction text we leave alone.
+    # Template row 0 has cells [0] and [1] merged (NAME + ADDRESS column).
+    # When we add new rows via table.add_row() the merge structure isn't
+    # preserved, which produced misaligned cells. Instead, deepcopy row 0's
+    # XML so every recipient row has identical merge structure, then clear
+    # the cloned content before writing.
     def _set_cell_text(cell, *lines):
         """Replace cell content with the given lines, one per paragraph."""
-        # Clear all existing paragraphs by zeroing their runs
         for p in cell.paragraphs:
             for r in p.runs:
                 r.text = ""
-        # Write the first line into the first paragraph
         first_p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
         if first_p.runs:
             first_p.runs[0].text = lines[0] if lines else ""
         else:
             first_p.add_run(lines[0] if lines else "")
-        # Add remaining lines as new paragraphs
         for line in lines[1:]:
             cell.add_paragraph(line)
 
     if doc.tables and recipients:
+        from copy import deepcopy as _deepcopy
         notice_tbl = doc.tables[0]
-        existing = len(notice_tbl.rows)
-        # Add rows if more recipients than rows
-        while len(notice_tbl.rows) < len(recipients):
-            notice_tbl.add_row()
+        existing_default_rows = len(notice_tbl.rows)
+        prototype_tr = notice_tbl.rows[0]._tr if notice_tbl.rows else None
+        while len(notice_tbl.rows) < len(recipients) and prototype_tr is not None:
+            notice_tbl._tbl.append(_deepcopy(prototype_tr))
 
-        for ri, (nm, addr, role, desc) in enumerate(recipients):
+        # Write ALL recipient info (name, address, nature/role) into the
+        # merged NAME+ADDRESS cell as four labeled lines. Touching
+        # cells[2]/cells[3] in this template re-flows the gridSpan and
+        # produces an inconsistent layout per row, so we keep all writes
+        # inside the leftmost merged cell where the gridSpan is stable.
+        for ri, (nm, addr, nature) in enumerate(recipients):
             row = notice_tbl.rows[ri]
             cells = row.cells
-            if len(cells) >= 3:
-                # Merged NAME+ADDRESS cell — name on line 1, address on line 2
-                _set_cell_text(cells[0], nm, addr or "___________")
-                # Cell 2: nature of interest / status (e.g., "Distributee")
-                _set_cell_text(cells[2], role)
-            if len(cells) >= 4:
-                # Cell 3: description of legacy/devise (only for beneficiaries).
-                # Always replace the bracketed instruction text — empty if no desc.
-                _set_cell_text(cells[3], desc)
+            if len(cells) >= 1:
+                _set_cell_text(
+                    cells[0],
+                    f"NAME: {nm}",
+                    f"MAILING ADDRESS: {addr}",
+                    f"NATURE OF INTEREST OR STATUS: {nature}",
+                )
+            # Clear the remaining cells (NATURE / Description columns) so
+            # leftover template text doesn't show through.
+            for ci in range(2, len(cells)):
+                _set_cell_text(cells[ci], "")
 
-        # Clear placeholders (underscores or [Description] instruction) in unused rows
-        for ri in range(len(recipients), existing):
+        # Clear leftover unused default rows that weren't replaced by recipients
+        for ri in range(len(recipients), existing_default_rows):
             row = notice_tbl.rows[ri]
             for cell in row.cells:
                 for p in cell.paragraphs:
