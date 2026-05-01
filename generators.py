@@ -6,6 +6,7 @@ Generates filled Word docs and PDFs from case data
 import io
 import os
 import re
+import traceback
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches
@@ -716,6 +717,60 @@ def generate_attorney_cert(data):
 
 # ─── PDF FILLING (pymupdf/fitz) ──────────────────────────────────────────────
 
+def _ensure_acroform_root(pdf_bytes):
+    """Reattach the Root /AcroForm dictionary that fitz drops on save.
+
+    Without /AcroForm in Root:
+    - pypdf and other strict readers see 0 form fields (silent failure)
+    - Court e-file systems that validate AcroForm structure may reject
+    - Some viewers won't show fields as interactive
+
+    fitz bakes appearance streams into each widget's /AP, so we set
+    /NeedAppearances False — viewers use the existing baked appearances
+    rather than regenerating from /V + /DA.
+
+    No global /DR on the AcroForm dict: each widget in this template
+    carries its own /DR with its font reference (e.g. /Helv), so a global
+    one would be ignored anyway and might shadow per-widget fonts.
+
+    Only top-level widgets (no /Parent) go in /Fields — defensive against
+    field hierarchies even though our templates are flat.
+    """
+    try:
+        import pypdf
+        from pypdf.generic import (
+            DictionaryObject, ArrayObject, NameObject, BooleanObject,
+        )
+    except Exception as e:
+        print(f"[ACROFORM] pypdf unavailable, skipping reattach: {e}")
+        return pdf_bytes
+
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+        writer = pypdf.PdfWriter(clone_from=reader)
+        field_refs = []
+        for page in writer.pages:
+            annots = page.get("/Annots") or []
+            for a in annots:
+                obj = a.get_object() if hasattr(a, "get_object") else a
+                if obj.get("/Subtype") == "/Widget" and "/Parent" not in obj:
+                    field_refs.append(a)
+        af = DictionaryObject()
+        af[NameObject("/Fields")] = ArrayObject(field_refs)
+        af[NameObject("/NeedAppearances")] = BooleanObject(False)
+        # pypdf preserves /AcroForm only if it's an indirect object reference
+        # — direct dict assignment to _root_object is dropped during write().
+        af_ref = writer._add_object(af)
+        writer._root_object[NameObject("/AcroForm")] = af_ref
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception as e:
+        print(f"[ACROFORM] reattach failed, returning original bytes: {e}")
+        traceback.print_exc()
+        return pdf_bytes
+
+
 def fill_pdf(template_path, fields, font_overrides=None):
     """Universal PDF form filler using pymupdf/fitz.
 
@@ -763,7 +818,9 @@ def fill_pdf(template_path, fields, font_overrides=None):
     doc.save(buf)
     doc.close()
     buf.seek(0)
-    return buf.read()
+    # Reattach Root /AcroForm — fitz drops it on save, which makes pypdf
+    # and other strict readers see zero form fields.
+    return _ensure_acroform_root(buf.read())
 
 
 def _extract_pages(pdf_bytes, page_indices):
@@ -774,7 +831,8 @@ def _extract_pages(pdf_bytes, page_indices):
     doc.save(buf, garbage=4, deflate=True)
     doc.close()
     buf.seek(0)
-    return buf.read()
+    # fitz.save drops Root /AcroForm — reattach for pypdf / strict reader compatibility
+    return _ensure_acroform_root(buf.read())
 
 
 def extract_pdf_pages(template_path, fields, page_indices):
