@@ -2738,6 +2738,14 @@ async function renderReports() {
     drafting:'Drafting', ready:'Ready to File', submitted:'Submitted',
     issued:'Letters Issued', marshaling:'Marshaling', accounting:'Accounting', closed:'Closed'
   };
+  const STATUS_COLORS = {
+    drafting:'#6b7280', ready:'#d97706', submitted:'#2563eb',
+    issued:'#059669', marshaling:'#7c3aed', accounting:'#0891b2', closed:'#6b7280'
+  };
+  const STATUS_BG = {
+    drafting:'#f3f4f6', ready:'#fef3c7', submitted:'#dbeafe',
+    issued:'#d1fae5', marshaling:'#ede9fe', accounting:'#cffafe', closed:'#f3f4f6'
+  };
   const agingBuckets = { '< 3 months': 0, '3\u20136 months': 0, '6\u201312 months': 0, '> 1 year': 0 };
   const caseDetails = [];
   let needsAction = 0;
@@ -2884,14 +2892,6 @@ async function renderReports() {
     </tbody></table>`);
 
   // Case status table
-  const STATUS_COLORS = {
-    drafting:'#6b7280', ready:'#d97706', submitted:'#2563eb',
-    issued:'#059669', marshaling:'#7c3aed', accounting:'#0891b2', closed:'#6b7280'
-  };
-  const STATUS_BG = {
-    drafting:'#f3f4f6', ready:'#fef3c7', submitted:'#dbeafe',
-    issued:'#d1fae5', marshaling:'#ede9fe', accounting:'#cffafe', closed:'#f3f4f6'
-  };
   rptSet('values', caseDetails.length ? `<table class="acct-table">
     <thead><tr>
       <th>Estate</th><th>Type</th><th>County</th>
