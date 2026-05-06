@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['app.py'],
+    ['runner.py'],
     pathex=[],
     binaries=[],
-    datas=[('static', 'static'), ('templates', 'templates'), ('Accounting', 'Accounting'), ('generators.py', '.'), ('cases.json', '.'), ('contacts.json', '.'), ('favicon.svg', '.'), ('.env', '.'), ('Probate-_NY_Court_Forms.pdf', '.'), ('admin_ancil.pdf', '.'), ('Petition_for_Non-Domciliary_Letters_of_Admin.pdf', '.'), ('smart_intake_prompt.md', '.')],
-    hiddenimports=['flask', 'dotenv', 'docx', 'pypdf', 'pdfplumber', 'fitz', 'openpyxl', 'anthropic', 'pytesseract', 'pdf2image', 'requests', 'pdfplumber.utils', 'pdfplumber.page'],
+    datas=[],
+    hiddenimports=['flask', 'werkzeug', 'jinja2', 'markupsafe', 'click', 'itsdangerous', 'blinker', 'docx', 'pypdf', 'pdfplumber', 'pdfminer', 'pdfminer.high_level', 'fitz', 'openpyxl', 'dotenv', 'anthropic', 'httpx', 'pytesseract', 'pdf2image', 'requests'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
