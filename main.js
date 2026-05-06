@@ -173,9 +173,9 @@ async function checkAndUpdate() {
       const extracted = fs.readdirSync(tmpExtract);
       const srcDir = path.join(tmpExtract, extracted[0]);
 
-      if (fs.existsSync(liveDir)) {
-        fs.rmSync(liveDir, { recursive: true, force: true });
-      }
+      // Replace items in place — never wipe liveDir itself. Wiping invalidates
+      // the cwd of any other Probate HQ instance still running, which surfaces
+      // as os.getcwd() throwing FileNotFoundError mid-request.
       fs.mkdirSync(liveDir, { recursive: true });
 
       const items = [
@@ -190,6 +190,9 @@ async function checkAndUpdate() {
         const src = path.join(srcDir, item);
         const dst = path.join(liveDir, item);
         if (fs.existsSync(src)) {
+          if (fs.existsSync(dst)) {
+            fs.rmSync(dst, { recursive: true, force: true });
+          }
           await run(`cp -R "${src}" "${dst}"`, 10000);
         }
       }
