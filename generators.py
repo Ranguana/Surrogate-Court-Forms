@@ -3365,101 +3365,176 @@ def generate_notice_of_probate(data):
             d.get("street", ""), d.get("city", ""), d.get("state", ""), d.get("zip", "")
         ]))
 
-    # Each recipient: (name, address, nature_text)
-    # nature_text combines role + interest into ONE line for cell 2; cell 3 is cleared
-    def _norm(n): return _re.sub(r'\s+', ' ', (n or '').strip().lower())
-    will_lookup = {_norm(b.get("name", "")): b for b in (data.get("willBeneficiaries") or []) if b.get("name")}
+    # Fuzzy match key: (first_token, last_meaningful_token) lowercased, with
+    # generational suffixes stripped. So "Amy Sue Nathan" and "Amy Nathan"
+    # both reduce to ("amy", "nathan") and are treated as the same person.
+    _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+    def _name_key(name):
+        if not name:
+            return None
+        toks = [t for t in _re.split(r'\s+', name.strip()) if t]
+        while toks and toks[-1].lower().rstrip('.') in _SUFFIXES:
+            toks.pop()
+        if not toks:
+            return None
+        first = toks[0].lower()
+        last = toks[-1].lower() if len(toks) > 1 else ""
+        return (first, last)
+
+    # Petitioner key — they don't get noticed about their own filing
+    pet_full = " ".join(filter(None, [
+        (data.get("petitionerFirstName") or "").strip(),
+        (data.get("petitionerLastName") or "").strip(),
+    ]))
+    pet_key = _name_key(pet_full)
+
+    # Short, controlled labels for will beneficiary types.
+    _WB_LABELS = {
+        "residuary_beneficiary":            "Residuary Beneficiary",
+        "contingent_residuary_beneficiary": "Contingent Residuary Beneficiary",
+        "legatee":                          "Legatee",
+        "specific_legatee":                 "Specific Legatee",
+        "specific_beneficiary":             "Specific Beneficiary",
+        "successor_executor":               "Successor Executor",
+        "successor_trustee":                "Successor Trustee",
+        "successor_guardian":               "Successor Guardian",
+        "executor":                         "Executor",
+        "trustee":                          "Trustee",
+        "guardian":                         "Guardian",
+        "beneficiary":                      "Beneficiary",
+    }
+    def _wb_label(b):
+        t = (b.get("type") or "").strip().lower()
+        if t in _WB_LABELS:
+            return _WB_LABELS[t]
+        return t.replace("_", " ").title() or "Beneficiary"
+
+    # Blood/marital relationships — anything outside this set is treated as
+    # a will-side role, regardless of where the user crammed it.
+    _BLOOD_TERMS = {
+        "spouse", "wife", "husband", "partner",
+        "father", "mother", "parent",
+        "child", "son", "daughter",
+        "brother", "sister", "sibling",
+        "half-brother", "half-sister",
+        "stepfather", "stepmother", "stepbrother", "stepsister",
+        "stepchild", "stepson", "stepdaughter",
+        "grandfather", "grandmother", "grandparent",
+        "grandson", "granddaughter", "grandchild",
+        "aunt", "uncle", "niece", "nephew",
+        "cousin", "first cousin", "second cousin", "third cousin",
+        "father-in-law", "mother-in-law", "parent-in-law",
+        "brother-in-law", "sister-in-law",
+        "son-in-law", "daughter-in-law",
+    }
+    def _dist_role(d):
+        rel = (d.get("relationship") or "").strip()
+        if not rel or rel.lower() == "distributee":
+            return "Distributee"
+        # Split composite "Sister-in-law / Successor Executor / Beneficiary"
+        # into the blood relation (used as the Distributee qualifier) and the
+        # remaining tokens (appended as additional will-side roles).
+        parts = [p.strip() for p in rel.split("/") if p.strip()]
+        bloods, roles = [], []
+        for p in parts:
+            (bloods if p.lower() in _BLOOD_TERMS else roles).append(p)
+        base = f"Distributee — {bloods[0]}" if bloods else "Distributee"
+        if roles:
+            base += "; " + "; ".join(roles)
+        return base
+
+    will_lookup = {}
+    for b in (data.get("willBeneficiaries") or []):
+        k = _name_key(b.get("name", ""))
+        if k:
+            will_lookup.setdefault(k, b)
 
     recipients = []
-    seen = set()
-    for d in data.get("distributees", []) or []:
+    seen_keys = set()
+    if pet_key:
+        seen_keys.add(pet_key)
+
+    for d in (data.get("distributees") or []):
         nm = (d.get("name") or "").strip()
-        if not nm or _norm(nm) in seen:
+        if not nm:
             continue
-        seen.add(_norm(nm))
+        k = _name_key(nm)
+        if not k or k in seen_keys:
+            continue
+        seen_keys.add(k)
         addr = _addr_parts(d) or "___________"
-        rel = (d.get("relationship") or "").strip()
-        role = f"Distributee ({rel})" if rel and rel.lower() != "distributee" else "Distributee"
-        # If this distributee is also a will beneficiary, combine their interest text
-        wb = will_lookup.get(_norm(nm))
-        if wb and wb.get("interest"):
-            nature = f"{role}; {wb['interest'].strip()}"
-        else:
-            nature = role
+        role = _dist_role(d)
+        wb = will_lookup.get(k)
+        nature = f"{role}; {_wb_label(wb)}" if wb else role
         recipients.append((nm, addr, nature))
-    for b in data.get("willBeneficiaries", []) or []:
+
+    for b in (data.get("willBeneficiaries") or []):
         nm = (b.get("name") or "").strip()
-        if not nm or _norm(nm) in seen:
+        if not nm:
             continue
-        seen.add(_norm(nm))
+        k = _name_key(nm)
+        if not k or k in seen_keys:
+            continue
+        seen_keys.add(k)
         addr = (b.get("address") or "").strip() or "___________"
-        nature = (b.get("interest") or "").strip()
-        if not nature:
-            # Fallback if interest is missing
-            kind = (b.get("type") or "").replace("_", " ").title() or "Beneficiary"
-            nature = kind
-        recipients.append((nm, addr, nature))
+        recipients.append((nm, addr, _wb_label(b)))
 
-    # ── Fill the recipient table (table 0) ────────────────────────────────────
-    # Template row 0 has cells [0] and [1] merged (NAME + ADDRESS column).
-    # When we add new rows via table.add_row() the merge structure isn't
-    # preserved, which produced misaligned cells. Instead, deepcopy row 0's
-    # XML so every recipient row has identical merge structure, then clear
-    # the cloned content before writing.
-    def _set_cell_text(cell, *lines):
-        """Replace cell content with the given lines, one per paragraph."""
-        for p in cell.paragraphs:
-            for r in p.runs:
-                r.text = ""
-        first_p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
-        if first_p.runs:
-            first_p.runs[0].text = lines[0] if lines else ""
-        else:
-            first_p.add_run(lines[0] if lines else "")
-        for line in lines[1:]:
-            cell.add_paragraph(line)
-
+    # ── Replace the recipient table with a clean 3-column structure ──────────
+    # The template's table 0 has inconsistent gridSpan across rows (row 0:
+    # [span2,span1,span1]; rows 1-2: [span1,span2,span1]) and column 3 holds
+    # explanatory bracket text. Rather than fight the merge layout, we strip
+    # the table's rows and grid and rebuild as a flat 3-column table:
+    # NAME | MAILING ADDRESS | NATURE OF INTEREST OR STATUS.
     if doc.tables and recipients:
-        from copy import deepcopy as _deepcopy
-        notice_tbl = doc.tables[0]
-        existing_default_rows = len(notice_tbl.rows)
-        prototype_tr = notice_tbl.rows[0]._tr if notice_tbl.rows else None
-        while len(notice_tbl.rows) < len(recipients) and prototype_tr is not None:
-            notice_tbl._tbl.append(_deepcopy(prototype_tr))
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
 
-        # Write ALL recipient info (name, address, nature/role) into the
-        # merged NAME+ADDRESS cell as four labeled lines. Touching
-        # cells[2]/cells[3] in this template re-flows the gridSpan and
-        # produces an inconsistent layout per row, so we keep all writes
-        # inside the leftmost merged cell where the gridSpan is stable.
-        for ri, (nm, addr, nature) in enumerate(recipients):
-            row = notice_tbl.rows[ri]
-            cells = row.cells
-            if len(cells) >= 1:
-                _set_cell_text(
-                    cells[0],
-                    f"NAME: {nm}",
-                    f"MAILING ADDRESS: {addr}",
-                    f"NATURE OF INTEREST OR STATUS: {nature}",
-                )
-            # Clear the remaining cells (NATURE / Description columns) so
-            # leftover template text doesn't show through.
-            for ci in range(2, len(cells)):
-                _set_cell_text(cells[ci], "")
+        def _make_cell(text, bold=False):
+            tc = OxmlElement('w:tc')
+            tcPr = OxmlElement('w:tcPr')
+            tc.append(tcPr)
+            p = OxmlElement('w:p')
+            r = OxmlElement('w:r')
+            if bold:
+                rPr = OxmlElement('w:rPr')
+                rPr.append(OxmlElement('w:b'))
+                r.append(rPr)
+            t = OxmlElement('w:t')
+            t.text = text
+            t.set(qn('xml:space'), 'preserve')
+            r.append(t)
+            p.append(r)
+            tc.append(p)
+            return tc
 
-        # Clear leftover unused default rows that weren't replaced by recipients
-        for ri in range(len(recipients), existing_default_rows):
-            row = notice_tbl.rows[ri]
-            for cell in row.cells:
-                for p in cell.paragraphs:
-                    s = p.text.strip()
-                    is_underscore = s and all(c == "_" for c in s)
-                    is_bracket = s.startswith("[") and s.endswith("]")
-                    if is_underscore or is_bracket:
-                        if p.runs:
-                            p.runs[0].text = ""
-                            for r in p.runs[1:]:
-                                r.text = ""
+        def _make_row(values, bold=False):
+            tr = OxmlElement('w:tr')
+            for v in values:
+                tr.append(_make_cell(v, bold=bold))
+            return tr
+
+        tbl = doc.tables[0]._tbl
+        # Strip existing rows
+        for tr in list(tbl.findall(qn('w:tr'))):
+            tbl.remove(tr)
+        # Replace tblGrid with a 3-column equal-width grid
+        old_grid = tbl.find(qn('w:tblGrid'))
+        if old_grid is not None:
+            tbl.remove(old_grid)
+        new_grid = OxmlElement('w:tblGrid')
+        for _ in range(3):
+            gc = OxmlElement('w:gridCol')
+            gc.set(qn('w:w'), '3000')
+            new_grid.append(gc)
+        tbl_pr = tbl.find(qn('w:tblPr'))
+        if tbl_pr is not None:
+            tbl_pr.addnext(new_grid)
+        else:
+            tbl.insert(0, new_grid)
+        # Header + recipient rows
+        tbl.append(_make_row(["NAME", "MAILING ADDRESS", "NATURE OF INTEREST OR STATUS"], bold=True))
+        for nm, addr, nature in recipients:
+            tbl.append(_make_row([nm, addr, nature]))
 
     return make_docx_bytes(doc)
 
