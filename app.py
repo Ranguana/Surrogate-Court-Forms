@@ -749,6 +749,7 @@ def smart_intake():
 
     # ── Extract text from all uploaded files (PDF, Excel, CSV) ────────────────
     doc_texts = []
+    doc_images = []   # multimodal augmentation: scanned/late pages as base64 PNGs
     archived_files = []
     for key in request.files:
         f = request.files[key]
@@ -803,12 +804,54 @@ def smart_intake():
                     archived_files.append(safe_name)
                 except Exception as ax: print(f"[SMART-INTAKE] archive failed: {ax}")
             pages = []
-            # Try text extraction first
+            # Per-page text — keep page index so we can spot scanned pages
+            # whose text extraction came back empty (signature-only or
+            # entirely scanned attestation/affidavit pages).
+            per_page_text = []  # list of (page_num_zero_based, text)
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                for page in pdf.pages:
-                    t = page.extract_text()
-                    if t and t.strip():
+                for page_num, page in enumerate(pdf.pages):
+                    t = page.extract_text() or ""
+                    per_page_text.append((page_num, t))
+                    if t.strip():
                         pages.append(t)
+
+            # ── Multimodal augmentation: render selected pages as images ──
+            # Pages where pdfplumber got no text are almost always scanned
+            # (e.g. notarized affidavits of attesting witnesses bound after
+            # the typed will). The last 2 pages are also rendered because
+            # attestation clauses with signature blocks often hide witness
+            # names that pdfplumber misses even when other text on the page
+            # extracts cleanly. Cap to 5 image pages per file to control
+            # token cost; later pages dominate so prefer the tail.
+            try:
+                import fitz as _fitz
+                import base64 as _b64
+                pdf_doc = _fitz.open(stream=pdf_bytes, filetype="pdf")
+                total_pages = len(pdf_doc)
+                pages_to_image = set()
+                for n, t in per_page_text:
+                    if not t.strip():
+                        pages_to_image.add(n)
+                for i in range(max(0, total_pages - 2), total_pages):
+                    pages_to_image.add(i)
+                # Cap and prefer the tail
+                pages_to_image = sorted(pages_to_image)[-5:]
+                for page_num in pages_to_image:
+                    pix = pdf_doc[page_num].get_pixmap(dpi=150)
+                    img_bytes = pix.tobytes("png")
+                    img_b64 = _b64.b64encode(img_bytes).decode("utf-8")
+                    doc_images.append({
+                        "filename": f.filename,
+                        "page": page_num + 1,
+                        "data": img_b64,
+                    })
+                pdf_doc.close()
+                if pages_to_image:
+                    print(f"[SMART-INTAKE] Sending {len(pages_to_image)} page image(s) "
+                          f"from {f.filename} to Claude (pages {[p+1 for p in pages_to_image]})")
+            except Exception as img_err:
+                print(f"[SMART-INTAKE] Image augmentation failed for {f.filename}: {img_err}")
+
             # If no text found, try OCR for scanned documents
             if not pages:
                 try:
@@ -914,10 +957,44 @@ def smart_intake():
     # ── Call Claude ────────────────────────────────────────────────────────────
     try:
         client = _anthropic.Anthropic(api_key=api_key, timeout=300.0)
+        # If we collected page images, send them as a multimodal message —
+        # text prompt first, then each image labeled by source filename + page,
+        # then a closing instruction that clarifies how to use the images.
+        if doc_images:
+            content = [{"type": "text", "text": prompt}]
+            for img in doc_images:
+                content.append({
+                    "type": "text",
+                    "text": f"\n[Image of {img['filename']} page {img['page']}]"
+                })
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": img["data"],
+                    },
+                })
+            content.append({
+                "type": "text",
+                "text": (
+                    "\nThe images above are pages from the source PDFs that "
+                    "either had no extractable text (typically scanned "
+                    "affidavits) or are the last pages of a PDF (typically "
+                    "attestation clauses with signatures). Use them to read "
+                    "printed witness names, signatures, notary blocks, and "
+                    "any text that does not appear in the extracted text. "
+                    "Witness names printed below or beside their handwritten "
+                    "signatures should be extracted from these images."
+                ),
+            })
+            message_payload = content
+        else:
+            message_payload = prompt
         message = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": message_payload}],
         )
         response_text = message.content[0].text.strip()
 
@@ -1255,7 +1332,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.28"
+APP_VERSION = "1.6.29"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

@@ -46,15 +46,28 @@ The petitioner is the nominated Executor named in the Will.
 
 RULE 3 — WITNESSES (CRITICAL — do not miss these):
 The attestation clause is at the VERY END of the Will, AFTER the testator's signature.
-Look for: "signed, published and declared", "subscribed by the above-named testator", 
+Look for: "signed, published and declared", "subscribed by the above-named testator",
 "in our presence", "we have hereunto subscribed our names as witnesses."
 The witness names appear AFTER this language — usually 2 witnesses with addresses.
-Extract their PRINTED names (not signatures) AND their addresses.
-Names go in witness1/witness2. Addresses go in witness1Address/witness2Address.
-The addresses are critical — if there is no self-proving affidavit, we need to contact
-the witnesses to sign affidavits. The address usually appears as "residing at [address]" 
-after each witness name.
-Also check the self-proving affidavit (if present) — witness names appear there too.
+
+Where to find the names:
+- PRINTED names below or beside the signature lines (most common — read from
+  the page image if attached; the typed text extraction often skips them).
+- HANDWRITTEN signatures — read these too if they are legible. Compare to
+  the self-proving affidavit names (if any) and prefer the typed/printed
+  spelling.
+- AFFIDAVIT OF ATTESTING WITNESSES — frequently bound as a separate
+  scanned page after the typed will. This page is image-only; you will
+  receive it as an image. Extract the printed witness names and their
+  addresses from there.
+
+Names go in `witness1`/`witness2`. Addresses go in `witness1Address`/`witness2Address`.
+Addresses usually appear as "residing at [address]" near each name.
+
+Both names AND addresses are required if available. If the page is in the
+images and you can read the names, set them — do NOT leave them null when
+the data is visible. The addresses are critical — if there is no self-proving
+affidavit, we need to contact the witnesses to sign affidavits.
 
 RULE 4 — SELF-PROVING AFFIDAVIT:
 Check if there is a notarized affidavit attached after the witness signatures.
