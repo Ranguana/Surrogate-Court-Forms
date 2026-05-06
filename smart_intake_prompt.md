@@ -111,7 +111,37 @@ the order they appear in the will. Example:
 or
 `Contingent Legatee, Article THIRD; Contingent Residuary Beneficiary, Article FOURTH; Successor Executor, Article SIXTH`
 
-5d. isDistributee — INFER ONLY WHEN UNAMBIGUOUS:
+5d. TYPE FIELD — CONSTRAINED VOCABULARY:
+The `type` field on each willBeneficiaries entry must be exactly one of
+the 13 string values below (snake_case, no other values permitted). It
+pairs with the standardized interest text from the table above:
+
+| `type` value                     | When the interest text starts with...               |
+|----------------------------------|-----------------------------------------------------|
+| `specific_legatee`               | `Legatee, Article ...`                              |
+| `pecuniary_legatee`              | `Pecuniary Legatee, Article ...`                    |
+| `specific_devisee`               | `Devisee, Article ...`                              |
+| `residuary_beneficiary`          | `Residuary Beneficiary, Article ...`                |
+| `contingent_legatee`             | `Contingent Legatee, Article ...`                   |
+| `contingent_pecuniary_legatee`   | `Contingent Pecuniary Legatee, Article ...`         |
+| `contingent_devisee`             | `Contingent Devisee, Article ...`                   |
+| `contingent_beneficiary`         | `Contingent Residuary Beneficiary, Article ...`     |
+| `trust_beneficiary`              | `Beneficiary of [Trust Name], Article ...`          |
+| `executor`                       | `Executor named in Will, Article ...`               |
+| `successor_executor`             | `Successor Executor, Article ...`                   |
+| `successor_trustee`              | `Successor Trustee, Article ...`                    |
+| `successor_guardian`             | `Successor Guardian, Article ...`                   |
+
+When a person has multiple roles, set `type` to match the PRIMARY
+(first-listed) interest. The interest field already captures all roles;
+the type field is just the headline.
+
+DO NOT invent type values. DO NOT use `ultimate_beneficiary`, `legatee`,
+`beneficiary`, `specific_beneficiary`, or any value outside this table.
+If a beneficiary's role does not fit any row above, choose the closest
+match — never coin a new type.
+
+5e. isDistributee — INFER ONLY WHEN UNAMBIGUOUS:
 A "distributee" is someone who would inherit under EPTL 4-1.1 (NY intestacy)
 if there were no will. The determination depends on which class of relative
 survived the decedent. Per EPTL 4-1.1 priority order:

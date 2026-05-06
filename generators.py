@@ -899,6 +899,235 @@ def compute_bond_status(data):
     return ("dispense", "")
 
 
+def compute_interested_persons(data, pet, pet_addr, letters_to):
+    """Build the canonical list of interested persons used by both the
+    Probate Petition and the Notice of Probate.
+
+    Merges ``data.distributees`` with ``data.willBeneficiaries``,
+    auto-inserts the petitioner / successor executor / trustee / guardian,
+    applies EPTL 4-1.1 first-surviving-class logic to decide who actually
+    qualifies for the "Distributee" label, and prepends Executor when the
+    name matches the recipient of Letters Testamentary.
+
+    The ``interest`` string on each entry is the canonical nature-of-
+    interest text — both the petition and the notice render this same
+    string, so the two documents cannot drift.
+
+    Args:
+        data: form data dict.
+        pet: petitioner full name (e.g. ``"Amy Sue Nathan"``).
+        pet_addr: pre-formatted petitioner address line.
+        letters_to: name of the executor receiving Letters Testamentary
+                    (typically equals ``pet``).
+
+    Returns:
+        list of dicts, each with ``name``, ``relationship``, ``address``,
+        ``citizenship``, ``interest``, ``beneficiaryType``, ``isMinor``,
+        ``dob``, ``guardianInfo``.
+    """
+    # ── Fuzzy dedup of data.distributees ────────────────────────────────────
+    # The same person is sometimes saved multiple times — once when entered
+    # by hand (e.g. "Amy Sue Nathan") and again from Smart Intake (e.g.
+    # "Amy Nathan", with a richer interest field). Collapse by
+    # (first_token, last_meaningful_token) and keep the richest entry —
+    # otherwise the person who matters ends up with a worse description on
+    # both the petition and the notice.
+    _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+    def _name_key_for_dedup(name):
+        if not name:
+            return None
+        toks = [t for t in re.split(r'\s+', name.strip()) if t]
+        while toks and toks[-1].lower().rstrip('.') in _SUFFIXES:
+            toks.pop()
+        if not toks:
+            return None
+        first = toks[0].lower()
+        last = toks[-1].lower() if len(toks) > 1 else ""
+        return (first, last)
+
+    def _entry_score(d):
+        # Higher = more useful entry. Prefer entries with a populated
+        # interest, then address, then a non-"Unknown" relationship.
+        s = 0
+        if (d.get("interest") or "").strip():
+            s += 100
+        if (d.get("address") or "").strip():
+            s += 10
+        rel = (d.get("relationship") or "").strip().lower()
+        if rel and rel != "unknown":
+            s += 5
+        if (d.get("dob") or "").strip():
+            s += 1
+        return s
+
+    _dedup_seen = {}      # key -> entry index in all_dists
+    all_dists = []
+    for d in (data.get("distributees") or []):
+        if not d.get("name"):
+            continue
+        key = _name_key_for_dedup(d.get("name", ""))
+        if key is None:
+            all_dists.append(d)
+            continue
+        if key not in _dedup_seen:
+            _dedup_seen[key] = len(all_dists)
+            all_dists.append(d)
+        else:
+            existing = all_dists[_dedup_seen[key]]
+            if _entry_score(d) > _entry_score(existing):
+                all_dists[_dedup_seen[key]] = d
+
+    # Auto-insert petitioner in §6a if not already listed
+    pet_lower = pet.strip().lower()
+    if pet_lower and not any(d.get("name", "").strip().lower() == pet_lower for d in all_dists):
+        pet_interest_label = data.get("petitionerInterest", "Executor(s) named in decedent's Will")
+        all_dists.insert(0, {
+            "name": pet,
+            "address": pet_addr,
+            "citizenship": data.get("petitionerCitizenship", "U.S.A."),
+            "interest": pet_interest_label,
+            "relationship": data.get("petitionerRelationship", ""),
+            "beneficiaryType": "primary",
+            "isMinor": False,
+        })
+
+    # Auto-insert successor executor into §7 if provided and not already listed
+    succ_exec = (data.get("successorExecutor") or "").strip()
+    if succ_exec and not any(d.get("name", "").strip().lower() == succ_exec.lower() for d in all_dists):
+        all_dists.append({
+            "name": succ_exec,
+            "relationship": "",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": "Successor Executor named in Will",
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
+    # Auto-insert trustee into §7 if provided and not already listed
+    trustee = (data.get("trusteeName") or "").strip()
+    trust_name = (data.get("trustName") or "").strip()
+    if trustee and not any(d.get("name", "").strip().lower() == trustee.lower() for d in all_dists):
+        interest = f"Trustee of {trust_name}" if trust_name else "Trustee named in Will"
+        all_dists.append({
+            "name": trustee,
+            "relationship": "Trustee",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": interest,
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
+    # Auto-insert guardian into §7 if provided and not already listed
+    guardian = (data.get("guardianName") or "").strip()
+    if guardian and not any(d.get("name", "").strip().lower() == guardian.lower() for d in all_dists):
+        all_dists.append({
+            "name": guardian,
+            "relationship": "Guardian",
+            "address": "",
+            "citizenship": "U.S.A.",
+            "interest": "Guardian of minor(s) named in Will",
+            "beneficiaryType": "successor",
+            "isMinor": False,
+        })
+
+    # ── Merge will beneficiaries (extracted by Smart Intake) ─────────────────
+    # The structured willBeneficiaries list is the source of truth for legacy
+    # descriptions. Match by name (case-insensitive); if the person already
+    # appears in all_dists (e.g., a distributee who is also a will legatee),
+    # replace their generic interest with the standardized willBenef text.
+    # If they don't appear, append as a new entry routed to ¶7.
+    def _norm_name(n):
+        return re.sub(r'\s+', ' ', (n or '').strip().lower())
+
+    for wb in (data.get("willBeneficiaries") or []):
+        wb_name = (wb.get("name") or "").strip()
+        if not wb_name:
+            continue
+        wb_interest = (wb.get("interest") or "").strip()
+        wb_rel = (wb.get("relationship") or "").strip()
+        wb_addr = (wb.get("address") or "").strip()
+        wb_minor = bool(wb.get("isMinor"))
+        wb_is_dist = bool(wb.get("isDistributee"))
+        wb_dob = (wb.get("dob") or "").strip()
+        wb_guard = (wb.get("guardianInfo") or "").strip()
+        wb_norm = _norm_name(wb_name)
+        match = next((d for d in all_dists if _norm_name(d.get("name", "")) == wb_norm), None)
+        if match is not None:
+            if wb_interest:
+                match["interest"] = wb_interest
+            if wb_minor:
+                match["isMinor"] = True
+            if wb_rel and not match.get("relationship"):
+                match["relationship"] = wb_rel
+            if wb_addr and not match.get("address"):
+                match["address"] = wb_addr
+            if wb_dob:
+                match["dob"] = wb_dob
+            if wb_guard:
+                match["guardianInfo"] = wb_guard
+        else:
+            ben_type = "primary" if wb_is_dist else "successor"
+            all_dists.append({
+                "name": wb_name,
+                "relationship": wb_rel,
+                "address": wb_addr,
+                "citizenship": "U.S.A.",
+                "interest": wb_interest,
+                "beneficiaryType": ben_type,
+                "isMinor": wb_minor,
+                "dob": wb_dob,
+                "guardianInfo": wb_guard,
+            })
+
+    # ── Enhance interest descriptions with roles ─────────────────────────────
+    # Prepend Executor/Petitioner roles. Only add "Distributee" if relationship
+    # matches a class at or before the first surviving EPTL 4-1.1 class.
+    exec_lower = letters_to.strip().lower()
+    _dist_rel_map = {
+        "spouse": 0, "husband": 0, "wife": 0,
+        "son": 1, "daughter": 1, "child": 1, "children": 1,
+        "mother": 2, "father": 2, "parent": 2,
+        "sister": 3, "brother": 3, "sibling": 3, "niece": 3, "nephew": 3,
+        "grandmother": 4, "grandfather": 4, "grandparent": 4,
+        "aunt": 5, "uncle": 5, "cousin": 5,
+    }
+    _first_surv = None
+    for idx in range(7):
+        for d in all_dists:
+            rel = (d.get("relationship") or "").strip().lower()
+            for kw, ci in _dist_rel_map.items():
+                if kw in rel and ci == idx:
+                    _first_surv = idx
+                    break
+            if _first_surv is not None:
+                break
+        if _first_surv is not None:
+            break
+
+    for dist in all_dists:
+        name_lower = dist.get("name", "").strip().lower()
+        interest = (dist.get("interest") or "").strip()
+        is_primary = (dist.get("beneficiaryType") or "primary") == "primary"
+        prefix_parts = []
+
+        if is_primary and "distributee" not in interest.lower():
+            rel = (dist.get("relationship") or "").strip().lower()
+            rel_class = next((ci for kw, ci in _dist_rel_map.items() if kw in rel), None)
+            if rel_class is not None and _first_surv is not None and rel_class <= _first_surv:
+                prefix_parts.append("Distributee")
+
+        if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
+            prefix_parts.append("Executor")
+
+        if prefix_parts:
+            prefix = ", ".join(prefix_parts)
+            dist["interest"] = f"{prefix}; {interest}" if interest else prefix
+
+    return all_dists
+
+
 def _build_probate_fields(data):
     """Build field name→value dict for Probate Petition + Oath.pdf."""
     proceeding = data.get("proceedingType", "Probate")
@@ -1119,179 +1348,10 @@ def _build_probate_fields(data):
     else:
         fields["is not the attorneydraftsperson a thenaffiliated attorney"] = "X"
 
-    # ── Distributees — route to correct petition section ─────────────────────
-    # For probate: "interest" = description of legacy/devise under the will
-    # For administration: fall back to relationship
-    all_dists = [d for d in data.get("distributees", []) if d.get("name")]
-
-    # Auto-insert petitioner in §6a if not already listed
-    pet_lower = pet.strip().lower()
-    if pet_lower and not any(d.get("name", "").strip().lower() == pet_lower for d in all_dists):
-        pet_interest_label = data.get("petitionerInterest", "Executor(s) named in decedent's Will")
-        all_dists.insert(0, {
-            "name": pet,
-            "address": pet_addr,
-            "citizenship": data.get("petitionerCitizenship", "U.S.A."),
-            "interest": pet_interest_label,
-            "relationship": data.get("petitionerRelationship", ""),
-            "beneficiaryType": "primary",
-            "isMinor": False,
-        })
-
-    # Auto-insert successor executor into §7 if provided and not already listed
-    succ_exec = (data.get("successorExecutor") or "").strip()
-    if succ_exec and not any(d.get("name", "").strip().lower() == succ_exec.lower() for d in all_dists):
-        all_dists.append({
-            "name": succ_exec,
-            "relationship": "",
-            "address": "",
-            "citizenship": "U.S.A.",
-            "interest": "Successor Executor named in Will",
-            "beneficiaryType": "successor",
-            "isMinor": False,
-        })
-
-    # Auto-insert trustee into §7 if provided and not already listed
-    trustee = (data.get("trusteeName") or "").strip()
-    trust_name = (data.get("trustName") or "").strip()
-    if trustee and not any(d.get("name", "").strip().lower() == trustee.lower() for d in all_dists):
-        interest = f"Trustee of {trust_name}" if trust_name else "Trustee named in Will"
-        all_dists.append({
-            "name": trustee,
-            "relationship": "Trustee",
-            "address": "",
-            "citizenship": "U.S.A.",
-            "interest": interest,
-            "beneficiaryType": "successor",
-            "isMinor": False,
-        })
-
-    # Auto-insert guardian into §7 if provided and not already listed
-    guardian = (data.get("guardianName") or "").strip()
-    if guardian and not any(d.get("name", "").strip().lower() == guardian.lower() for d in all_dists):
-        all_dists.append({
-            "name": guardian,
-            "relationship": "Guardian",
-            "address": "",
-            "citizenship": "U.S.A.",
-            "interest": "Guardian of minor(s) named in Will",
-            "beneficiaryType": "successor",
-            "isMinor": False,
-        })
-
-    # ── Merge will beneficiaries (extracted by Smart Intake) ─────────────────
-    # The structured willBeneficiaries list is the source of truth for legacy
-    # descriptions. Match by name (case-insensitive); if the person already
-    # appears in all_dists (e.g., a distributee who is also a will legatee),
-    # replace their generic interest with the standardized willBenef text.
-    # If they don't appear, append as a new entry routed to ¶7.
-    def _norm_name(n):
-        return re.sub(r'\s+', ' ', (n or '').strip().lower())
-
-    will_benefs = data.get("willBeneficiaries") or []
-    for wb in will_benefs:
-        wb_name = (wb.get("name") or "").strip()
-        if not wb_name:
-            continue
-        wb_interest = (wb.get("interest") or "").strip()
-        wb_rel = (wb.get("relationship") or "").strip()
-        wb_addr = (wb.get("address") or "").strip()
-        wb_minor = bool(wb.get("isMinor"))
-        wb_is_dist = bool(wb.get("isDistributee"))
-        wb_dob = (wb.get("dob") or "").strip()
-        wb_guard = (wb.get("guardianInfo") or "").strip()
-        wb_norm = _norm_name(wb_name)
-        # Find existing entry
-        match = None
-        for d in all_dists:
-            if _norm_name(d.get("name", "")) == wb_norm:
-                match = d
-                break
-        if match is not None:
-            # Replace generic auto-inserted interest with the standardized one
-            if wb_interest:
-                match["interest"] = wb_interest
-            if wb_minor:
-                match["isMinor"] = True
-            if wb_rel and not match.get("relationship"):
-                match["relationship"] = wb_rel
-            if wb_addr and not match.get("address"):
-                match["address"] = wb_addr
-            if wb_dob:
-                match["dob"] = wb_dob
-            if wb_guard:
-                match["guardianInfo"] = wb_guard
-        else:
-            # Para 6 if user marked them as a distributee, else Para 7
-            ben_type = "primary" if wb_is_dist else "successor"
-            all_dists.append({
-                "name": wb_name,
-                "relationship": wb_rel,
-                "address": wb_addr,
-                "citizenship": "U.S.A.",
-                "interest": wb_interest,
-                "beneficiaryType": ben_type,
-                "isMinor": wb_minor,
-                "dob": wb_dob,
-                "guardianInfo": wb_guard,
-            })
-
-    # ── Enhance interest descriptions with roles ─────────────────────────────
-    # Prepend Executor/Petitioner roles. Only add "Distributee" if relationship
-    # matches a class at or before the first surviving EPTL class.
-    pet_lower = pet.strip().lower()
-    exec_lower = letters_to.strip().lower()
-    succ_exec_lower = succ_exec.lower()
-
-    # Determine first surviving class for distributee check
-    _dist_rel_map = {
-        "spouse": 0, "husband": 0, "wife": 0,
-        "son": 1, "daughter": 1, "child": 1, "children": 1,
-        "mother": 2, "father": 2, "parent": 2,
-        "sister": 3, "brother": 3, "sibling": 3, "niece": 3, "nephew": 3,
-        "grandmother": 4, "grandfather": 4, "grandparent": 4,
-        "aunt": 5, "uncle": 5, "cousin": 5,
-    }
-    _first_surv = None
-    for idx in range(7):
-        for d in all_dists:
-            rel = (d.get("relationship") or "").strip().lower()
-            for kw, ci in _dist_rel_map.items():
-                if kw in rel and ci == idx:
-                    _first_surv = idx
-                    break
-            if _first_surv is not None:
-                break
-        if _first_surv is not None:
-            break
-
-    for dist in all_dists:
-        name_lower = dist.get("name", "").strip().lower()
-        interest = (dist.get("interest") or "").strip()
-        is_primary = (dist.get("beneficiaryType") or "primary") == "primary"
-        prefix_parts = []
-
-        # Only add "Distributee" if person's relationship is in a qualifying EPTL class
-        if is_primary and "distributee" not in interest.lower():
-            rel = (dist.get("relationship") or "").strip().lower()
-            rel_class = None
-            for kw, ci in _dist_rel_map.items():
-                if kw in rel:
-                    rel_class = ci
-                    break
-            if rel_class is not None and _first_surv is not None and rel_class <= _first_surv:
-                prefix_parts.append("Distributee")
-
-        if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
-            prefix_parts.append("Executor")
-        # Successor Executor noted via auto-insert in ¶7, not prepended here
-        # "Petitioner herein" is redundant — form identifies petitioner separately
-
-        if prefix_parts:
-            prefix = ", ".join(prefix_parts)
-            # If interest already starts with a role, use semicolon; otherwise comma-join
-            # Keep compact to avoid multi-row overflow
-            dist["interest"] = f"{prefix}; {interest}" if interest else prefix
+    # ── Distributees + will beneficiaries — single canonical source ──────────
+    # Both this petition and the Notice of Probate use the same helper, so the
+    # two documents render identical "Nature of Interest" text.
+    all_dists = compute_interested_persons(data, pet, pet_addr, letters_to)
 
     # Split into 4 groups
     primary_adults    = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
@@ -3357,14 +3417,7 @@ def generate_notice_of_probate(data):
                 for p in cell.paragraphs:
                     _apply_patterns(p)
 
-    # ── Build recipients list: distributees + will beneficiaries ──────────────
-    def _addr_parts(d):
-        if d.get("address"):
-            return d["address"]
-        return ", ".join(filter(None, [
-            d.get("street", ""), d.get("city", ""), d.get("state", ""), d.get("zip", "")
-        ]))
-
+    # ── Build recipients list from the canonical interested-persons helper ───
     # Fuzzy match key: (first_token, last_meaningful_token) lowercased, with
     # generational suffixes stripped. So "Amy Sue Nathan" and "Amy Nathan"
     # both reduce to ("amy", "nathan") and are treated as the same person.
@@ -3382,102 +3435,29 @@ def generate_notice_of_probate(data):
         return (first, last)
 
     # Petitioner key — they don't get noticed about their own filing
-    pet_full = " ".join(filter(None, [
-        (data.get("petitionerFirstName") or "").strip(),
-        (data.get("petitionerLastName") or "").strip(),
-    ]))
-    pet_key = _name_key(pet_full)
+    pet_key = _name_key(pet)
 
-    # Short, controlled labels for will beneficiary types.
-    _WB_LABELS = {
-        "residuary_beneficiary":            "Residuary Beneficiary",
-        "contingent_residuary_beneficiary": "Contingent Residuary Beneficiary",
-        "legatee":                          "Legatee",
-        "specific_legatee":                 "Specific Legatee",
-        "specific_beneficiary":             "Specific Beneficiary",
-        "successor_executor":               "Successor Executor",
-        "successor_trustee":                "Successor Trustee",
-        "successor_guardian":               "Successor Guardian",
-        "executor":                         "Executor",
-        "trustee":                          "Trustee",
-        "guardian":                         "Guardian",
-        "beneficiary":                      "Beneficiary",
-    }
-    def _wb_label(b):
-        t = (b.get("type") or "").strip().lower()
-        if t in _WB_LABELS:
-            return _WB_LABELS[t]
-        return t.replace("_", " ").title() or "Beneficiary"
-
-    # Blood/marital relationships — anything outside this set is treated as
-    # a will-side role, regardless of where the user crammed it.
-    _BLOOD_TERMS = {
-        "spouse", "wife", "husband", "partner",
-        "father", "mother", "parent",
-        "child", "son", "daughter",
-        "brother", "sister", "sibling",
-        "half-brother", "half-sister",
-        "stepfather", "stepmother", "stepbrother", "stepsister",
-        "stepchild", "stepson", "stepdaughter",
-        "grandfather", "grandmother", "grandparent",
-        "grandson", "granddaughter", "grandchild",
-        "aunt", "uncle", "niece", "nephew",
-        "cousin", "first cousin", "second cousin", "third cousin",
-        "father-in-law", "mother-in-law", "parent-in-law",
-        "brother-in-law", "sister-in-law",
-        "son-in-law", "daughter-in-law",
-    }
-    def _dist_role(d):
-        rel = (d.get("relationship") or "").strip()
-        if not rel or rel.lower() == "distributee":
-            return "Distributee"
-        # Split composite "Sister-in-law / Successor Executor / Beneficiary"
-        # into the blood relation (used as the Distributee qualifier) and the
-        # remaining tokens (appended as additional will-side roles).
-        parts = [p.strip() for p in rel.split("/") if p.strip()]
-        bloods, roles = [], []
-        for p in parts:
-            (bloods if p.lower() in _BLOOD_TERMS else roles).append(p)
-        base = f"Distributee — {bloods[0]}" if bloods else "Distributee"
-        if roles:
-            base += "; " + "; ".join(roles)
-        return base
-
-    will_lookup = {}
-    for b in (data.get("willBeneficiaries") or []):
-        k = _name_key(b.get("name", ""))
-        if k:
-            will_lookup.setdefault(k, b)
+    # Compute the canonical interested-persons list — same helper the petition
+    # uses, so the two documents render identical "Nature of Interest" text.
+    letters_to = data.get("lettersTo", "") or pet
+    persons = compute_interested_persons(data, pet, pet_addr, letters_to)
 
     recipients = []
     seen_keys = set()
     if pet_key:
         seen_keys.add(pet_key)
 
-    for d in (data.get("distributees") or []):
-        nm = (d.get("name") or "").strip()
+    for p in persons:
+        nm = (p.get("name") or "").strip()
         if not nm:
             continue
         k = _name_key(nm)
         if not k or k in seen_keys:
             continue
         seen_keys.add(k)
-        addr = _addr_parts(d) or "___________"
-        role = _dist_role(d)
-        wb = will_lookup.get(k)
-        nature = f"{role}; {_wb_label(wb)}" if wb else role
+        addr = (p.get("address") or "").strip() or "___________"
+        nature = (p.get("interest") or "").strip()
         recipients.append((nm, addr, nature))
-
-    for b in (data.get("willBeneficiaries") or []):
-        nm = (b.get("name") or "").strip()
-        if not nm:
-            continue
-        k = _name_key(nm)
-        if not k or k in seen_keys:
-            continue
-        seen_keys.add(k)
-        addr = (b.get("address") or "").strip() or "___________"
-        recipients.append((nm, addr, _wb_label(b)))
 
     # ── Replace the recipient table with a clean 3-column structure ──────────
     # The template's table 0 has inconsistent gridSpan across rows (row 0:
