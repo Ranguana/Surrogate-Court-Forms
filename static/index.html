@@ -1132,6 +1132,11 @@ const FT_ORDER = ["spouse","children","parents","siblings","grandparents","aunts
 // Proceeding checklist state: arrays of booleans per proceeding type
 const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[], AdminCTA:[] };
 
+// Persisted will-beneficiaries list (round-trips through save/load and
+// flows into the petition via getFormData()). Declared here because
+// renderWb() runs from the init block before the Smart Intake section.
+let _willBeneficiaries = [];
+
 // ── ASSETS STATE ──────────────────────────────────────────────────────────────
 let assets = [];
 let assetIdCtr = 0;
@@ -3150,9 +3155,6 @@ fetch("/check-update").then(r=>r.json()).then(d=>{
 // ── SMART INTAKE ──────────────────────────────────────────────────────────────
 let siFiles = [];
 let siExtracted = null;
-// Persisted will-beneficiaries list (round-trips through save/load and
-// flows into the petition via getFormData()).
-let _willBeneficiaries = [];
 
 function siDragOver(e) { e.preventDefault(); document.getElementById('si-dropzone').classList.add('drag'); }
 function siDragLeave(e) { document.getElementById('si-dropzone').classList.remove('drag'); }
