@@ -882,14 +882,21 @@ def smart_intake():
             print(f"[SMART-INTAKE] Archive write failed: {ax}")
 
     # ── Claude prompt ──────────────────────────────────────────────────────────
-    # Load prompt from external file
+    # Load prompt from external file. We deliberately avoid os.getcwd() —
+    # auto-update wipes and recreates live_app/, which invalidates the cwd of
+    # any already-running probate-server process and makes os.getcwd() raise
+    # FileNotFoundError with no filename. argv[1] and __file__ are absolute
+    # paths captured at startup and survive that race.
     try:
-        # Check: argv[1] app dir, cwd, __file__ dir, PyInstaller _MEIPASS
-        search_dirs = [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]
+        search_dirs = [os.path.dirname(os.path.abspath(__file__))]
         if len(os.sys.argv) > 1:
             search_dirs.insert(0, os.sys.argv[1])
         if hasattr(os.sys, '_MEIPASS'):
             search_dirs.append(os.sys._MEIPASS)
+        try:
+            search_dirs.append(os.getcwd())
+        except OSError:
+            pass
         prompt_path = None
         for base in search_dirs:
             candidate = os.path.join(base, "smart_intake_prompt.md")
@@ -1248,7 +1255,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.23"
+APP_VERSION = "1.6.24"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
