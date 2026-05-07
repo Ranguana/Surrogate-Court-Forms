@@ -267,6 +267,27 @@ DIST_REL_MAP = {
 }
 
 
+def distributee_classes(data):
+    """Return the set of EPTL 4-1.1 class indices whose members are actual
+    distributees (per the family-tree questionnaire).
+
+    Special-case for EPTL 4-1.1(a)(1): when both spouse AND children
+    survive, both classes share the intestate estate, so both are
+    distributees. Otherwise the first surviving class takes alone.
+    """
+    ft = data.get("ft") or {}
+    spouse_alive = ft.get("spouse") is True
+    children_alive = ft.get("children") is True
+    if spouse_alive and children_alive:
+        return {0, 1}
+    if spouse_alive:
+        return {0}
+    if children_alive:
+        return {1}
+    fs = first_surviving_class(data)
+    return {fs} if fs is not None else set()
+
+
 def first_surviving_class(data):
     """Return the EPTL 4-1.1 class index of the first surviving class,
     or None if it can't be determined.
@@ -893,7 +914,8 @@ def fill_pdf(template_path, fields, font_overrides=None):
       whose value isn't a single 'X', so long values wrap to a new line within the
       field box instead of being shrunk to fit one line.
     - Checkbox-style 'X' values are sized to the box height so they fill the box.
-    - font_overrides parameter is accepted for backwards compatibility but ignored.
+    - font_overrides: optional dict mapping field name → font size in points.
+      When the field's name is a key, that size wins over the default 10pt.
 
     Handles text, checkboxes (True/False), radio buttons, and combo/dropdown fields.
     Calls widget.update() to bake appearance streams so fields render in all viewers.
@@ -914,19 +936,32 @@ def fill_pdf(template_path, fields, font_overrides=None):
                 s = str(value) if value is not None else ""
                 widget.field_value = s
                 if s == "X":
-                    # Checkbox-simulated as text. Size the X to the smaller
-                    # of the two box dimensions so it fits the box, with a
-                    # generous floor so very small checkboxes (6x6px on
-                    # paragraph-1 of the petition) still render a visible X.
-                    h = widget.rect.height
-                    w = widget.rect.width
-                    box = min(h, w) if (h and w) else max(h, w, 8)
-                    widget.text_fontsize = max(10, box * 1.3)
+                    if font_overrides and name in font_overrides:
+                        # Explicit per-field override wins. Used for §5
+                        # Dropdown 5a–5g where the "X" indicates a class
+                        # cut off by EPTL priority — those are dropdown
+                        # values, not checkbox-simulations, and the
+                        # box-based sizing makes them comically large.
+                        widget.text_fontsize = font_overrides[name]
+                    else:
+                        # Checkbox-simulated as text. Size the X to the
+                        # smaller of the two box dimensions so it fits
+                        # the box, with a generous floor so very small
+                        # checkboxes (6x6px on paragraph-1 of the
+                        # petition) still render a visible X.
+                        h = widget.rect.height
+                        w = widget.rect.width
+                        box = min(h, w) if (h and w) else max(h, w, 8)
+                        widget.text_fontsize = max(10, box * 1.3)
                 else:
-                    # Default 10pt unless the template set a real size
-                    cur = widget.text_fontsize
-                    if not cur or cur < 1:
-                        widget.text_fontsize = 10
+                    # Per-field override wins. Otherwise default to 10pt
+                    # unless the template explicitly set a non-zero size.
+                    if font_overrides and name in font_overrides:
+                        widget.text_fontsize = font_overrides[name]
+                    else:
+                        cur = widget.text_fontsize
+                        if not cur or cur < 1:
+                            widget.text_fontsize = 10
                     # Enable multiline so long text wraps within the field
                     try:
                         widget.field_flags = (widget.field_flags or 0) | MULTILINE_FLAG
@@ -1195,15 +1230,56 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
                 "guardianInfo": wb_guard,
             })
 
-    # ── Enhance interest descriptions with roles ─────────────────────────────
-    # Prepend Executor and Distributee roles. "Distributee" is added when
-    # EITHER (a) the per-person isDistributee flag is set (Smart Intake's
-    # legal call, or the user's manual override), OR (b) the person's
-    # relationship maps to a class ≤ the first surviving EPTL class
-    # determined from the family-tree questionnaire (data.ft).
+    # ── Re-route entries by actual EPTL distributee status ──────────────────
+    # §6 of the petition lists distributees (and the petitioner). When a
+    # surviving spouse and/or child takes under EPTL 4-1.1(a)(1)/(2)/(3),
+    # parents/siblings/cousins are NOT distributees regardless of whether
+    # the form data lists them. Anyone in data.distributees who's neither
+    # an actual EPTL distributee nor a will beneficiary is dropped from
+    # the petition + Notice of Probate entirely (matches the "if not a
+    # beneficiary, not on notice" rule).
     exec_lower = letters_to.strip().lower()
+    pet_lower = pet.strip().lower()
     _first_surv = first_surviving_class(data)
+    _dist_classes = distributee_classes(data)
 
+    def _is_actual_distributee(dist):
+        if dist.get("isDistributee") is True:
+            return True
+        rel = (dist.get("relationship") or "").strip().lower()
+        rel_class = next((ci for kw, ci in DIST_REL_MAP.items() if kw in rel), None)
+        return rel_class is not None and rel_class in _dist_classes
+
+    pruned = []
+    for dist in all_dists:
+        name_lower = dist.get("name", "").strip().lower()
+        interest = (dist.get("interest") or "").strip()
+
+        # Petitioner, successor executor, trustee, guardian — keep as-is.
+        # These were auto-inserted by this function and have stable roles.
+        if name_lower == pet_lower:
+            pruned.append(dist)
+            continue
+        if dist.get("beneficiaryType") == "successor" and interest:
+            # Already routed to §7 by the will-beneficiary merge; preserve.
+            pruned.append(dist)
+            continue
+
+        if _is_actual_distributee(dist):
+            dist["beneficiaryType"] = "primary"
+            pruned.append(dist)
+        elif interest:
+            # Not a distributee but has a real will-side interest → §7.
+            dist["beneficiaryType"] = "successor"
+            pruned.append(dist)
+        # Else: stale data (no distributee status, no will interest) → drop.
+
+    all_dists = pruned
+
+    # ── Enhance interest descriptions with roles ─────────────────────────────
+    # Prepend Executor and Distributee roles in the canonical interest
+    # string. "Distributee" is set when either the explicit flag is true
+    # or the relationship maps to an actual EPTL distributee class.
     for dist in all_dists:
         name_lower = dist.get("name", "").strip().lower()
         interest = (dist.get("interest") or "").strip()
@@ -1211,15 +1287,7 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
         prefix_parts = []
 
         if is_primary and "distributee" not in interest.lower():
-            explicit = bool(dist.get("isDistributee"))
-            rel = (dist.get("relationship") or "").strip().lower()
-            rel_class = next((ci for kw, ci in DIST_REL_MAP.items() if kw in rel), None)
-            keyword_match = (
-                rel_class is not None
-                and _first_surv is not None
-                and rel_class <= _first_surv
-            )
-            if explicit or keyword_match:
+            if _is_actual_distributee(dist):
                 prefix_parts.append("Distributee")
 
         if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
@@ -1250,13 +1318,17 @@ def _build_probate_fields(data):
     ]))
 
     # Surviving relatives → Dropdown 5a–5g (EPTL 4-1.1 order, 7 classes)
-    # Single source of truth: first_surviving_class(data) reads
-    # data.ft (the family-tree questionnaire) first, then legacy
-    # surviving* fields, then auto-derives from distributees as a last
-    # resort. The count for the first surviving class comes from the
-    # distributees array filtered to that class via DIST_REL_MAP. Any
-    # class before the first surviving one is "No"; any class after is
-    # "X" (closer class cuts off intestate share).
+    #
+    # Per NY Surrogate's Court practice for Form P-1 §5:
+    #   5a (spouse):   "Yes" / "No"     — binary, always answered.
+    #   5b (children): "No" / count     — never "X". Required for the
+    #                                     EPTL 4-1.1(a)(1) spouse-plus-
+    #                                     issue share calculation.
+    #   5c–5g:         "X" / "No" / count — "X" when a closer class is
+    #                                     the first surviving (cuts off
+    #                                     intestate share); otherwise
+    #                                     count if survivors, else "No".
+    ft = data.get("ft") or {}
     first_surviving = first_surviving_class(data)
 
     # Dedup data.distributees by fuzzy name key before counting per-class
@@ -1285,18 +1357,29 @@ def _build_probate_fields(data):
 
     dropdown_vals = []
     for idx in range(7):
-        if first_surviving is None:
-            dropdown_vals.append("No")
-        elif idx < first_surviving:
-            dropdown_vals.append("No")
-        elif idx == first_surviving:
-            # Use the per-class count if we have one; otherwise fall
-            # back to "1" (we know at least one person in this class
-            # survived because ft said so).
-            count = class_counts[idx]
-            dropdown_vals.append(str(count) if count > 0 else "1")
+        if idx == 0:
+            # Spouse: binary Yes/No
+            spouse_alive = (ft.get("spouse") is True) or class_counts[0] > 0
+            dropdown_vals.append("Yes" if spouse_alive else "No")
+        elif idx == 1:
+            # Children: count or "No" — never "X"
+            children_alive = (ft.get("children") is True) or class_counts[1] > 0
+            if children_alive:
+                count = class_counts[1]
+                dropdown_vals.append(str(count) if count > 0 else "1")
+            else:
+                dropdown_vals.append("No")
         else:
-            dropdown_vals.append("X")
+            # 5c–5g: X if a closer class is first surviving
+            if first_surviving is None:
+                dropdown_vals.append("No")
+            elif idx < first_surviving:
+                dropdown_vals.append("No")
+            elif idx == first_surviving:
+                count = class_counts[idx]
+                dropdown_vals.append(str(count) if count > 0 else "1")
+            else:
+                dropdown_vals.append("X")
 
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
@@ -1462,8 +1545,10 @@ def _build_probate_fields(data):
             parts.append(f"Guardian: {dist['guardianInfo']}")
         return "; ".join(parts)
 
-    def _split_interest(text, max_chars=48):
-        """Split long interest text into multiple lines for narrow PDF fields."""
+    def _split_interest(text, max_chars=75):
+        """Split long interest text into multiple lines at word boundaries.
+        Single source of the 75-char cell width — _build_rows uses this
+        default; nothing else should pass an override."""
         if len(text) <= max_chars:
             return [text]
         lines = []
@@ -1472,7 +1557,6 @@ def _build_probate_fields(data):
             if len(remaining) <= max_chars:
                 lines.append(remaining)
                 break
-            # Split at space (keeps lines full); semicolons stay inline
             split_at = remaining.rfind(' ', 0, max_chars)
             if split_at == -1:
                 split_at = max_chars
@@ -1480,28 +1564,44 @@ def _build_probate_fields(data):
             remaining = remaining[split_at + 1:].strip()
         return lines
 
+    def _build_rows(persons, max_rows, name_fn=None):
+        """One row per person, full interest text in a single cell. PDF
+        viewers render only the first visual line of a multi-line cell, so
+        spreading text across continuation rows visually loses people's
+        names and creates the appearance of one person sprawling down the
+        page. Keep names + addresses on every row instead."""
+        if name_fn is None:
+            name_fn = _name_with_rel
+        rows = []
+        for dist in persons[:max_rows]:
+            rows.append((
+                name_fn(dist),
+                dist.get("address", ""),
+                _interest(dist),
+            ))
+        return rows
+
     # Page 2, section 6a — Distributees + executor
-    # Long interest descriptions span multiple rows (name/addr only on first row)
     p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7"]
     p2_6a_addr = ["1_3", "2_3", "3_2", "4_2", "5_2", "6_2", "7_2"]
     p2_6a_int  = [f"Interest or Nature of Fiduciary Status {i}" for i in range(1, 9)]
-    # One row per person; long interest text wraps within the cell (multiline)
-    for row, dist in enumerate(primary_adults[:7]):
-        fields[p2_6a_name[row]] = _name_with_rel(dist)
-        fields[p2_6a_addr[row]] = dist.get('address', '')
-        fields[p2_6a_int[row]] = _interest(dist)
+    rows_6a = _build_rows(primary_adults, max_rows=7)
+    for row, (nm, addr, interest) in enumerate(rows_6a):
+        fields[p2_6a_name[row]] = nm
+        fields[p2_6a_addr[row]] = addr
+        fields[p2_6a_int[row]]  = interest
 
     # Page 2, section 6b — Primary beneficiaries under disability (6 rows)
     p2_7b_name = ["1_4", "2_4", "3_3", "4_3", "5_3", "6_3"]
     p2_7b_addr = ["1_5", "2_5", "3_4", "4_4", "5_4", "6_4"]
     p2_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_2" for i in range(1, 7)]
-    for i, dist in enumerate(primary_minors[:6]):
-        fields[p2_7b_name[i]] = _minor_desc(dist)
-        fields[p2_7b_addr[i]] = dist.get("address", "")
-        fields[p2_7b_int[i]]  = _interest(dist)
+    rows_6b = _build_rows(primary_minors, max_rows=6, name_fn=_minor_desc)
+    for row, (nm, addr, interest) in enumerate(rows_6b):
+        fields[p2_7b_name[row]] = nm
+        fields[p2_7b_addr[row]] = addr
+        fields[p2_7b_int[row]]  = interest
 
     # Page 3, section 7a — Other beneficiaries, trustees, successor executors
-    # Long interest descriptions span multiple rows (name/addr only on first row)
     p3_7a_name = ["1_9", "2_9", "3_5", "4_5", "5_5", "6_5", "7_3"]
     p3_7a_addr = ["1_10", "2_10", "3_6", "4_6", "5_6", "6_6", "7_4"]
     p3_7a_int  = ["Interest or Nature of Fiduciary Status 1_3",
@@ -1512,20 +1612,21 @@ def _build_probate_fields(data):
                   "Interest or Nature of Fiduciary Status 6_3",
                   "Interest or Nature of Fiduciary Status 7_2",  # not 7_3!
                   "Interest or Nature of Fiduciary Status 8_2"]  # not 8_3!
-    # One row per person; long interest text wraps within the cell (multiline)
-    for row, dist in enumerate(successor_adults[:7]):
-        fields[p3_7a_name[row]] = _name_with_rel(dist)
-        fields[p3_7a_addr[row]] = dist.get('address', '')
-        fields[p3_7a_int[row]] = _interest(dist)
+    rows_7a = _build_rows(successor_adults, max_rows=7)
+    for row, (nm, addr, interest) in enumerate(rows_7a):
+        fields[p3_7a_name[row]] = nm
+        fields[p3_7a_addr[row]] = addr
+        fields[p3_7a_int[row]]  = interest
 
     # Page 3, section 7b — Persons under disability from section 7a (7 rows)
     p3_7b_name = ["1_11", "2_11", "3_7", "4_7", "5_7", "6_7", "7_5"]
     p3_7b_addr = ["1_12", "2_12", "3_8", "4_8", "5_8", "6_8", "7_6"]
     p3_7b_int  = [f"Interest or Nature of Fiduciary Status {i}_4" for i in range(1, 8)]
-    for i, dist in enumerate(successor_minors[:7]):
-        fields[p3_7b_name[i]] = _minor_desc(dist)
-        fields[p3_7b_addr[i]] = dist.get("address", "")
-        fields[p3_7b_int[i]]  = _interest(dist)
+    rows_7b = _build_rows(successor_minors, max_rows=7, name_fn=_minor_desc)
+    for row, (nm, addr, interest) in enumerate(rows_7b):
+        fields[p3_7b_name[row]] = nm
+        fields[p3_7b_addr[row]] = addr
+        fields[p3_7b_int[row]]  = interest
 
     return fields
 
@@ -1541,10 +1642,48 @@ def generate_probate_docs(data):
     template = os.path.join(PROBATE_TEMPLATES_DIR, "Probate Petition + Oath.pdf")
     fields = _build_probate_fields(data)
     # Font overrides: caption fields match template (10pt), interest fields consistent (8pt)
-    font_overrides = {
-        "COUNTY OF": 10,
-        "PROBATE PROCEEDING 1": 10,
-    }
+    font_overrides = {}
+    # §5 surviving-relatives dropdowns — Yes/No/count/X
+    for f in ["Dropdown 5a", "Dropdown 5b", "Dropdown 5c",
+              "Dropdown 5d", "Dropdown 5e", "Dropdown 5f", "Dropdown 5g"]:
+        font_overrides[f] = 8
+    # §1–§5 text fields — caption block, petitioner, decedent, will, no-other-will
+    for f in [
+        # Caption block
+        "COUNTY OF",
+        "PROBATE PROCEEDING 1",
+        "decedent",
+        "aka",
+        "aka2",
+        "File No",
+        "To the Surrogates Court County of",
+        # §1(a) Petitioner
+        "Name_petitioner",
+        "Domicile or Principal Office",
+        "City Village or Town",
+        "State",
+        "Zip Code",
+        "Mailing Address",
+        "Citizen of",
+        "Other Specify",
+        # §2 Decedent
+        "a Name",
+        "b Date of death",
+        "c Place of death",
+        "d Domicile Street",
+        "City Town Village",
+        "County",
+        "State_2",
+        "e Citizen of",
+        # §3 Will + codicils
+        "Date of Will",
+        "Names of All Witnesses to Will",
+        "Date of Codicil",
+        "Names of All Witnesses to Codicil",
+        # §4 No-other-will
+        "follows Enter NONE or specify 1",
+    ]:
+        font_overrides[f] = 8
     # All interest/description fields at consistent 7pt for readability + fit
     for i in range(1, 9):
         font_overrides[f"Interest or Nature of Fiduciary Status {i}"] = 7
@@ -1553,6 +1692,22 @@ def generate_probate_docs(data):
         font_overrides[f"Interest or Nature of Fiduciary Status {i}_4"] = 7
     font_overrides["Interest or Nature of Fiduciary Status 7_2"] = 7
     font_overrides["Interest or Nature of Fiduciary Status 8_2"] = 7
+    # §6a name + address fields
+    for f in ["1_2","2_2","3","4","5","6","7",        # names
+              "1_3","2_3","3_2","4_2","5_2","6_2","7_2"]: # addresses
+        font_overrides[f] = 8
+    # §6b name + address fields
+    for f in ["1_4","2_4","3_3","4_3","5_3","6_3",    # names
+              "1_5","2_5","3_4","4_4","5_4","6_4"]:   # addresses
+        font_overrides[f] = 8
+    # §7a name + address fields
+    for f in ["1_9","2_9","3_5","4_5","5_5","6_5","7_3",
+              "1_10","2_10","3_6","4_6","5_6","6_6","7_4"]:
+        font_overrides[f] = 8
+    # §7b name + address fields
+    for f in ["1_11","2_11","3_7","4_7","5_7","6_7","7_5",
+              "1_12","2_12","3_8","4_8","5_8","6_8","7_6"]:
+        font_overrides[f] = 8
     filled = fill_pdf(template, fields, font_overrides=font_overrides)
     last = data.get("decedentLastName", "estate").replace(" ", "_")
     docs = [
