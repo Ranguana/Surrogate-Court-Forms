@@ -237,6 +237,76 @@ def make_docx_bytes(doc):
     return buf.read()
 
 
+# ─── EPTL 4-1.1 SURVIVAL CHAIN ────────────────────────────────────────────────
+# Single source of truth for "who's a distributee." The seven classes in
+# EPTL 4-1.1(a) priority order; the FIRST class with a surviving member
+# takes the entire intestate share, cutting off all subsequent classes.
+
+EPTL_CLASSES = (
+    ("spouse", 0),
+    ("children", 1),
+    ("parents", 2),
+    ("siblings", 3),
+    ("grandparents", 4),
+    ("auntsUncles", 5),
+    ("firstCousins", 6),
+)
+
+# Keyword map used as a fallback (and for counting per-class survivors)
+# when the form's relationship strings are the only available signal.
+DIST_REL_MAP = {
+    "spouse": 0, "husband": 0, "wife": 0,
+    "son": 1, "daughter": 1, "child": 1, "children": 1, "issue": 1,
+    "grandchild": 1, "grandson": 1, "granddaughter": 1,
+    "mother": 2, "father": 2, "parent": 2,
+    "sister": 3, "brother": 3, "sibling": 3,
+    "half-sister": 3, "half-brother": 3,
+    "niece": 3, "nephew": 3,
+    "grandmother": 4, "grandfather": 4, "grandparent": 4,
+    "aunt": 5, "uncle": 5, "cousin": 5,
+}
+
+
+def first_surviving_class(data):
+    """Return the EPTL 4-1.1 class index of the first surviving class,
+    or None if it can't be determined.
+
+    Priority of signals:
+      1. ``data.ft`` family-tree questionnaire (legal source of truth) —
+         each key is True/False/None; first key with True wins.
+      2. Legacy ``data.surviving*`` flat fields, if any are populated.
+      3. Auto-derive by counting ``data.distributees`` relationship
+         keywords against DIST_REL_MAP — only used when ft and the
+         legacy fields are both empty.
+    """
+    # 1. ft (the FTW result)
+    ft = data.get("ft") or {}
+    for key, idx in EPTL_CLASSES:
+        if ft.get(key) is True:
+            return idx
+
+    # 2. Legacy surviving* fields
+    legacy = (
+        ("survivingSpouse", 0), ("survivingChildren", 1),
+        ("survivingParents", 2), ("survivingSiblings", 3),
+        ("survivingGrandparents", 4), ("survivingAuntsUncles", 5),
+        ("survivingFirstCousinsOnceRemoved", 6),
+    )
+    for key, idx in legacy:
+        raw = data.get(key)
+        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
+            return idx
+
+    # 3. Fallback: derive from distributees array
+    for idx in range(7):
+        for d in (data.get("distributees") or []):
+            rel = (d.get("relationship") or "").strip().lower()
+            for kw, ci in DIST_REL_MAP.items():
+                if kw in rel and ci == idx:
+                    return idx
+    return None
+
+
 # ─── COVER LETTER ─────────────────────────────────────────────────────────────
 
 def generate_cover_letter(data):
@@ -1095,6 +1165,13 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
                 match["interest"] = wb_interest
             if wb_minor:
                 match["isMinor"] = True
+            if wb_is_dist:
+                # Promote: AI says this person IS a distributee. Carry it
+                # through so the Distributee label below picks them up
+                # even when their relationship string is something the
+                # keyword map doesn't match (in-laws, "Sister of Spouse",
+                # etc.).
+                match["isDistributee"] = True
             if wb_rel and not match.get("relationship"):
                 match["relationship"] = wb_rel
             if wb_addr and not match.get("address"):
@@ -1113,34 +1190,19 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
                 "interest": wb_interest,
                 "beneficiaryType": ben_type,
                 "isMinor": wb_minor,
+                "isDistributee": wb_is_dist,
                 "dob": wb_dob,
                 "guardianInfo": wb_guard,
             })
 
     # ── Enhance interest descriptions with roles ─────────────────────────────
-    # Prepend Executor/Petitioner roles. Only add "Distributee" if relationship
-    # matches a class at or before the first surviving EPTL 4-1.1 class.
+    # Prepend Executor and Distributee roles. "Distributee" is added when
+    # EITHER (a) the per-person isDistributee flag is set (Smart Intake's
+    # legal call, or the user's manual override), OR (b) the person's
+    # relationship maps to a class ≤ the first surviving EPTL class
+    # determined from the family-tree questionnaire (data.ft).
     exec_lower = letters_to.strip().lower()
-    _dist_rel_map = {
-        "spouse": 0, "husband": 0, "wife": 0,
-        "son": 1, "daughter": 1, "child": 1, "children": 1,
-        "mother": 2, "father": 2, "parent": 2,
-        "sister": 3, "brother": 3, "sibling": 3, "niece": 3, "nephew": 3,
-        "grandmother": 4, "grandfather": 4, "grandparent": 4,
-        "aunt": 5, "uncle": 5, "cousin": 5,
-    }
-    _first_surv = None
-    for idx in range(7):
-        for d in all_dists:
-            rel = (d.get("relationship") or "").strip().lower()
-            for kw, ci in _dist_rel_map.items():
-                if kw in rel and ci == idx:
-                    _first_surv = idx
-                    break
-            if _first_surv is not None:
-                break
-        if _first_surv is not None:
-            break
+    _first_surv = first_surviving_class(data)
 
     for dist in all_dists:
         name_lower = dist.get("name", "").strip().lower()
@@ -1149,9 +1211,15 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
         prefix_parts = []
 
         if is_primary and "distributee" not in interest.lower():
+            explicit = bool(dist.get("isDistributee"))
             rel = (dist.get("relationship") or "").strip().lower()
-            rel_class = next((ci for kw, ci in _dist_rel_map.items() if kw in rel), None)
-            if rel_class is not None and _first_surv is not None and rel_class <= _first_surv:
+            rel_class = next((ci for kw, ci in DIST_REL_MAP.items() if kw in rel), None)
+            keyword_match = (
+                rel_class is not None
+                and _first_surv is not None
+                and rel_class <= _first_surv
+            )
+            if explicit or keyword_match:
                 prefix_parts.append("Distributee")
 
         if name_lower and name_lower == exec_lower and "executor" not in interest.lower():
@@ -1182,82 +1250,53 @@ def _build_probate_fields(data):
     ]))
 
     # Surviving relatives → Dropdown 5a–5g (EPTL 4-1.1 order, 7 classes)
-    # Logic: "No" for prior classes, number/Yes for first surviving class, "X" for all after
-    #
-    # Auto-derive from distributees if manual fields are empty.
-    # Map relationship keywords → EPTL class index
-    surv_keys = [
-        "survivingSpouse", "survivingChildren", "survivingParents",
-        "survivingSiblings", "survivingGrandparents", "survivingAuntsUncles",
-        "survivingFirstCousinsOnceRemoved",
-    ]
+    # Single source of truth: first_surviving_class(data) reads
+    # data.ft (the family-tree questionnaire) first, then legacy
+    # surviving* fields, then auto-derives from distributees as a last
+    # resort. The count for the first surviving class comes from the
+    # distributees array filtered to that class via DIST_REL_MAP. Any
+    # class before the first surviving one is "No"; any class after is
+    # "X" (closer class cuts off intestate share).
+    first_surviving = first_surviving_class(data)
 
-    # Check if any manual surviving fields are filled
-    has_manual = any(
-        data.get(k) and str(data.get(k)).strip().lower() not in ("false", "0", "no", "")
-        for k in surv_keys
-    )
-
-    if not has_manual:
-        # Auto-derive from distributees' relationships
-        rel_class_map = {
-            "spouse": 0, "husband": 0, "wife": 0,
-            "son": 1, "daughter": 1, "child": 1, "children": 1, "issue": 1,
-            "grandchild": 1, "grandson": 1, "granddaughter": 1,
-            "mother": 2, "father": 2, "parent": 2,
-            "sister": 3, "brother": 3, "sibling": 3, "half-sister": 3, "half-brother": 3,
-            "niece": 3, "nephew": 3,
-            "grandmother": 4, "grandfather": 4, "grandparent": 4,
-            "aunt": 5, "uncle": 5, "cousin": 5,
-        }
-        class_counts = [0] * 7
-        for dist in data.get("distributees", []):
-            rel = (dist.get("relationship") or "").strip().lower()
-            for keyword, cls_idx in rel_class_map.items():
-                if keyword in rel:
-                    class_counts[cls_idx] += 1
-                    break
-
-        first_surviving = None
-        for idx, count in enumerate(class_counts):
-            if count > 0:
-                first_surviving = idx
+    # Dedup data.distributees by fuzzy name key before counting per-class
+    # survivors. Saved cases sometimes carry the same person two or three
+    # times (Smart Intake re-runs, hand-edits) — naive iteration would
+    # report Amy twice as a surviving spouse.
+    _count_seen = set()
+    class_counts = [0] * 7
+    for dist in (data.get("distributees") or []):
+        nm = (dist.get("name") or "").strip()
+        if not nm:
+            continue
+        toks = [t for t in re.split(r'\s+', nm) if t]
+        suffixes = {"jr", "sr", "ii", "iii", "iv", "v"}
+        while toks and toks[-1].lower().rstrip('.') in suffixes:
+            toks.pop()
+        key = (toks[0].lower(), toks[-1].lower()) if len(toks) > 1 else (toks[0].lower() if toks else "", "")
+        if key in _count_seen:
+            continue
+        _count_seen.add(key)
+        rel = (dist.get("relationship") or "").strip().lower()
+        for keyword, cls_idx in DIST_REL_MAP.items():
+            if keyword in rel:
+                class_counts[cls_idx] += 1
                 break
 
-        dropdown_vals = []
-        for idx, count in enumerate(class_counts):
-            if first_surviving is None:
-                dropdown_vals.append("No")
-            elif idx < first_surviving:
-                dropdown_vals.append("No")
-            elif idx == first_surviving:
-                dropdown_vals.append(str(count))  # actual number of survivors
-            else:
-                dropdown_vals.append("X")
-    else:
-        # Use manual surviving fields
-        first_surviving = None
-        for idx, key in enumerate(surv_keys):
-            raw = data.get(key)
-            if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
-                first_surviving = idx
-                break
-        dropdown_vals = []
-        for idx, key in enumerate(surv_keys):
-            raw = data.get(key)
-            if first_surviving is None:
-                dropdown_vals.append("No")
-            elif idx < first_surviving:
-                dropdown_vals.append("No")
-            elif idx == first_surviving:
-                s = str(raw).strip()
-                # Convert true/yes to "1", keep numbers as-is
-                if s.lower() in ("true", "yes"):
-                    dropdown_vals.append("1")
-                else:
-                    dropdown_vals.append(s)
-            else:
-                dropdown_vals.append("X")
+    dropdown_vals = []
+    for idx in range(7):
+        if first_surviving is None:
+            dropdown_vals.append("No")
+        elif idx < first_surviving:
+            dropdown_vals.append("No")
+        elif idx == first_surviving:
+            # Use the per-class count if we have one; otherwise fall
+            # back to "1" (we know at least one person in this class
+            # survived because ft said so).
+            count = class_counts[idx]
+            dropdown_vals.append(str(count) if count > 0 else "1")
+        else:
+            dropdown_vals.append("X")
 
     fields = {
         # ── Petition (pages 1-4) ────────────────────────────────────────────────
@@ -3602,8 +3641,10 @@ def generate_notice_of_probate(data):
             tbl_pr.addnext(new_grid)
         else:
             tbl.insert(0, new_grid)
-        # Header + recipient rows
-        tbl.append(_make_row(["NAME", "MAILING ADDRESS", "NATURE OF INTEREST OR STATUS"], bold=True))
+        # Recipient rows. The template paragraph immediately above the
+        # table already prints a tab-separated "NAME / MAILING ADDRESS /
+        # NATURE OF INTEREST OR STATUS" header — adding another one
+        # inside the table doubled the header on every output.
         for nm, addr, nature in recipients:
             tbl.append(_make_row([nm, addr, nature]))
 

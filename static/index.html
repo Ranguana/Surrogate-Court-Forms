@@ -1603,6 +1603,11 @@ function getFormData() {
     efileDate:g("efileDate"), fileNo:g("fileNo"), caseStatus:g("caseStatus"), dateSubmitted:g("dateSubmitted"),
     enclosures:buildEnclosures(), distributees,
     willBeneficiaries: JSON.parse(JSON.stringify(_willBeneficiaries||[])),
+    // Family-tree questionnaire: legal source of truth for who survived,
+    // used by the petition (§5 dropdowns) and the Notice of Probate
+    // ("Distributee" label). Must be a deep clone so the form's mutable
+    // state can't leak through.
+    ft: JSON.parse(JSON.stringify(ft||{})),
   };
 }
 

@@ -910,10 +910,17 @@ def smart_intake():
         except Exception as e:
             print(f"[SMART-INTAKE] Error reading {f.filename}: {e}")
 
-    if not doc_texts:
+    # Fully-scanned PDFs (e.g. death certificates) often produce no
+    # extractable text and tesseract may not be installed on the user's
+    # machine. We still have rendered page images in doc_images that
+    # Claude vision can read — only bail when there is nothing at all.
+    if not doc_texts and not doc_images:
         return jsonify({"error": "Could not extract any text from the uploaded PDFs."}), 400
 
-    combined = "\n\n".join(doc_texts)
+    combined = (
+        "\n\n".join(doc_texts) if doc_texts
+        else "(No extractable text — read content from the page images below.)"
+    )
 
     # Archive the combined extracted text alongside the source files
     if archive_dir:
@@ -1332,7 +1339,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.30"
+APP_VERSION = "1.6.31"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
