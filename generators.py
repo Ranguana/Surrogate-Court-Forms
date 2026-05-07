@@ -199,6 +199,37 @@ def replace_para(para, old_text, new_text):
         para.add_run(new_full)
 
 
+def _validate_docx(doc, generator_name):
+    """Scan a generated Word doc for unreplaced [...] placeholder tokens
+    and print warnings to the server log.
+
+    Soft check — some bracketed text in templates is intentional (e.g.
+    instructional [Name] / [Note: ...] markers meant for the end-user
+    to fill in by hand), so warnings don't fail generation. They just
+    give us a fast signal when a substitution path was missed.
+    """
+    token_rx = re.compile(r'\[[^\[\]\n]{1,80}\]')
+    found = []
+
+    def _scan(p, location):
+        for m in token_rx.finditer(p.text or ""):
+            found.append((location, m.group(0)))
+
+    for pi, p in enumerate(doc.paragraphs):
+        _scan(p, f"para[{pi}]")
+    for ti, t in enumerate(doc.tables):
+        for ri, row in enumerate(t.rows):
+            for ci, cell in enumerate(row.cells):
+                for pi, p in enumerate(cell.paragraphs):
+                    _scan(p, f"table[{ti}].r{ri}c{ci}.p{pi}")
+
+    if found:
+        unique = sorted(set(found))
+        print(f"[VALIDATE] {generator_name}: {len(unique)} unreplaced placeholder token(s):")
+        for loc, tok in unique:
+            print(f"  {loc}: {tok}")
+
+
 def make_docx_bytes(doc):
     buf = io.BytesIO()
     doc.save(buf)
@@ -274,6 +305,7 @@ def generate_cover_letter(data):
     _para(signer)
     _para("Enc.")
 
+    _validate_docx(doc, "generate_cover_letter")
     return make_docx_bytes(doc)
 
 
@@ -549,6 +581,7 @@ def generate_805(data):
     line("__________________________________", space_after=2)
     line("Notary Public")
 
+    _validate_docx(doc, "generate_805")
     return make_docx_bytes(doc)
 
 
@@ -688,6 +721,7 @@ def generate_heirship(data):
             else:
                 replace_para(para, "Date of Death:", f"Date of Death: {father_dod}")
 
+    _validate_docx(doc, "generate_heirship")
     return make_docx_bytes(doc)
 
 
@@ -709,6 +743,7 @@ def generate_waiver_cover(data, distributee):
         "(Petitioner)": petitioner,
     })
 
+    _validate_docx(doc, "generate_waiver_cover")
     return make_docx_bytes(doc)
 
 
@@ -719,6 +754,7 @@ def generate_attorney_cert(data):
     replace_in_doc(doc, {
         "Dated:": f"Dated: {today()}",
     })
+    _validate_docx(doc, "generate_attorney_cert")
     return make_docx_bytes(doc)
 
 
@@ -2367,6 +2403,7 @@ def generate_auth_letter(data, asset):
     line("")
     line(petitioner)
 
+    _validate_docx(doc, "generate_auth_letter")
     return make_docx_bytes(doc)
 
 
@@ -2436,6 +2473,7 @@ def generate_instruction_letter(data, asset, marshal_action="check"):
     line("")
     line(signer)
 
+    _validate_docx(doc, "generate_instruction_letter")
     return make_docx_bytes(doc)
 
 
@@ -3330,6 +3368,7 @@ def generate_waiver_probate(data, dist):
         "County of _________________": f"County of {county}",
     })
 
+    _validate_docx(doc, "generate_waiver_probate")
     return make_docx_bytes(doc)
 
 
@@ -3367,6 +3406,39 @@ def generate_notice_of_probate(data):
 
     today_str = datetime.now().strftime("%B %d, %Y")
 
+    # Strip the orphan "aka [DECEDENT AKA]" / "a/k/a [DECEDENT AKA]" phrase
+    # before token replacement when aka is empty — otherwise the literal
+    # "aka " run remains in the caption with nothing after it. Run-level
+    # scrub preserves the bold "NOTICE OF PROBATE" run that lives in the
+    # same paragraph.
+    if not aka:
+        _aka_phrase_rx = _re.compile(r"(?i)(?:a/k/a|aka)\s*\[DECEDENT AKA\]\s*")
+        def _scrub_para(p):
+            if not _aka_phrase_rx.search(p.text):
+                return
+            # Pass 1: scrub within any single run that carries the full match
+            for run in p.runs:
+                if _aka_phrase_rx.search(run.text):
+                    run.text = _aka_phrase_rx.sub("", run.text)
+            # Pass 2: split across runs — clear runs that contributed to
+            # the phrase. Each fragment is either "aka"/"a/k/a"
+            # (case-insensitive, with surrounding whitespace) or
+            # "[DECEDENT AKA]" with surrounding whitespace.
+            if _aka_phrase_rx.search(p.text):
+                _frag_rx = _re.compile(
+                    r"(?i)^\s*(?:a/k/a|aka)\s*$|^\s*\[DECEDENT AKA\]\s*$"
+                )
+                for run in p.runs:
+                    if _frag_rx.match(run.text):
+                        run.text = ""
+        for p in doc.paragraphs:
+            _scrub_para(p)
+        for t in doc.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        _scrub_para(p)
+
     # Caption + token-style replacements
     replace_in_doc(doc, {
         "[COUNTY]":       county.upper(),
@@ -3377,14 +3449,6 @@ def generate_notice_of_probate(data):
     })
 
     # Regex replacements over body paragraphs (underscored blanks)
-    def _rewrite_para(p, new_text):
-        if p.runs:
-            p.runs[0].text = new_text
-            for r in p.runs[1:]:
-                r.text = ""
-        else:
-            p.add_run(new_text)
-
     patterns = [
         (_re.compile(r"The Will dated _+"),
          f"The Will dated {will_date}"),
@@ -3392,22 +3456,42 @@ def generate_notice_of_probate(data):
          f"domiciled at {dec_addr}"),
         (_re.compile(r"whose address is _+(?=\.)"),
          f"whose address is {pet_addr}"),
-        (_re.compile(r"^Dated: _+\s*$"),
+        (_re.compile(r"Dated:\s*_+"),
          f"Dated: {today_str}"),
         # Affidavit of mailing — re-stamp the will date there too
         (_re.compile(r"copy of the Will dated _+"),
          f"copy of the Will dated {will_date}"),
     ]
 
-    def _apply_patterns(p):
-        txt = p.text
-        if not txt:
+    def _rewrite_para(p, rx, repl):
+        """Substitute `rx` → `repl` inside paragraph p, preserving run
+        formatting when the match fits within a single run. Same approach
+        as replace_in_doc(): only collapse runs into runs[0] when the
+        match is split across runs (there's no unambiguous way to
+        attribute formatting to the rewritten span in that case)."""
+        if not rx.search(p.text):
             return
-        new = txt
+        # Pass 1: replace inside each run that already contains the match.
+        # Bold / italic / underline / font on these runs is preserved.
+        for run in p.runs:
+            if rx.search(run.text):
+                run.text = rx.sub(repl, run.text)
+        # Pass 2: if the pattern still matches at paragraph level, the
+        # match crossed a run boundary — fall back to consolidation.
+        if rx.search(p.text):
+            full = rx.sub(repl, p.text)
+            if p.runs:
+                p.runs[0].text = full
+                for r in p.runs[1:]:
+                    r.text = ""
+            else:
+                p.add_run(full)
+
+    def _apply_patterns(p):
+        if not p.text:
+            return
         for rx, repl in patterns:
-            new = rx.sub(repl, new)
-        if new != txt:
-            _rewrite_para(p, new)
+            _rewrite_para(p, rx, repl)
 
     for p in doc.paragraphs:
         _apply_patterns(p)
@@ -3472,6 +3556,13 @@ def generate_notice_of_probate(data):
         def _make_cell(text, bold=False):
             tc = OxmlElement('w:tc')
             tcPr = OxmlElement('w:tcPr')
+            # Word ignores tblGrid column widths unless each cell also
+            # carries a <w:tcW> width — without it Word auto-sizes columns
+            # to content, collapsing the table layout.
+            tcW = OxmlElement('w:tcW')
+            tcW.set(qn('w:w'), '3000')
+            tcW.set(qn('w:type'), 'dxa')
+            tcPr.append(tcW)
             tc.append(tcPr)
             p = OxmlElement('w:p')
             r = OxmlElement('w:r')
@@ -3516,6 +3607,7 @@ def generate_notice_of_probate(data):
         for nm, addr, nature in recipients:
             tbl.append(_make_row([nm, addr, nature]))
 
+    _validate_docx(doc, "generate_notice_of_probate")
     return make_docx_bytes(doc)
 
 
@@ -3546,6 +3638,7 @@ def generate_affidavit_of_comparison(data):
         "[AFFIANT]":      affiant,
     })
 
+    _validate_docx(doc, "generate_affidavit_of_comparison")
     return make_docx_bytes(doc)
 
 
@@ -3598,6 +3691,7 @@ def generate_bond_affidavit(data):
         "February 2018":           datetime.now().strftime("%B %Y"),
     })
 
+    _validate_docx(doc, "generate_bond_affidavit")
     return make_docx_bytes(doc)
 
 
@@ -3616,6 +3710,7 @@ def generate_petition_scpa_2203(data):
         "COUNTY OF BRONX": f"COUNTY OF {county.upper()}",
     })
 
+    _validate_docx(doc, "generate_petition_scpa_2203")
     return make_docx_bytes(doc)
 
 
@@ -3683,6 +3778,7 @@ def generate_refunding_agreement(data):
 
     replace_in_doc(doc, replacements)
 
+    _validate_docx(doc, "generate_refunding_agreement")
     return make_docx_bytes(doc)
 
 
@@ -4164,4 +4260,5 @@ def generate_formal_accounting(form_data, entries):
                  "Statement of Estate Taxes Paid and Allocation Thereof",
                  [("Description", "description"), ("Amount", "amount")])
 
+    _validate_docx(doc, "generate_formal_accounting")
     return make_docx_bytes(doc)
