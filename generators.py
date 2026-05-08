@@ -237,6 +237,68 @@ def make_docx_bytes(doc):
     return buf.read()
 
 
+# ─── INTEREST-TEXT PHRASE MAP ─────────────────────────────────────────────────
+# Render-time cleanup applied to every "Description of Legacy / Devise / Other
+# Interest" string before it goes into the petition or Notice of Probate.
+# Order matters — earlier entries run first. To add a new mapping, append a
+# tuple of (description, compiled regex, replacement). To disable one,
+# comment it out.
+INTEREST_PHRASE_MAP = [
+    ("Drop conditional parens like '(if she survives decedent)'",
+     re.compile(r'\s*\(if [^)]*\)', re.IGNORECASE), ''),
+
+    ("Drop trust-name aliases like '(Family Trust)'",
+     re.compile(r'\s*\((?:Family|Marital|Bypass|QTIP|Disclaimer|'
+                r'Generation[- ]?Skipping|Charitable)\s+Trust\)',
+                re.IGNORECASE), ''),
+
+    ("Drop HEMS standard clause",
+     re.compile(r',?\s*for\s+health,?\s+education,?\s+maintenance,?\s*'
+                r'(?:or|and)\s+support', re.IGNORECASE), ''),
+
+    ("'Income and principal beneficiary of' → 'Beneficiary of'",
+     re.compile(r'\bIncome and principal beneficiary of\b', re.IGNORECASE),
+     'Beneficiary of'),
+
+    ("'Income beneficiary of' → 'Beneficiary of'",
+     re.compile(r'\bIncome beneficiary of\b', re.IGNORECASE),
+     'Beneficiary of'),
+
+    ("'Legatee of (the) net residuary estate (outright)' → 'Residuary Beneficiary'",
+     re.compile(r'\bLegatee of (?:the )?net residuary estate(?:\s+outright)?\b',
+                re.IGNORECASE), 'Residuary Beneficiary'),
+
+    ("Drop 'named in Will' from fiduciary roles "
+     "('Executor named in Will' → 'Executor')",
+     re.compile(r'\s+named in Will\b'), ''),
+
+    ("'Article' → 'Art' (everywhere, not just after 'under')",
+     re.compile(r'\bArticle\b'), 'Art'),
+
+    # Run AFTER the Article→Art transform so we can match 'Art' here.
+    # 'Trustee of trusts under Art FOUR under Art SEVEN(a)'
+    #   → 'Trustee under Art SEVEN(a)'
+    ("Drop 'of trusts under Art X' middle clause when another 'under Art' "
+     "follows (Trustee chain)",
+     re.compile(r'\s+of trusts under Art \S+(?=\s+under Art\b)', re.IGNORECASE),
+     ''),
+
+    ("Collapse extra whitespace",
+     re.compile(r'\s{2,}'), ' '),
+]
+
+
+def _scrub_interest(text):
+    """Apply INTEREST_PHRASE_MAP to clean up verbose interest text.
+    Both petition and Notice of Probate render through this so they
+    can't drift."""
+    if not text:
+        return text
+    for _, rx, repl in INTEREST_PHRASE_MAP:
+        text = rx.sub(repl, text)
+    return text.strip(' ;,')
+
+
 # ─── EPTL 4-1.1 SURVIVAL CHAIN ────────────────────────────────────────────────
 # Single source of truth for "who's a distributee." The seven classes in
 # EPTL 4-1.1(a) priority order; the FIRST class with a surviving member
@@ -859,9 +921,12 @@ def _ensure_acroform_root(pdf_bytes):
     - Court e-file systems that validate AcroForm structure may reject
     - Some viewers won't show fields as interactive
 
-    fitz bakes appearance streams into each widget's /AP, so we set
-    /NeedAppearances False — viewers use the existing baked appearances
-    rather than regenerating from /V + /DA.
+    /NeedAppearances True — tells viewers (esp. Acrobat) to regenerate
+    field appearances from /V + /DA at display time. fitz bakes
+    appearance streams that strict-clip at the widget rect; flipping
+    this flag lets Acrobat re-render with its own multiline text engine,
+    which wraps overflow into the form's pre-printed continuation lines
+    the same way it does when the form is filled manually.
 
     No global /DR on the AcroForm dict: each widget in this template
     carries its own /DR with its font reference (e.g. /Helv), so a global
@@ -891,7 +956,7 @@ def _ensure_acroform_root(pdf_bytes):
                     field_refs.append(a)
         af = DictionaryObject()
         af[NameObject("/Fields")] = ArrayObject(field_refs)
-        af[NameObject("/NeedAppearances")] = BooleanObject(False)
+        af[NameObject("/NeedAppearances")] = BooleanObject(True)
         # pypdf preserves /AcroForm only if it's an indirect object reference
         # — direct dict assignment to _root_object is dropped during write().
         af_ref = writer._add_object(af)
@@ -1186,7 +1251,7 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
         wb_name = (wb.get("name") or "").strip()
         if not wb_name:
             continue
-        wb_interest = (wb.get("interest") or "").strip()
+        wb_interest = _scrub_interest((wb.get("interest") or "").strip())
         wb_rel = (wb.get("relationship") or "").strip()
         wb_addr = (wb.get("address") or "").strip()
         wb_minor = bool(wb.get("isMinor"))
@@ -1296,6 +1361,13 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
         if prefix_parts:
             prefix = ", ".join(prefix_parts)
             dist["interest"] = f"{prefix}; {interest}" if interest else prefix
+
+    # Final pass: scrub every entry's interest text through INTEREST_PHRASE_MAP
+    # so distributees from data.distributees (which weren't scrubbed during the
+    # willBenef merge) also get cleaned.
+    for dist in all_dists:
+        if dist.get("interest"):
+            dist["interest"] = _scrub_interest(dist["interest"])
 
     return all_dists
 
@@ -1530,6 +1602,10 @@ def _build_probate_fields(data):
     def _name_with_rel(dist):
         name = dist.get("name", "")
         rel = (dist.get("relationship") or "").strip()
+        # Strip trailing parenthetical context like "(Amy's sister)" so we
+        # don't render nested parens — petition wants the bare blood/
+        # marital relation only.
+        rel = re.sub(r'\s*\([^)]*\)\s*$', '', rel).strip()
         return f"{name} ({rel})" if rel else name
 
     def _minor_desc(dist):
@@ -1545,10 +1621,12 @@ def _build_probate_fields(data):
             parts.append(f"Guardian: {dist['guardianInfo']}")
         return "; ".join(parts)
 
-    def _split_interest(text, max_chars=75):
-        """Split long interest text into multiple lines at word boundaries.
-        Single source of the 75-char cell width — _build_rows uses this
-        default; nothing else should pass an override."""
+    def _split_interest(text, max_chars=48):
+        """Split long interest text into chunks that each fit on ONE
+        visible line of an interest cell at 7pt (cell width ~172.7px,
+        char width ~3.5px → ~49 chars per visible line). Single source
+        of the cell-line capacity — nothing else should pass an
+        override. Splits at word boundaries via rfind(' ')."""
         if len(text) <= max_chars:
             return [text]
         lines = []
@@ -1565,21 +1643,24 @@ def _build_probate_fields(data):
         return lines
 
     def _build_rows(persons, max_rows, name_fn=None):
-        """One row per person, full interest text in a single cell. PDF
-        viewers render only the first visual line of a multi-line cell, so
-        spreading text across continuation rows visually loses people's
-        names and creates the appearance of one person sprawling down the
-        page. Keep names + addresses on every row instead."""
+        """One row per chunk of interest text. Name and address appear
+        only on the FIRST row of each person; continuation chunks use
+        blank name and address — by petition convention, lines without
+        a new name belong to the person above. Caps at max_rows."""
         if name_fn is None:
             name_fn = _name_with_rel
         rows = []
-        for dist in persons[:max_rows]:
-            rows.append((
-                name_fn(dist),
-                dist.get("address", ""),
-                _interest(dist),
-            ))
-        return rows
+        for dist in persons:
+            name = name_fn(dist)
+            addr = dist.get("address", "")
+            interest = _interest(dist)
+            chunks = _split_interest(interest)
+            rows.append((name, addr, chunks[0]))
+            for chunk in chunks[1:]:
+                rows.append(("", "", chunk))
+            if len(rows) >= max_rows:
+                break
+        return rows[:max_rows]
 
     # Page 2, section 6a — Distributees + executor
     p2_6a_name = ["1_2", "2_2", "3", "4", "5", "6", "7"]

@@ -154,7 +154,25 @@ DO NOT invent type values. DO NOT use `ultimate_beneficiary`, `legatee`,
 If a beneficiary's role does not fit any row above, choose the closest
 match — never coin a new type.
 
-5e. isDistributee — INFER ONLY WHEN UNAMBIGUOUS:
+5e. RELATIONSHIP FIELD — BARE RELATION ONLY:
+The `relationship` field must be a single bare blood or marital relation.
+No parenthetical context. No qualifiers. No will roles. No multi-segment
+strings.
+
+GOOD: `"Spouse"`, `"Daughter"`, `"Father"`, `"Sister-in-law"`, `"Nephew"`,
+       `"Friend"`, `"Trust"`.
+
+BAD:
+- `"Sister-in-law (Amy's sister)"` — drop the parenthetical.
+- `"Sister-in-law / Successor Executor / Beneficiary"` — drop the will
+  roles; those belong in `interest` and `type`.
+- `"Half-brother through mother's second marriage"` — just `"Half-brother"`.
+
+If the relationship is unknown, set `relationship` to `"Unknown"`. Do not
+write descriptions like `"Friend of decedent"` or `"Named in will"` — use
+`"Friend"` or `"Unknown"`.
+
+5f. isDistributee — INFER ONLY WHEN UNAMBIGUOUS:
 A "distributee" is someone who would inherit under EPTL 4-1.1 (NY intestacy)
 if there were no will. The determination depends on which class of relative
 survived the decedent. Per EPTL 4-1.1 priority order:
