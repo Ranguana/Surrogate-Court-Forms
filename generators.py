@@ -1002,31 +1002,26 @@ def fill_pdf(template_path, fields, font_overrides=None):
                 widget.field_value = s
                 if s == "X":
                     if font_overrides and name in font_overrides:
-                        # Explicit per-field override wins. Used for §5
-                        # Dropdown 5a–5g where the "X" indicates a class
-                        # cut off by EPTL priority — those are dropdown
-                        # values, not checkbox-simulations, and the
-                        # box-based sizing makes them comically large.
+                        # Explicit per-field override wins.
                         widget.text_fontsize = font_overrides[name]
                     else:
-                        # Checkbox-simulated as text. Size the X to the
-                        # smaller of the two box dimensions so it fits
-                        # the box, with a generous floor so very small
-                        # checkboxes (6x6px on paragraph-1 of the
-                        # petition) still render a visible X.
-                        h = widget.rect.height
-                        w = widget.rect.width
-                        box = min(h, w) if (h and w) else max(h, w, 8)
-                        widget.text_fontsize = max(10, box * 1.3)
+                        # Default for ALL checkbox-style "X" cells:
+                        # fontsize=0 triggers PDF spec auto-sizing —
+                        # Acrobat (which regenerates appearances under
+                        # /NeedAppearances=True) picks a size that
+                        # makes the X fit the cell. Works for both
+                        # tiny 6x6 cells and larger 10x10 ones.
+                        widget.text_fontsize = 0
                 else:
-                    # Per-field override wins. Otherwise default to 10pt
-                    # unless the template explicitly set a non-zero size.
+                    # Per-field override wins. Otherwise universal 8pt
+                    # default — fits the cell heights on these templates
+                    # and matches the §1–§7 visual style. Template
+                    # fontsize (often 12pt) is always overridden because
+                    # 12pt overflows narrow form cells.
                     if font_overrides and name in font_overrides:
                         widget.text_fontsize = font_overrides[name]
                     else:
-                        cur = widget.text_fontsize
-                        if not cur or cur < 1:
-                            widget.text_fontsize = 10
+                        widget.text_fontsize = 8
                     # Enable multiline so long text wraps within the field
                     try:
                         widget.field_flags = (widget.field_flags or 0) | MULTILINE_FLAG
@@ -1516,11 +1511,13 @@ def _build_probate_fields(data):
         "Surrogates Court of": county,
         "My domicile is": pet_addr,
         "Street Address": "",  # signature line — leave blank for petitioner to sign
-        "Print Name_3": data.get("attorneyName") or "Jessica Wilson, Esq.",
+        # Print Name_3 = petitioner (the oath-taker). Print Name_4 stays
+        # the attorney (notary/preparer block at the bottom).
+        "Print Name_3": pet,
         "Print Name_4": data.get("attorneyName") or "Jessica Wilson, Esq.",
         "Firm Name": data.get("firmName") or "Law Office of Jessica Wilson",
         "Tel No": data.get("attorneyPhone") or "(212) 739-1736",
-        "Email": data.get("attorneyEmail", ""),
+        "Email": data.get("attorneyEmail") or "jwilson@jessicawilsonlaw.com",
         "Address of Attorney": data.get("firmAddress") or "221 Columbia Street, Brooklyn NY 11231",
 
         # ── Attesting Witness (page 10) ─────────────────────────────────────────
@@ -1536,26 +1533,52 @@ def _build_probate_fields(data):
         "STATE OF NEW YORK_5": "",  # Leave blank — witness fills in their own state
         "COUNTY OF_8": "",  # Leave blank — witness fills in their own county
         "I have been shown check one": "X",  # "the original instrument" checkbox
+        # Oath ¶2 checkbox group is set in the letters-type branch below.
+        # Field names are visually misaligned with their labels (each
+        # widget sits BEFORE its label text on the page), so the field
+        # called 'OATH OF' is actually the Executor box, 'EXECUTOR' is
+        # the Administrator c.t.a. box, etc. The unconditional
+        # "OATH OF": "X" line that used to live here was producing two
+        # X marks on every probate petition (the Executor box AND the
+        # Administrator c.t.a. box).
         "the original instrument dated": data.get("willDate", ""),
         "purporting to be the last Will and TestamentCodicil of the abovenamed decedent": "",  # "court-certified photographic reproduction" — leave unchecked
-        "and I saw the other witness es": witnesses,
+        # 'and I saw the other witness es' and 'Print Name_9' are filled
+        # per-affiant by generate_probate_docs (one affidavit per witness,
+        # each one references the OTHER witness in paragraph 3) — leave
+        # blank in the base fields dict.
+        "and I saw the other witness es": "",
+        "Print Name_9": "",
         "I am making this affidavit at the request of 1": pet,
     }
 
-    # Letters type checkboxes — set the correct one, explicitly blank the others
-    fields["EXECUTOR"] = ""
-    fields["ADMINISTRATOR cta"] = ""
-    fields["Executor"] = ""
-    fields["Administrator cta"] = ""
+    # Letters type checkboxes — two distinct groups, both set per letters type:
+    #   Page 1 "PETITION FOR PROBATE AND" — fields are named after their
+    #     visible labels (Letters Testamentary, Letters of Trusteeship, etc.)
+    #   Page 5 "OATH OF [Executor / Administrator c.t.a. / Trustee]" — field
+    #     names are visually misaligned. Each widget sits BEFORE its label,
+    #     so 'OATH OF' is the Executor box, 'EXECUTOR' is the Administrator
+    #     c.t.a. box, 'ADMINISTRATOR cta' is the Trustee box. Set ONLY ONE.
+    fields["Letters Testamentary"] = ""
+    fields["Letters of Trusteeship"] = ""
+    fields["Letters of Administration cta"] = ""
+    fields["Temporary Administration"] = ""
+    fields["OATH OF"] = ""           # Page-5 Executor option (visually)
+    fields["EXECUTOR"] = ""           # Page-5 Administrator c.t.a. option (visually)
+    fields["ADMINISTRATOR cta"] = ""  # Page-5 Trustee option (visually)
+    fields["Executor"] = ""           # mixed-case — preserved for legacy use elsewhere
+    fields["Administrator cta"] = ""  # mixed-case — preserved for legacy use elsewhere
+
     if "Testamentary" in lt:
         fields["Letters Testamentary"] = "X"
-        fields["EXECUTOR"] = "X"
+        fields["OATH OF"] = "X"        # Oath of Executor
         fields["Executor"] = "X"
     elif "Trusteeship" in lt:
         fields["Letters of Trusteeship"] = "X"
+        fields["ADMINISTRATOR cta"] = "X"  # Oath of Trustee (yes, misnamed)
     elif "c.t.a" in lt:
         fields["Letters of Administration cta"] = "X"
-        fields["ADMINISTRATOR cta"] = "X"
+        fields["EXECUTOR"] = "X"       # Oath of Administrator c.t.a. (yes, misnamed)
         fields["Administrator cta"] = "X"
     elif "Temporary" in lt:
         fields["Temporary Administration"] = "X"
@@ -1763,8 +1786,16 @@ def generate_probate_docs(data):
         "Names of All Witnesses to Codicil",
         # §4 No-other-will
         "follows Enter NONE or specify 1",
+        # Affidavit of Attesting Witness — witness-side fields
+        "and I saw the other witness es",
+        "Print Name_9",
+        "Street Address_2",
+        "TownStateZip",
+        "I am making this affidavit at the request of 1",
     ]:
         font_overrides[f] = 8
+    # All "X" checkbox cells now auto-size by default in fill_pdf
+    # (fontsize=0). No per-field override needed.
     # All interest/description fields at consistent 7pt for readability + fit
     for i in range(1, 9):
         font_overrides[f"Interest or Nature of Fiduciary Status {i}"] = 7
@@ -1795,10 +1826,44 @@ def generate_probate_docs(data):
         (f"02_Petition_P1_{last}.pdf",        _extract_pages(filled, [0, 1, 2, 3])),
         (f"03_Oath_Designation_{last}.pdf",   _extract_pages(filled, [4])),
     ]
+
+    # ── Affidavit(s) of Attesting Witness ──────────────────────────────────
+    # Each witness signs their own affidavit swearing they saw the OTHER
+    # witness sign the will. So with two witnesses, generate two
+    # affidavits — paragraph 3 references the other witness, Print Name_9
+    # holds the affiant's name, and the address fields hold the affiant's
+    # address. Skip entirely when the will has a self-proving affidavit.
     if not data.get("selfProvingAffidavit"):
-        docs.append(
-            (f"04_Affidavit_Attesting_Witness_{last}.pdf", _extract_pages(filled, [9]))
-        )
+        w1      = (data.get("witness1") or "").strip()
+        w1_addr = (data.get("witness1Address") or "").strip()
+        w2      = (data.get("witness2") or "").strip()
+        w2_addr = (data.get("witness2Address") or "").strip()
+        # Pairs: (affiant_name, affiant_addr, other_witness_name)
+        affiants = []
+        if w1 and w2:
+            affiants.append((w1, w1_addr, w2))
+            affiants.append((w2, w2_addr, w1))
+        elif w1 or w2:
+            only      = w1 or w2
+            only_addr = w1_addr or w2_addr
+            other     = w2 if w1 else w1  # blank
+            affiants.append((only, only_addr, other))
+
+        for idx, (affiant, affiant_addr, other) in enumerate(affiants):
+            af_fields = dict(fields)
+            af_fields["and I saw the other witness es"] = other
+            af_fields["Print Name_9"] = affiant
+            af_fields["Street Address_2"] = affiant_addr
+            af_fields["TownStateZip"] = ""  # leave blank — could be parsed out of addr later
+            af_filled = fill_pdf(template, af_fields, font_overrides=font_overrides)
+            af_page = _extract_pages(af_filled, [9])
+            suffix = chr(ord("a") + idx) if len(affiants) > 1 else ""
+            safe_aff = re.sub(r'[^A-Za-z0-9]+', '_', affiant).strip("_") or f"W{idx+1}"
+            docs.append((
+                f"04{suffix}_Affidavit_Attesting_Witness_{safe_aff}_{last}.pdf",
+                af_page,
+            ))
+
     return docs
 
 
