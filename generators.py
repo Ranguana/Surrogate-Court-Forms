@@ -1377,7 +1377,12 @@ def _build_probate_fields(data):
     dec      = decedent_full(data)
     pet      = petitioner_full(data)
     lt       = data.get("lettersType", "")
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
     witnesses = " and ".join(filter(None, [data.get("witness1", ""), data.get("witness2", "")]))
     pet_addr  = ", ".join(filter(None, [
         data.get("petitionerStreet", ""), data.get("petitionerCity", ""),
@@ -1889,7 +1894,12 @@ def fill_ancillary_pdf(data):
     """
     dec = decedent_full(data)
     pet = petitioner_full(data)
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
     county = data.get("county", "")
     foreign_state = data.get("foreignState", "")
 
@@ -2027,21 +2037,20 @@ def petitioner_full(data):
     ]))
 
 
+
+
 # ─── ADMINISTRATION PETITION (A-1) ────────────────────────────────────────────
 
 def fill_administration_pdf(data):
-    """Fill the A-1 Administration Petition + Oath PDF form.
-
-    NOTE: The notary block on page 5 has mixed fonts in the PDF template.
-    This must be fixed in the PDF template itself (Adobe Acrobat), not in code.
-    """
+    """Fill the A-1 Administration Petition + Oath PDF form."""
     _auto_compute_property(data)
     county    = data.get("county", "")
     dec       = decedent_full(data)
     pet       = petitioner_full(data)
     lt        = data.get("lettersType", "Letters of Administration")
     lt_lower  = lt.lower()
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name.
+    letters_to = petitioner_full(data)
 
     def v(key, default=""):
         return str(data.get(key, "") or "").strip() or default
@@ -2060,31 +2069,85 @@ def fill_administration_pdf(data):
 
     is_attorney = data.get("petitionerIsAttorney") == "Yes"
 
-    # Surviving relatives → dropdowns 6a–6h (EPTL 4-1.1 order)
-    # Logic: "No" for prior classes, number/Yes for first surviving class, "X" for all after
-    surv_keys = [
-        "survivingSpouse", "survivingChildren", "survivingIssue",
-        "survivingParents", "survivingSiblings", "survivingGrandparents",
-        "survivingAuntsUncles", "survivingFirstCousinsOnceRemoved",
-    ]
-    first_surviving = None
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
-            first_surviving = idx
-            break
+    # ── Petitioner Interest ────────────────────────────────────────────
+    # Administration = no will. The petitioner is normally a distributee
+    # (spouse/relative). Override any will-related interest (e.g.,
+    # "Executor named in Will" left over from probate-era data) — it
+    # never applies to an admin proceeding.
+    pet_interest_raw = v("petitionerInterest", "Distributee")
+    if "executor" in pet_interest_raw.lower() or "will" in pet_interest_raw.lower():
+        pet_interest_raw = "Distributee"
+    is_pet_distributee = pet_interest_raw.lower() == "distributee"
+
+    # ── §6 distributees — use the canonical EPTL-routing helper ────────
+    pet_addr = ", ".join(filter(None, [
+        v("petitionerStreet"), v("petitionerCity"),
+        v("petitionerState"), v("petitionerZip"),
+    ]))
+    all_dists = compute_interested_persons(data, pet, pet_addr, letters_to)
+    primary_adults = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
+    primary_minors = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and d.get("isMinor")]
+
+    # ── §5 surviving relatives — ft-driven (matches P-1's rule), 8 classes ─
+    # A-1 has 8 classes (Spouse / Children / Issue / Parents / Siblings /
+    # Grandparents / Aunts-Uncles / First Cousins). P-1's
+    # first_surviving_class returns a 7-class index (no separate Issue).
+    # Map: P-1 0→A-1 0, P-1 1→A-1 1, P-1 2+→A-1 3+ (bump for Issue slot).
+    ft = data.get("ft") or {}
+    p1_first = first_surviving_class(data)
+    if p1_first is None:
+        a1_first = None
+    elif p1_first <= 1:
+        a1_first = p1_first
+    else:
+        a1_first = p1_first + 1
+
+    # Count survivors per A-1 class from the deduped distributee list
+    A1_REL_MAP = {
+        "spouse": 0, "husband": 0, "wife": 0,
+        "son": 1, "daughter": 1, "child": 1, "children": 1,
+        "grandchild": 2, "grandson": 2, "granddaughter": 2, "issue": 2,
+        "mother": 3, "father": 3, "parent": 3,
+        "sister": 4, "brother": 4, "sibling": 4, "niece": 4, "nephew": 4,
+        "grandmother": 5, "grandfather": 5, "grandparent": 5,
+        "aunt": 6, "uncle": 6, "cousin": 6,
+    }
+    class_counts = [0] * 8
+    for d in primary_adults + primary_minors:
+        rel = (d.get("relationship") or "").strip().lower()
+        for kw, ci in A1_REL_MAP.items():
+            if kw in rel:
+                class_counts[ci] += 1
+                break
+
     dropdown_vals = []
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if first_surviving is None:
-            dropdown_vals.append("No")
-        elif idx < first_surviving:
-            dropdown_vals.append("No")
-        elif idx == first_surviving:
-            s = str(raw).strip()
-            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
+    for idx in range(8):
+        if idx == 0:
+            # Spouse: Yes/No
+            alive = (ft.get("spouse") is True) or class_counts[0] > 0
+            dropdown_vals.append("Yes" if alive else "No")
+        elif idx == 1:
+            # Children: No or count — never X
+            alive = (ft.get("children") is True) or class_counts[1] > 0
+            if alive:
+                cnt = class_counts[1]
+                dropdown_vals.append(str(cnt) if cnt > 0 else "1")
+            else:
+                dropdown_vals.append("No")
         else:
-            dropdown_vals.append("X")
+            # 6c–6h: X if a closer class is first surviving, else No/count.
+            # (6c "Issue of predeceased children" follows the same rule —
+            # unlike 6b which must always be No/count for the spouse+issue
+            # share calculation.)
+            if a1_first is None:
+                dropdown_vals.append("No")
+            elif idx < a1_first:
+                dropdown_vals.append("No")
+            elif idx == a1_first:
+                cnt = class_counts[idx]
+                dropdown_vals.append(str(cnt) if cnt > 0 else "1")
+            else:
+                dropdown_vals.append("X")
 
     # Debts
     debt_lines = []
@@ -2125,14 +2188,14 @@ def fill_administration_pdf(data):
         "Zip":                              v("petitionerZip"),
         "yes us citizen":                   pet_us,
         "NO us citizen":                    not pet_us,
+        # Distributee path (default for admin) fills the relationship and
+        # checks "Distributee". "Other" path is used only for explicit
+        # non-distributee interests (Creditor / Designee).
         "Distributee of decedent state relationship":
-            v("petitionerRelationship") if v("petitionerInterest", "").lower() in ("", "distributee") else "",
-        "Otherspecify":
-            "" if v("petitionerInterest", "").lower() in ("", "distributee") else v("petitionerInterest"),
-        "Mark if Distributee":
-            v("petitionerInterest", "").lower() in ("", "distributee"),
-        "Mark if other and then specifiy":
-            bool(v("petitionerInterest")) and v("petitionerInterest", "").lower() != "distributee",
+            v("petitionerRelationship") if is_pet_distributee else "",
+        "Otherspecify":                     "" if is_pet_distributee else pet_interest_raw,
+        "Mark if Distributee":              is_pet_distributee,
+        "Mark if other and then specifiy":  not is_pet_distributee,
         "yes attorney":                     is_attorney,
         "NO not an attorney":               not is_attorney,
         "not a convicted felon":            True,
@@ -2150,6 +2213,9 @@ def fill_administration_pdf(data):
         "NO not US Citizen 2":              not dec_us,
 
         # ── PAGE 2: Property values ──────────────────────────────────
+        # Personal property defaults to "0" (NY convention when no
+        # personalty exists or hasn't been valued yet). Real property
+        # auto-computes from the asset tracker via _auto_compute_property.
         "gross value personal":             v("personalPropertyValue", "0"),
         "gross value real property":        v("realPropertyValue", "0"),
         "improved":                         bool(nonzero(data.get("improvedRealProperty"))),
@@ -2158,6 +2224,11 @@ def fill_administration_pdf(data):
                                             v("realPropertyDescription"),
         "c The estimated gross rent for a period of eighteen 18 months is the sum of":
                                             v("grossRents18mo"),
+        # ── §3(d) "right of action / wrongful death asset" — default NONE
+        "and the person against whom it exists including names and carrier 1":
+                                            v("rightOfAction", "NONE"),
+        "and the person against whom it exists including names and carrier 2": "",
+        "and the person against whom it exists including names and carrier 3": "",
 
         # Surviving relatives dropdowns
         "Dropdown 6a": dropdown_vals[0],
@@ -2200,22 +2271,39 @@ def fill_administration_pdf(data):
         "yes wrongful death":               False,
     }
 
-    # ── PAGE 3: Distributees (full age / sound mind) — up to 8 rows ─
-    for i, dist in enumerate(data.get("distributees", [])[:8]):
-        if dist.get("name"):
-            n = str(i + 1)
-            fields[f"Name {n}"]                        = dist["name"]
-            fields[f"Relationship {n}"]                = dist.get("relationship", "")
-            fields[f"Domicile and Mailing Address {n}"] = dist.get("address", "")
-            fields[f"Citizenship {n}"]                 = dist.get("citizenship", "U.S.A.")
+    # ── PAGE 3: Distributees — driven by compute_interested_persons ──
+    # Primary (full-age, sound mind) distributees fill rows 1–8.
+    # Minor / under-disability distributees fill rows 1_2–8_2.
+    for i, dist in enumerate(primary_adults[:8]):
+        n = str(i + 1)
+        fields[f"Name {n}"]                         = dist.get("name", "")
+        fields[f"Relationship {n}"]                 = dist.get("relationship", "")
+        fields[f"Domicile and Mailing Address {n}"] = dist.get("address", "")
+        fields[f"Citizenship {n}"]                  = dist.get("citizenship", "U.S.A.")
+    for i, dist in enumerate(primary_minors[:8]):
+        n = str(i + 1)
+        fields[f"Name {n}_2"]                         = dist.get("name", "")
+        fields[f"Relationship {n}_2"]                 = dist.get("relationship", "")
+        fields[f"Domicile and Mailing Address {n}_2"] = dist.get("address", "")
+        fields[f"Citizenship {n}_2"]                  = dist.get("citizenship", "U.S.A.")
 
     # ── PAGE 3: Debts ────────────────────────────────────────────────
     debt_key = "8 There are no outstanding debts or funeral expenses except Write NONE or state same {}"
     for i, line in enumerate(debt_lines[:9]):
         fields[debt_key.format(i + 1)] = line
 
+    # ── Font overrides ──────────────────────────────────────────────
+    font_overrides = {
+        # Page-5 "County of" widget is 92x9 — too short for 8pt baseline
+        # to land inside. fontsize=0 lets Acrobat auto-size to fit.
+        "County of": 0,
+        # The 8-class §5 dropdowns are similar.
+        "Dropdown 6a": 8, "Dropdown 6b": 8, "Dropdown 6c": 8, "Dropdown 6d": 8,
+        "Dropdown 6e": 8, "Dropdown 6f": 8, "Dropdown 6g": 8, "Dropdown 6h": 8,
+    }
+
     template = os.path.join(ADMIN_TEMPLATES_DIR, "Admin Petition + Oath.pdf")
-    return fill_pdf(template, fields)
+    return fill_pdf(template, fields, font_overrides=font_overrides)
 
 
 def fill_nondom_pdf(data):
@@ -2229,7 +2317,12 @@ def fill_nondom_pdf(data):
     pet       = petitioner_full(data)
     lt        = data.get("lettersType", "Letters of Administration")
     lt_lower  = lt.lower()
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
 
     def v(key, default=""):
         return str(data.get(key, "") or "").strip() or default
@@ -2909,7 +3002,12 @@ def fill_cta_pdf(data):
     aka      = data.get("decedentAKA", "")
     pet      = petitioner_full(data)
     file_no  = data.get("fileNo", "")
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
 
     def v(key, default=""):
         return str(data.get(key, "") or "").strip() or default
@@ -3140,7 +3238,9 @@ def fill_waiver_individual_pdf(data, dist):
     aka = data.get("decedentAKA", "")
     county = data.get("county", "")
     file_no = data.get("fileNo", "")
-    letters_to = data.get("lettersTo", "") or petitioner_full(data)
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored.
+    letters_to = petitioner_full(data)
 
     dist_name = dist.get("name", "")
     dist_addr = dist.get("address", "")
@@ -3156,6 +3256,12 @@ def fill_waiver_individual_pdf(data, dist):
         "TownStateZip":      "",
         "Relationship_2":    dist_rel,
         "be issued to":      letters_to,
+        # The Surrogate's Court county fills the narrow widget that sits
+        # right after "in the Surrogate's Court of_" in the body text.
+        # The PDF authoring tool named the widget after the long phrase
+        # that immediately follows it, so the field name is the entire
+        # paragraph fragment.
+        "renounces all right to Letters of Administration of the above captioned estate and consents that": county,
         "COUNTY OF_5":       county,
         "Name of Attorney":  data.get("attorneyName", "Jessica Wilson, Esq."),
         "1_4":               data.get("firmAddress", "221 Columbia Street"),
@@ -3197,7 +3303,12 @@ def fill_waiver_corporate_pdf(data, dist):
     aka = data.get("decedentAKA", "")
     county = data.get("county", "")
     file_no = data.get("fileNo", "")
-    letters_to = data.get("lettersTo", "") or petitioner_full(data)
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
 
     corp_name = dist.get("name", "")
 
@@ -3243,7 +3354,12 @@ def fill_citation_pdf(data):
     pet = petitioner_full(data)
     county = data.get("county", "")
     file_no = data.get("fileNo", "")
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
 
     pet_addr = ", ".join(filter(None, [
         data.get("petitionerStreet", ""),
@@ -3330,7 +3446,12 @@ def fill_notice_of_application_pdf(data):
     county = data.get("county", "")
     file_no = data.get("fileNo", "")
     aka = data.get("decedentAKA", "")
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
 
     fields = {
         "County of 56":    county,
@@ -3493,7 +3614,12 @@ def fill_proposed_decree_pdf(data):
     county = data.get("county", "")
     file_no = data.get("fileNo", "")
     aka = data.get("decedentAKA", "")
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
     bond_amount = data.get("bondAmount", "")
 
     fields = {
@@ -3863,7 +3989,12 @@ def generate_notice_of_probate(data):
 
     # Compute the canonical interested-persons list — same helper the petition
     # uses, so the two documents render identical "Nature of Interest" text.
-    letters_to = data.get("lettersTo", "") or pet
+    # Letters always issued to the petitioner's full legal name. One
+    # source of truth — data.lettersTo is intentionally ignored, since
+    # using it as an override produced inconsistencies between the
+    # petition caption (full name) and the "Letters Testamentary to:"
+    # line / waiver "be issued to" (short name).
+    letters_to = petitioner_full(data)
     persons = compute_interested_persons(data, pet, pet_addr, letters_to)
 
     recipients = []
