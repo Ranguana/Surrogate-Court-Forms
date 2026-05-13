@@ -974,18 +974,21 @@ def fill_pdf(template_path, fields, font_overrides=None):
     """Universal PDF form filler using pymupdf/fitz.
 
     Behavior:
-    - Every text field defaults to 10pt (unless template explicitly sets a non-zero size).
-    - Multiline flag (PDF AcroForm bit 13, value 4096) is enabled on every text widget
-      whose value isn't a single 'X', so long values wrap to a new line within the
-      field box instead of being shrunk to fit one line.
+    - Every text field defaults to 8pt (unless template explicitly sets a non-zero size).
     - Checkbox-style 'X' values are sized to the box height so they fill the box.
     - font_overrides: optional dict mapping field name → font size in points.
-      When the field's name is a key, that size wins over the default 10pt.
+      When the field's name is a key, that size wins over the default 8pt.
+
+    Note: Multiline flag is NOT set. Adding Multiline to single-line template
+    fields causes Acrobat to draw a "+" scroll indicator at every field's
+    right edge (visible both on screen and on print). Acrobat with
+    /NeedAppearances=True handles long-content wrapping naturally without
+    needing the Multiline flag, so we leave each field's flags as the
+    template author set them.
 
     Handles text, checkboxes (True/False), radio buttons, and combo/dropdown fields.
     Calls widget.update() to bake appearance streams so fields render in all viewers.
     """
-    MULTILINE_FLAG = 1 << 12  # PDF AcroForm field flag for multiline text
     doc = fitz.open(template_path)
     for page in doc:
         for widget in page.widgets():
@@ -1022,11 +1025,6 @@ def fill_pdf(template_path, fields, font_overrides=None):
                         widget.text_fontsize = font_overrides[name]
                     else:
                         widget.text_fontsize = 8
-                    # Enable multiline so long text wraps within the field
-                    try:
-                        widget.field_flags = (widget.field_flags or 0) | MULTILINE_FLAG
-                    except Exception:
-                        pass
             widget.update()
     buf = io.BytesIO()
     doc.save(buf)
