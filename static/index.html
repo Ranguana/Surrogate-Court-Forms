@@ -1122,7 +1122,7 @@ let proceeding = "Probate";
 const checks = {
   selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
 };
-let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,dob:"",guardianInfo:"",disposition:"tbd"}];
+let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",disposition:"tbd"}];
 
 // EPTL 4-1.1 succession chain
 // null=unanswered, true=yes, false=no
@@ -1362,6 +1362,15 @@ function renderDists() {
         <input value="${d.interest||''}" oninput="ud(${i},'interest',this.value)" placeholder="e.g. Residuary legatee under Article FOURTH">
       </div>
       ${d.isMinor?`
+      <div class="disp-row" style="gap:16px;margin-top:4px">
+        <span style="font-size:12px;font-family:Arial,sans-serif;color:var(--text2)">Type:</span>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="d-disab-${i}" ${(d.disabilityType||'infant')==='infant'?'checked':''} onchange="ud(${i},'disabilityType','infant')"> Infant (Schedule C)
+        </label>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="d-disab-${i}" ${d.disabilityType==='disability'?'checked':''} onchange="ud(${i},'disabilityType','disability')"> Under Disability (Schedule D)
+        </label>
+      </div>
       <div class="grid2" style="margin-top:4px">
         <div class="field"><label>Date of Birth</label><input value="${d.dob||''}" oninput="ud(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
         <div class="field"><label>Guardian Name & Address</label><input value="${d.guardianInfo||''}" oninput="ud(${i},'guardianInfo',this.value)" placeholder="Name, address of guardian"></div>
@@ -1414,7 +1423,7 @@ function renderDists() {
   document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
   updateSummary();
 }
-function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,dob:"",guardianInfo:"",disposition:"tbd"});renderDists();} }
+function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
 function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
 
@@ -1491,7 +1500,40 @@ function renderWb() {
           <input type="checkbox" ${wb.isMinor?'checked':''} onchange="udWb(${i},'isMinor',this.checked);renderWb()"> Minor / Under Disability
         </label>
       </div>
+      <div class="disp-row" style="gap:16px;margin-top:4px">
+        <span style="font-size:12px;font-family:Arial,sans-serif;color:var(--text2)">Status:</span>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="wb-status-${i}" ${!wb.deceased?'checked':''} onchange="udWb(${i},'deceased',false);renderWb()"> Alive
+        </label>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="wb-status-${i}" ${wb.deceased?'checked':''} onchange="udWb(${i},'deceased',true);renderWb()"> Deceased
+        </label>
+      </div>
+      ${wb.deceased?`
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Date of Death</label><input value="${(wb.dod||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'dod',this.value)" placeholder="MM/DD/YYYY"></div>
+        <div class="field"><label>When died</label>
+          <div style="display:flex;gap:12px;padding-top:6px">
+            <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="radio" name="wb-when-${i}" ${wb.whenDied==='predeceased'?'checked':''} onchange="udWb(${i},'whenDied','predeceased')"> Predeceased decedent
+            </label>
+            <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="radio" name="wb-when-${i}" ${wb.whenDied==='postDeceased'?'checked':''} onchange="udWb(${i},'whenDied','postDeceased')"> Post-deceased decedent
+            </label>
+          </div>
+        </div>
+      </div>
+      `:''}
       ${wb.isMinor?`
+      <div class="disp-row" style="gap:16px;margin-top:4px">
+        <span style="font-size:12px;font-family:Arial,sans-serif;color:var(--text2)">Type:</span>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="wb-disab-${i}" ${(wb.disabilityType||'infant')==='infant'?'checked':''} onchange="udWb(${i},'disabilityType','infant')"> Infant (Schedule C)
+        </label>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="wb-disab-${i}" ${wb.disabilityType==='disability'?'checked':''} onchange="udWb(${i},'disabilityType','disability')"> Under Disability (Schedule D)
+        </label>
+      </div>
       <div class="grid2" style="margin-top:4px">
         <div class="field"><label>Date of Birth</label><input value="${(wb.dob||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
         <div class="field"><label>Resides with / Guardian</label><input value="${(wb.guardianInfo||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'guardianInfo',this.value)" placeholder="Name + address of guardian or person they reside with"></div>
@@ -1502,7 +1544,7 @@ function renderWb() {
   });
 }
 function addWb() {
-  _willBeneficiaries.push({name:"",relationship:"",type:"residuary_beneficiary",articles:"",interest:"",address:"",isDistributee:false,isMinor:false,dob:"",guardianInfo:""});
+  _willBeneficiaries.push({name:"",relationship:"",type:"residuary_beneficiary",articles:"",interest:"",address:"",isDistributee:false,isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",deceased:false,dod:"",whenDied:""});
   renderWb();
 }
 function removeWb(i) { _willBeneficiaries.splice(i,1); renderWb(); }

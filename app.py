@@ -461,6 +461,38 @@ def generate_packet():
                 errors.append(f"Schedule D(a) for {dist.get('name')}: {e}")
                 safe = dist['name'].replace(' ', '_')
 
+    # ── Schedule C (Infants) + Schedule D (Disability) ──────────────────────
+    # One per distributee or will-beneficiary flagged isMinor=true.
+    # disabilityType='infant' → Schedule C; 'disability' → Schedule D.
+    # Will beneficiaries that are deceased are skipped (they're already filtered
+    # out of recipient lists; no minor-schedule applies to a dead person).
+    minor_candidates = []
+    for d in distributees:
+        if d.get("isMinor") and d.get("name"):
+            minor_candidates.append(d)
+    for wb in (data.get("willBeneficiaries") or []):
+        if wb.get("isMinor") and wb.get("name") and not wb.get("deceased"):
+            minor_candidates.append(wb)
+    for person in minor_candidates:
+        kind = person.get("disabilityType") or "infant"
+        try:
+            safe = person['name'].replace(' ', '_')
+            if kind == "disability":
+                print(f"[TRYING] {waiver_slot} fill_schedule_d_pdf() for {person['name']!r}")
+                fname = f"{waiver_slot}_Schedule_D_{safe}.pdf"
+                files.append((fname, fill_schedule_d_pdf(data, person)))
+                print(f"[OK] {waiver_slot} Schedule D (Disability): {person['name']}")
+            else:
+                print(f"[TRYING] {waiver_slot} fill_schedule_c_pdf() for {person['name']!r}")
+                fname = f"{waiver_slot}_Schedule_C_{safe}.pdf"
+                files.append((fname, fill_schedule_c_pdf(data, person)))
+                print(f"[OK] {waiver_slot} Schedule C (Infant): {person['name']}")
+        except Exception as e:
+            label = "Schedule D" if kind == "disability" else "Schedule C"
+            print(f"[ERR] {waiver_slot} {label} {person.get('name')}: {e}")
+            traceback.print_exc()
+            errors.append(f"{label} for {person.get('name')}: {e}")
+
     # Bond Affidavit removed — only needed for specific bond cases, not every packet
 
     # ── Notice of Probate + Affidavit of Comparison (Probate proceedings only)

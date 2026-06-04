@@ -1244,6 +1244,12 @@ def compute_interested_persons(data, pet, pet_addr, letters_to):
         wb_name = (wb.get("name") or "").strip()
         if not wb_name:
             continue
+        # Skip deceased beneficiaries entirely — they're not necessary parties
+        # (predeceased: bequest lapses; post-deceased: their estate would be
+        # noticed separately, captured as a TODO until we add fiduciary-of-
+        # estate handling).
+        if wb.get("deceased"):
+            continue
         wb_interest = _scrub_interest((wb.get("interest") or "").strip())
         wb_rel = (wb.get("relationship") or "").strip()
         wb_addr = (wb.get("address") or "").strip()
@@ -2914,7 +2920,7 @@ def fill_schedule_da_pdf(data, dist):
     """Fill the Schedule D(a) form for a distributee who post-deceased the decedent.
 
     Field mapping (by rect position on page):
-    - Combo Box0:     County
+    - County:         County (caption — replaces hard-coded "NEW YORK")
     - Text Field167:  File #
     - Text Field164:  Estate of (decedent name)
     - Text Field165:  a/k/a
@@ -2940,7 +2946,7 @@ def fill_schedule_da_pdf(data, dist):
     fields = {}
 
     # Header
-    fields["Combo Box0"] = county
+    fields["County"] = county
     fields["Text Field167"] = file_no
     fields["Text Field164"] = dec
     fields["Text Field165"] = aka
