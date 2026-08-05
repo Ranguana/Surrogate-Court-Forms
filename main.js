@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
-const { spawn, exec } = require("child_process");
+const { spawn, exec, execSync } = require("child_process");
 const crypto = require("crypto");
 
 const FLASK_PORT = 52845;
@@ -102,6 +102,24 @@ function launchServer(binaryPath, appDir) {
   flaskProcess.on("error", (err) => {
     notifyFlaskFailed("Could not start server: " + err.message);
   });
+}
+
+// Reap any process still bound to the Flask port. The PyInstaller one-file
+// binary spawns a child that actually binds the port and outlives the parent we
+// spawned — so killing flaskProcess alone leaves an orphan squatting the port,
+// which makes the next launch attach to a stale server (wrong version / empty
+// case list). Killing by port clears both parent and orphaned child.
+function reapServerPort() {
+  try {
+    execSync(`lsof -ti tcp:${FLASK_PORT} | xargs kill -9`, { stdio: "ignore", timeout: 5000 });
+  } catch (e) {
+    /* nothing listening — nothing to reap */
+  }
+}
+
+function killServer() {
+  try { if (flaskProcess && !flaskProcess.killed) flaskProcess.kill("SIGKILL"); } catch (e) { /* ok */ }
+  reapServerPort();
 }
 
 // ── Auto-update (source files only — not the binary) ────────────────────────
@@ -259,6 +277,9 @@ async function startFlask() {
 
   console.log("[SERVER] Binary:", binary);
   console.log("[SERVER] App dir:", appDir);
+  // Clear any orphaned server from a previous unclean exit (force-quit/crash)
+  // that could still hold the port, so we never attach to a stale instance.
+  reapServerPort();
   launchServer(binary, appDir);
 }
 
@@ -318,10 +339,10 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (flaskProcess) flaskProcess.kill();
+  killServer();
   app.quit();
 });
 
 app.on("before-quit", () => {
-  if (flaskProcess) flaskProcess.kill();
+  killServer();
 });
