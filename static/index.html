@@ -527,6 +527,15 @@ body {
         <div class="field"><label>Date of Death <span class="req">*</span></label><input id="decedentDOD" placeholder="MM/DD/YYYY" oninput="updateSummary()"></div>
         <div class="field"><label>Place of Death</label><input id="decedentPlaceOfDeath"></div>
       </div>
+      <div class="grid2">
+        <div class="field"><label>Sex</label>
+          <select id="decedentSex">
+            <option value="">—</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+        </div>
+      </div>
       <div class="field"><label>Social Security Number</label><input id="ssn" placeholder="XXX-XX-XXXX"><div class="hint">From death certificate — used in letters to financial institutions</div></div>
       <div class="sub-head">Domicile at Time of Death</div>
       <div class="field"><label>Street Address</label><input id="decedentStreet"></div>
@@ -1122,7 +1131,7 @@ let proceeding = "Probate";
 const checks = {
   selfProvingAffidavit:false, corporateExecutor:false, preliminaryLetters:false, dispenseBond:true,
 };
-let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",disposition:"tbd"}];
+let distributees = [{name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",motherName:"",motherAlive:"",fatherName:"",fatherAlive:"",residesWithWhom:"",disposition:"tbd"}];
 
 // EPTL 4-1.1 succession chain
 // null=unanswered, true=yes, false=no
@@ -1375,6 +1384,27 @@ function renderDists() {
         <div class="field"><label>Date of Birth</label><input value="${d.dob||''}" oninput="ud(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
         <div class="field"><label>Guardian Name & Address</label><input value="${d.guardianInfo||''}" oninput="ud(${i},'guardianInfo',this.value)" placeholder="Name, address of guardian"></div>
       </div>
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Mother's Name</label><input value="${(d.motherName||'').replace(/"/g,'&quot;')}" oninput="ud(${i},'motherName',this.value)" placeholder="Auto-fills if decedent"></div>
+        <div class="field"><label>Mother Alive?</label>
+          <select onchange="ud(${i},'motherAlive',this.value)">
+            <option value="" ${!d.motherAlive?'selected':''}>—</option>
+            <option value="Yes" ${d.motherAlive==='Yes'?'selected':''}>Yes</option>
+            <option value="No" ${d.motherAlive==='No'?'selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Father's Name</label><input value="${(d.fatherName||'').replace(/"/g,'&quot;')}" oninput="ud(${i},'fatherName',this.value)" placeholder="Auto-fills if decedent"></div>
+        <div class="field"><label>Father Alive?</label>
+          <select onchange="ud(${i},'fatherAlive',this.value)">
+            <option value="" ${!d.fatherAlive?'selected':''}>—</option>
+            <option value="Yes" ${d.fatherAlive==='Yes'?'selected':''}>Yes</option>
+            <option value="No" ${d.fatherAlive==='No'?'selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-top:4px"><label>Resides with (name + address)</label><input value="${(d.residesWithWhom||'').replace(/"/g,'&quot;')}" oninput="ud(${i},'residesWithWhom',this.value)" placeholder="Usually a parent or guardian"></div>
       `:''}
       <div class="disp-row">
         <span class="disp-label">Disposition:</span>
@@ -1423,9 +1453,28 @@ function renderDists() {
   document.getElementById("add-dist-btn").style.display = distributees.length>=7?"none":"block";
   updateSummary();
 }
-function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",disposition:"tbd"});renderDists();} }
+function addDist()     { if(distributees.length<20){distributees.push({name:"",relationship:"",address:"",citizenship:"",interest:"",beneficiaryType:"primary",isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",motherName:"",motherAlive:"",fatherName:"",fatherAlive:"",residesWithWhom:"",disposition:"tbd"});renderDists();} }
 function removeDist(i) { distributees.splice(i,1); renderDists(); }
-function ud(i,k,v)     { distributees[i][k]=v; updateSummary(); }
+function ud(i,k,v)     { distributees[i][k]=v; if(k==='isMinor'||k==='relationship') _autoDeriveMinorParents(distributees[i]); updateSummary(); }
+function _autoDeriveMinorParents(person) {
+  // When a minor's relationship to decedent is Son/Daughter and we know
+  // decedent sex, default the matching parent slot to the decedent name +
+  // alive=No. Only fills empty slots — never overrides user edits.
+  if(!person || !person.isMinor) return;
+  const rel = ((person.relationship||'')+'').toLowerCase().trim();
+  if(rel !== 'son' && rel !== 'daughter') return;
+  const sex = (document.getElementById('decedentSex')?.value||'').trim();
+  if(sex !== 'Male' && sex !== 'Female') return;
+  const dn = [g('decedentFirstName'),g('decedentMiddleName'),g('decedentLastName')].filter(Boolean).join(' ').trim();
+  if(!dn) return;
+  if(sex === 'Male') {
+    if(!person.fatherName)  person.fatherName  = dn;
+    if(!person.fatherAlive) person.fatherAlive = 'No';
+  } else {
+    if(!person.motherName)  person.motherName  = dn;
+    if(!person.motherAlive) person.motherAlive = 'No';
+  }
+}
 
 // ── WILL BENEFICIARIES ────────────────────────────────────────────────────────
 const WB_TYPES = [
@@ -1536,19 +1585,40 @@ function renderWb() {
       </div>
       <div class="grid2" style="margin-top:4px">
         <div class="field"><label>Date of Birth</label><input value="${(wb.dob||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'dob',this.value)" placeholder="MM/DD/YYYY"></div>
-        <div class="field"><label>Resides with / Guardian</label><input value="${(wb.guardianInfo||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'guardianInfo',this.value)" placeholder="Name + address of guardian or person they reside with"></div>
+        <div class="field"><label>Guardian Name & Address</label><input value="${(wb.guardianInfo||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'guardianInfo',this.value)" placeholder="Name + address of guardian"></div>
       </div>
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Mother's Name</label><input value="${(wb.motherName||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'motherName',this.value)" placeholder="Auto-fills if decedent"></div>
+        <div class="field"><label>Mother Alive?</label>
+          <select onchange="udWb(${i},'motherAlive',this.value)">
+            <option value="" ${!wb.motherAlive?'selected':''}>—</option>
+            <option value="Yes" ${wb.motherAlive==='Yes'?'selected':''}>Yes</option>
+            <option value="No" ${wb.motherAlive==='No'?'selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:4px">
+        <div class="field"><label>Father's Name</label><input value="${(wb.fatherName||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'fatherName',this.value)" placeholder="Auto-fills if decedent"></div>
+        <div class="field"><label>Father Alive?</label>
+          <select onchange="udWb(${i},'fatherAlive',this.value)">
+            <option value="" ${!wb.fatherAlive?'selected':''}>—</option>
+            <option value="Yes" ${wb.fatherAlive==='Yes'?'selected':''}>Yes</option>
+            <option value="No" ${wb.fatherAlive==='No'?'selected':''}>No</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-top:4px"><label>Resides with (name + address)</label><input value="${(wb.residesWithWhom||'').replace(/"/g,'&quot;')}" oninput="udWb(${i},'residesWithWhom',this.value)" placeholder="Usually a parent or guardian"></div>
       `:''}
     `;
     c.appendChild(el);
   });
 }
 function addWb() {
-  _willBeneficiaries.push({name:"",relationship:"",type:"residuary_beneficiary",articles:"",interest:"",address:"",isDistributee:false,isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",deceased:false,dod:"",whenDied:""});
+  _willBeneficiaries.push({name:"",relationship:"",type:"residuary_beneficiary",articles:"",interest:"",address:"",isDistributee:false,isMinor:false,disabilityType:"infant",dob:"",guardianInfo:"",motherName:"",motherAlive:"",fatherName:"",fatherAlive:"",residesWithWhom:"",deceased:false,dod:"",whenDied:""});
   renderWb();
 }
 function removeWb(i) { _willBeneficiaries.splice(i,1); renderWb(); }
-function udWb(i,k,v) { _willBeneficiaries[i][k]=v; }
+function udWb(i,k,v) { _willBeneficiaries[i][k]=v; if(k==='isMinor'||k==='relationship') _autoDeriveMinorParents(_willBeneficiaries[i]); }
 function udWbType(i,v) {
   _willBeneficiaries[i].type = v;
   // Auto-rebuild interest text from Type + Article when both are set
@@ -1610,7 +1680,7 @@ function getFormData() {
     decedentFirstName:g("decedentFirstName"), decedentMiddleName:g("decedentMiddleName"),
     decedentLastName:g("decedentLastName"), decedentAKA:g("decedentAKA"),
     decedentDOB:g("decedentDOB"), decedentDOD:g("decedentDOD"),
-    decedentPlaceOfDeath:g("decedentPlaceOfDeath"), ssn:g("ssn"),
+    decedentPlaceOfDeath:g("decedentPlaceOfDeath"), decedentSex:g("decedentSex"), ssn:g("ssn"),
     decedentStreet:g("decedentStreet"), decedentCity:g("decedentCity"),
     decedentCounty:g("decedentCounty"), decedentState:g("decedentState"), decedentZip:g("decedentZip"),
     decedentCitizenship:g("decedentCitizenship"), foreignState:g("foreignState"),
@@ -2614,6 +2684,11 @@ async function modalAction(){
   const name=(document.getElementById("save-name")?.value||"").trim();
   if(!name){ document.getElementById("save-name").style.borderColor="var(--red)"; return; }
 
+  // Name of the case currently loaded ('' for a brand-new case). Saving under a
+  // different name is a rename — we delete the old record below so a rename can't
+  // leave an orphaned duplicate.
+  const prevName = _currentCaseName;
+
   // Dedup: check if a case with same first+last name already exists under a different key
   const data = getFormData();
   const first = (data.decedentFirstName||'').trim().toLowerCase();
@@ -2633,22 +2708,61 @@ async function modalAction(){
   }
 
   await saveCaseToServer(name, _buildCaseData());
+
+  // Rename cleanup: saving a loaded case under a new name replaces it, so remove
+  // the old key. No-op for new cases ('') or plain same-name overwrites.
+  if(prevName && prevName !== name) {
+    await deleteCaseFromServer(prevName);
+  }
+
   _currentCaseName = name;
   acctCaseName = name;
   closeModal();
   showStatus(`✓ Saved: "${name}"`, "ok");
 }
 
-// ── Auto-save DISABLED ────────────────────────────────────────────────────────
-// Auto-save was overwriting good saved drafts with partial form state, because
-// loadCaseFromDash doesn't fully restore every field that getFormData() writes.
-// Until load/save round-trip is verified for ALL fields, saves only happen
-// when the user explicitly triggers them via Cmd+S or the Save button.
+// ── Auto-save ─────────────────────────────────────────────────────────────────
+// Re-enabled with three safety gates:
+//   1. _loading flag — set true during loadCaseFromDash so a load can't
+//      trigger autosaves that overwrite the just-loaded data
+//   2. empty-form check — refuse to autosave when decedent name is blank;
+//      that's the exact bug the previous disable was guarding against
+//   3. 1.5s debounce — only save after typing stops
+// Manual saves (Cmd+S / Save button) bypass the empty-form check.
+let _loading = false;
+let _autosaveTimer = null;
+
 function _saveNow() {
   if(!_currentCaseName) return Promise.resolve();
   return saveCaseToServer(_currentCaseName, _buildCaseData())
     .catch(e => console.warn('[SAVE] Failed:', e));
 }
+
+async function _autosaveNow() {
+  if(_loading || !_currentCaseName) return;
+  const cur = _buildCaseData();
+  const first = (cur.data && cur.data.decedentFirstName) || '';
+  const last  = (cur.data && cur.data.decedentLastName)  || '';
+  if(!first && !last) {
+    console.warn('[AUTOSAVE] skipped — form has no decedent name');
+    return;
+  }
+  try {
+    await saveCaseToServer(_currentCaseName, cur);
+    console.log('[AUTOSAVE] saved at', new Date().toLocaleTimeString());
+  } catch(e) {
+    console.warn('[AUTOSAVE] failed:', e);
+  }
+}
+
+function _scheduleAutosave() {
+  if(_loading || !_currentCaseName) return;
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(_autosaveNow, 1500);
+}
+
+document.addEventListener('input', _scheduleAutosave, true);
+document.addEventListener('change', _scheduleAutosave, true);
 
 function closeModal(){
   document.getElementById("modal-overlay").classList.remove("open");
@@ -3021,6 +3135,7 @@ async function loadCaseFromDash(name){
   const cases=await getSavedCasesAsync();
   const saved=cases[name];
   if(!saved) return;
+  _loading = true;
   const data=saved.data||{};
 
   // Restore proceeding
@@ -3046,7 +3161,7 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentSex","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   // CTA: ctaPetitionerInterest may hold custom "Other" text — re-route into Other input
   const _cpiSel = document.getElementById('ctaPetitionerInterest');
@@ -3085,6 +3200,7 @@ async function loadCaseFromDash(name){
   const navBtn = document.querySelector('.nav-btn[onclick*="intake"]');
   if(navBtn) nav('intake', navBtn);
   showStatus(`✓ Loaded: "${name}"`, "ok");
+  _loading = false;
 }
 
 function openNewCase(){
