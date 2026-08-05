@@ -187,7 +187,7 @@ def save_to_output(data, files):
     return estate_dir
 from generators import (
     generate_cover_letter, generate_805, generate_heirship,
-    generate_waiver_cover, generate_attorney_cert,
+    generate_waiver_cover, generate_attorney_cert, generate_designee_affidavit,
     generate_probate_docs, fill_ancillary_pdf,
     fill_administration_pdf, fill_nondom_pdf, fill_cta_pdf, generate_ft1,
     generate_auth_letter, generate_instruction_letter,
@@ -460,6 +460,27 @@ def generate_packet():
                 traceback.print_exc()
                 errors.append(f"Schedule D(a) for {dist.get('name')}: {e}")
                 safe = dist['name'].replace(' ', '_')
+
+    # ── Affidavit as to Designee ─────────────────────────────────────────────
+    # When the petitioner's interest is "Designee", each distributee signs an
+    # affidavit designating the petitioner to serve. One affidavit per distributee.
+    petitioner_is_designee = (
+        (data.get("petitionerInterest", "") or "").strip().lower() == "designee"
+        or "designee" in (data.get("petitionerRelationship", "") or "").strip().lower()
+    )
+    if petitioner_is_designee:
+        for dist in distributees:
+            if dist.get("name"):
+                try:
+                    safe = dist['name'].replace(' ', '_')
+                    print(f"[TRYING] {waiver_slot} generate_designee_affidavit() for {dist['name']!r}")
+                    fname = f"{waiver_slot}_Affidavit_as_to_Designee_{safe}.docx"
+                    files.append((fname, generate_designee_affidavit(data, dist)))
+                    print(f"[OK] {waiver_slot} Designee affidavit: {dist['name']}")
+                except Exception as e:
+                    print(f"[ERR] {waiver_slot} Designee affidavit {dist.get('name')}: {e}")
+                    traceback.print_exc()
+                    errors.append(f"Designee affidavit for {dist.get('name')}: {e}")
 
     # ── Schedule C (Infants) + Schedule D (Disability) ──────────────────────
     # One per distributee or will-beneficiary flagged isMinor=true.
@@ -1371,7 +1392,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.38"
+APP_VERSION = "1.6.39"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

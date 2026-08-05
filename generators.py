@@ -900,6 +900,88 @@ def generate_waiver_cover(data, distributee):
     return make_docx_bytes(doc)
 
 
+# ─── AFFIDAVIT AS TO DESIGNEE ─────────────────────────────────────────────────
+
+def generate_designee_affidavit(data, distributee):
+    """Affidavit as to Designee — signed by a distributee who is stepping aside
+    and designating the petitioner (the "designee") to serve as fiduciary.
+
+    Generated once per distributee when the petitioner's interest is "Designee".
+    Caption, file no., decedent and proposed administrator (the petitioner) are
+    filled from the case; the affiant is the distributee. The *reason* the affiant
+    does not wish to serve is left as a blank line to complete by hand.
+    """
+    county     = (data.get("county", "") or "").strip()
+    file_no    = (data.get("fileNo", "") or "").strip()
+    aka        = (data.get("decedentAKA", "") or "").strip()
+    decedent   = decedent_full(data)
+    petitioner = petitioner_full(data)
+    aff_name   = (distributee.get("name", "") or "").strip()
+    aff_rel    = (distributee.get("relationship", "") or "").strip()
+    aff_addr   = (distributee.get("address", "") or "").strip()
+
+    proceeding = data.get("proceedingType") or data.get("proceeding") or "Administration"
+    title = "Administrator c.t.a." if proceeding == "AdminCTA" else "Administrator"
+
+    doc = Document()
+    for s in doc.sections:
+        s.left_margin = s.right_margin = Inches(1)
+        s.top_margin = s.bottom_margin = Inches(1)
+
+    def p(text="", *, bold=False, align=None, space_after=6):
+        para = doc.add_paragraph()
+        para.paragraph_format.space_after = Pt(space_after)
+        para.paragraph_format.line_spacing = 1.0
+        if align is not None:
+            para.alignment = align
+        run = para.add_run(text)
+        run.bold = bold
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(12)
+        return para
+
+    RIGHT = WD_ALIGN_PARAGRAPH.RIGHT
+    rule = "—" * 52 + "X"
+
+    p("SURROGATE'S COURT OF THE STATE OF NEW YORK", bold=True, space_after=0)
+    p(f"COUNTY OF {county.upper()}", bold=True, space_after=0)
+    p(rule, space_after=0)
+    p("ADMINISTRATION PROCEEDING,", space_after=0)
+    p(f"ESTATE OF {decedent},", space_after=0)
+    if aka:
+        p(f"        a/k/a {aka}", space_after=0)
+    p("                                Deceased.", space_after=0)
+    p(rule, space_after=0)
+    p("AFFIDAVIT AS TO DESIGNEE", bold=True, align=RIGHT, space_after=0)
+    p(f"File No.: {file_no}", align=RIGHT)
+
+    p("STATE OF NEW YORK\t)", space_after=0)
+    p("\t\t\t)  ss.:", space_after=0)
+    p(f"COUNTY OF {county.upper()}\t)")
+
+    p(f"I, {aff_name}, being duly sworn, deposes and says:")
+    p(f"1.\tI reside at {aff_addr or '________________________________________'}.")
+    p(f"2.\tI am the Decedent's {aff_rel or '________________'}.")
+    p(f"3.\tI have asked {petitioner} to be designated as {title} of the Estate of "
+      f"{decedent}.  ________________________________________________ (reason).")
+    p(f"4.\t{petitioner} will carry out this duty efficiently, fairly and in the best "
+      f"interest of the family.  I do not want to act as {title} because "
+      f"________________________ and it is too difficult.")
+    p(f"5.\tThis affidavit is made with my personal knowledge knowing the {county} "
+      f"County Surrogate's Court will rely thereon in issuing Letters of "
+      f"Administration to {petitioner}, the petitioner herein.")
+
+    p("_______________________________", align=RIGHT, space_after=0)
+    p(aff_name, align=RIGHT)
+    p("Sworn to before me on", space_after=0)
+    p("___________________, 20___")
+    p("_______________________", space_after=0)
+    p("Notary Public", space_after=0)
+
+    _validate_docx(doc, "generate_designee_affidavit")
+    return make_docx_bytes(doc)
+
+
 # ─── ATTORNEY CERTIFICATION ───────────────────────────────────────────────────
 
 def generate_attorney_cert(data):
