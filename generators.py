@@ -3302,24 +3302,22 @@ def fill_cta_pdf(data):
 # ─── WAIVER OF CONSENT AND RENUNCIATION (A-8 Individual) ────────────────────
 
 def fill_waiver_individual_pdf(data, dist):
-    """Fill the A-8 Waiver, Consent and Renunciation form for an individual distributee.
+    """Fill the A-8 Waiver, Renunciation and Consent to Appoint Administrator
+    (official NYSBA Form A-8, 2 pages) for an individual distributee.
 
-    Field mapping (Waiver of Consent and Renunciation.pdf):
-    - county of 111:        County
-    - Estate of 111:        Estate name (decedent)
-    - aka of 111:           a/k/a
-    - File No_7:            File number
-    - Print Name_5:         Distributee print name
-    - Street Address:       Distributee street address
-    - TownStateZip:         Distributee city/state/zip
-    - Relationship_2:       Relationship to decedent
-    - be issued to:         Letters to (administrator name)
-    - COUNTY OF_5:          County (notary section)
-    - Name of Attorney:     Attorney name
-    - 1_4:                  Attorney address line 1
-    - 2_4:                  Attorney address line 2
-    - Telephone Number_2:   Attorney phone
+    Template: templates/Admin/Waiver of Consent and Renunciation.pdf — built
+    from the official form with fields added at every blank. Field names:
+
+    Page 1: county, estate_of, aka, file_no, court_county,
+            cb_letters / cb_letters_limits / cb_limited (checkboxes),
+            be_issued_to, cb_bond_dispensed / cb_bond_amount, bond_amount,
+            dated, signature, print_name, street, city, state, zip,
+            country, relationship
+    Page 2: notary_state, notary_county, notary_date, notary_appeared,
+            atty_name, atty_firm, atty_phone, atty_address, atty_email
+            (attorney block runs across the bottom under the notary).
     """
+    import re as _re
     dec = decedent_full(data)
     aka = data.get("decedentAKA", "")
     county = data.get("county", "")
@@ -3329,39 +3327,53 @@ def fill_waiver_individual_pdf(data, dist):
     letters_to = petitioner_full(data)
 
     dist_name = dist.get("name", "")
-    dist_addr = dist.get("address", "")
+    dist_addr = (dist.get("address", "") or "").strip()
     dist_rel = dist.get("relationship", "")
 
-    fields = {
-        "county of 111":     county,
-        "Estate of 111":     dec,
-        "aka of 111":        aka,
-        "File No_7":         file_no,
-        "Print Name_5":      dist_name,
-        "Street Address":    dist_addr,
-        "TownStateZip":      "",
-        "Relationship_2":    dist_rel,
-        "be issued to":      letters_to,
-        # The Surrogate's Court county fills the narrow widget that sits
-        # right after "in the Surrogate's Court of_" in the body text.
-        # The PDF authoring tool named the widget after the long phrase
-        # that immediately follows it, so the field name is the entire
-        # paragraph fragment.
-        "renounces all right to Letters of Administration of the above captioned estate and consents that": county,
-        "COUNTY OF_5":       county,
-        "Name of Attorney":  data.get("attorneyName", "Jessica Wilson, Esq."),
-        "1_4":               data.get("firmAddress", "221 Columbia Street"),
-        "2_4":               data.get("firmAddress2", "Brooklyn NY 11231"),
-        "Telephone Number_2": data.get("attorneyPhone", "(212) 739-1736"),
-    }
+    # Split "street, city, ST zip" into the form's separate boxes.
+    street, city, state, zipc = dist_addr, "", "", ""
+    m = _re.match(r"^(.*?),\s*(.*?),\s*([A-Za-z]{2})\.?\s*(\d{5}(?:-\d{4})?)?\s*$", dist_addr)
+    if m:
+        street, city, state, zipc = m.group(1), m.group(2), m.group(3).upper(), m.group(4) or ""
+    elif ", " in dist_addr:
+        street, city = dist_addr.split(", ", 1)
 
-    # Split address into street + city/state/zip if comma-separated
-    if dist_addr and ", " in dist_addr:
-        parts = dist_addr.split(", ", 1)
-        fields["Street Address"] = parts[0]
-        fields["TownStateZip"] = parts[1] if len(parts) > 1 else ""
-    else:
-        fields["Street Address"] = dist_addr
+    lt = (data.get("lettersType") or "Letters of Administration").lower()
+    cb_limits  = "limitation" in lt
+    cb_limited = lt.startswith("limited")
+    cb_letters = not (cb_limits or cb_limited)
+
+    atty_addr = data.get("attorneyAddress") or ", ".join(filter(None, [
+        data.get("firmAddress", "221 Columbia Street"),
+        data.get("firmAddress2", "Brooklyn, New York 11231"),
+    ]))
+
+    fields = {
+        "county":        county.upper(),
+        "estate_of":     dec,
+        "aka":           aka,
+        "file_no":       file_no,
+        "court_county":  county,
+        "cb_letters":        cb_letters,
+        "cb_letters_limits": cb_limits,
+        "cb_limited":        cb_limited,
+        "be_issued_to":  letters_to,
+        "cb_bond_dispensed": bool(data.get("dispenseBond")),
+        "print_name":    dist_name,
+        "street":        street,
+        "city":          city,
+        "state":         state,
+        "zip":           zipc,
+        "country":       "USA" if (dist.get("citizenship", "") or "").upper().startswith("U") else "",
+        "relationship":  dist_rel,
+        # Notary STATE OF / COUNTY OF left blank — the notary fills these
+        # in wherever the waiver is actually signed.
+        "atty_name":     data.get("attorneyName")  or "Jessica Wilson, Esq.",
+        "atty_firm":     data.get("firmName")      or "Law Office of Jessica Wilson PC",
+        "atty_phone":    data.get("attorneyPhone") or "(212) 739-1736",
+        "atty_address":  atty_addr,
+        "atty_email":    data.get("attorneyEmail") or "jwilson@jessicawilsonlaw.com",
+    }
 
     template = os.path.join(ADMIN_TEMPLATES_DIR, "Waiver of Consent and Renunciation.pdf")
     return fill_pdf(template, fields)
@@ -3381,9 +3393,10 @@ def fill_waiver_corporate_pdf(data, dist):
     - a citation ... be issued to:       Letters to (administrator name)
     - COUNTY OF_6:                       County (notary section)
     - Name of Attorney_2:               Attorney name
-    - 1_5:                               Attorney address line 1
-    - 2_5:                               Attorney address line 2
+    - Firm Name_2:                       Firm name
+    - Address_2:                         Attorney address
     - Telephone Number_3:               Attorney phone
+    - Email_2:                           Attorney email
     """
     dec = decedent_full(data)
     aka = data.get("decedentAKA", "")
@@ -3405,11 +3418,17 @@ def fill_waiver_corporate_pdf(data, dist):
         "File No_8":         file_no,
         "Name of Corporation": corp_name,
         "a citation in this matter and consents that Letters of Administration be issued to": letters_to,
-        "COUNTY OF_6":       county,
-        "Name of Attorney_2": data.get("attorneyName", "Jessica Wilson, Esq."),
-        "1_5":               data.get("firmAddress", "221 Columbia Street"),
-        "2_5":               data.get("firmAddress2", "Brooklyn NY 11231"),
-        "Telephone Number_3": data.get("attorneyPhone", "(212) 739-1736"),
+        # Notary COUNTY OF left blank (filled by the notary at signing)
+        # Attorney block — two rows across the bottom under the notary:
+        #   Name of Attorney | Firm Name
+        #   Address          | Telephone | Email
+        "Name of Attorney_2": data.get("attorneyName")  or "Jessica Wilson, Esq.",
+        "Firm Name_2":        data.get("firmName")      or "Law Office of Jessica Wilson PC",
+        "Address_2":          data.get("attorneyAddress") or ", ".join(filter(None, [
+                                  data.get("firmAddress", "221 Columbia Street"),
+                                  data.get("firmAddress2", "Brooklyn, New York 11231")])),
+        "Telephone Number_3": data.get("attorneyPhone") or "(212) 739-1736",
+        "Email_2":            data.get("attorneyEmail") or "jwilson@jessicawilsonlaw.com",
     }
 
     template = os.path.join(ADMIN_TEMPLATES_DIR, "Waiver & Consent Corp.pdf")
@@ -3913,12 +3932,123 @@ def generate_waiver_probate(data, dist):
     - No actual bracket-style placeholders; uses blanks for manual fill.
     We replace the county blank and leave signature blanks for manual completion.
     """
-    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Waiver_Probate.docx"))
-    county = data.get("county", "")
+    import re as _re
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    replace_in_doc(doc, {
-        "County of _________________": f"County of {county}",
-    })
+    doc = Document(os.path.join(WORD_TEMPLATES_DIR, "Waiver_Probate.docx"))
+    county    = data.get("county", "")
+    dec       = decedent_full(data)
+    aka       = data.get("decedentAKA", "")
+    file_no   = data.get("fileNo", "")
+    will_date = data.get("willDate", "") or "____________"
+    pet       = petitioner_full(data)
+    dist_name = dist.get("name", "")
+    dist_addr = dist.get("address", "")
+    dist_rel  = dist.get("relationship", "")
+    year      = datetime.now().strftime("%Y")
+
+
+    def _all_paras():
+        for p in doc.paragraphs:
+            yield p
+        for t in doc.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        yield p
+
+    def _sub(p, rx, repl):
+        """Regex-substitute inside paragraph p, preserving run formatting
+        when the match sits inside one run; else collapse into runs[0]."""
+        if not rx.search(p.text):
+            return False
+        hit = False
+        for run in p.runs:
+            if rx.search(run.text):
+                run.text = rx.sub(repl, run.text, count=1)
+                hit = True
+        # Only fall back to paragraph-level collapse when no single run
+        # contained the match (split across runs). Re-testing p.text
+        # would double-apply when the replacement itself still matches.
+        if not hit:
+            full = rx.sub(repl, p.text, count=1)
+            if p.runs:
+                p.runs[0].text = full
+                for r in p.runs[1:]:
+                    r.text = ""
+            else:
+                p.add_run(full)
+        return True
+
+    # ── Caption table ──────────────────────────────────────────────
+    cap = doc.tables[0]
+    for p in cap.rows[1].cells[0].paragraphs:          # COUNTY OF ______
+        _sub(p, _re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF {county.upper()}")
+    for p in cap.rows[5].cells[1].paragraphs:          # WILL OF  ______
+        _sub(p, _re.compile(r"_+"), dec)
+    if aka:
+        for p in cap.rows[6].cells[1].paragraphs:      # a/k/a  ______
+            _sub(p, _re.compile(r"_+"), aka)
+    else:
+        # No a/k/a — blank out both the label and the underline so the
+        # caption doesn't show a dangling "a/k/a ________".
+        for ci in (0, 1):
+            for p in cap.rows[6].cells[ci].paragraphs:
+                for r in p.runs:
+                    r.text = ""
+    for p in cap.rows[6].cells[3].paragraphs:          # File No.
+        _sub(p, _re.compile(r"File No\.\s*"), f"File No. {file_no}")
+
+    # ── Body text ──────────────────────────────────────────────────
+    for p in doc.paragraphs:
+        _sub(p, _re.compile(r"County of\s*_+"), f"County of {county}")
+        _sub(p, _re.compile(r"Testament\s+dated\s*_+"), f"Testament dated {will_date}")
+        # Notary jurat year: "____, 2025," → current year
+        _sub(p, _re.compile(r"(On\s+_+,\s*)\d{4}"), rf"\g<1>{year}")
+
+    # ── Letters / signature table ──────────────────────────────────
+    sig = doc.tables[1]
+    for p in sig.rows[0].cells[0].paragraphs:          # [X] Letters Testamentary issue to ____
+        _sub(p, _re.compile(r"issue to\s*_+"), f"issue to {pet}")
+    for p in sig.rows[4].cells[0].paragraphs:          # date line "_____, 2024"
+        _sub(p, _re.compile(r"(_+,\s*)\d{4}"), rf"\g<1>{year}")
+    # (signature line in rows[4].cells[1] stays blank for the wet signature)
+    for p in sig.rows[5].cells[1].paragraphs:          # "Signature of ____"
+        _sub(p, _re.compile(r"Signature of\s*_+"), f"Signature of {dist_name}")
+    for p in sig.rows[4].cells[3].paragraphs:          # relationship (was hardcoded "Son")
+        _sub(p, _re.compile(r"\S.*"), dist_rel or "______________")
+    if dist_addr:                                      # address line above "(address)"
+        # Give the address column more room (template cell is only ~1.2")
+        # by borrowing from the wide signature column to its left.
+        from docx.shared import Inches as _In
+        from docx.oxml.ns import qn as _qn
+        grid = sig._tbl.tblGrid.findall(_qn("w:gridCol"))
+        if len(grid) >= 3:
+            grid[1].set(_qn("w:w"), str(int(2.15 * 1440)))
+            grid[2].set(_qn("w:w"), str(int(1.81 * 1440)))
+        for row in list(sig.rows)[4:7]:
+            row.cells[1].width = _In(2.15)
+            row.cells[2].width = _In(1.81)
+        for p in sig.rows[5].cells[2].paragraphs:
+            if not p.text.strip():
+                # Street on one line, city/state/zip on the next
+                parts = dist_addr.split(", ", 1)
+                r = p.add_run("\n".join(parts))
+                r.font.name = "Arial"
+                r.font.size = Pt(9)
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                break
+
+    # ── Strip the yellow fill-in highlights everywhere ─────────────
+    for p in _all_paras():
+        for r in p.runs:
+            if r.font.highlight_color is not None:
+                r.font.highlight_color = None
+
+    # Attorney block: the template's own stacked table (Print Name / Firm
+    # Name / Tel No. / Address of Attorney) at the bottom is kept exactly
+    # as-is — that's the layout the firm files (see Grego waiver).
 
     _validate_docx(doc, "generate_waiver_probate")
     return make_docx_bytes(doc)
