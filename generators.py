@@ -2609,10 +2609,18 @@ def fill_ft1_pdf(data):
     letters_type = (data.get("lettersType") or "Letters of Administration").upper()
     fields["Combo Box00"] = letters_type
 
-    # ── Deponent (petitioner) ───────────────────────────────────────────────────
-    fields["5a5"] = pet_name
-    fields["5b6"] = pet_rel
-    fields["5c7"] = pet_addr
+    # ── Deponent — the family-tree affiant (form requires someone with no
+    # financial interest; UI collects deponent* fields, falling back to the
+    # petitioner when blank). Field map (verified against template geometry):
+    #   5   = "I, ____" (deponent name)
+    #   5a5 = "I AM OVER 18 AND RESIDE AT: ____"
+    #   5b6 = "MY RELATIONSHIP TO THE DECEDENT IS ____"
+    #   5c7 = "I KNEW THE DECEDENT FOR ____ YEARS"
+    #   0   = "BASED ON ____" (left blank for the affiant)
+    fields["5"]   = (data.get("deponentName") or "").strip() or pet_name
+    fields["5a5"] = (data.get("deponentAddress") or "").strip() or pet_addr
+    fields["5b6"] = (data.get("deponentRelationship") or "").strip() or pet_rel
+    fields["5c7"] = (data.get("yearsKnown") or "").strip()
 
     # ── Section 1a: Marriages ───────────────────────────────────────────────────
     if marital == "never_married":
@@ -2628,11 +2636,15 @@ def fill_ft1_pdf(data):
         fields["6b10"] = spouse_name
         fields["Check Box01b"] = True
 
-    # ── Section 1b: Children (6 slots) ─────────────────────────────────────────
+    # ── Section 1b: Children (6 slots; name + date-of-death columns) ───────────
     child_name_f = ["816",  "917",  "1018",  "1119",  "1220",  "1321"]
+    child_dod_f  = ["8a22", "9a23", "10a24", "11a25", "12a26", "13a27"]
     for i, c in enumerate(children[:6]):
         if c.get("name"):
             fields[child_name_f[i]] = c["name"]
+            dod = c.get("postDeceasedDOD") or c.get("dateOfDeath") or ""
+            if dod:
+                fields[child_dod_f[i]] = dod
 
     # ── Section 3a: Siblings (6 slots, page 2) ─────────────────────────────────
     sib_name_f = ["27", "28", "29", "30", "31", "32"]
