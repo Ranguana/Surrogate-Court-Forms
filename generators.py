@@ -1076,7 +1076,15 @@ def fill_pdf(template_path, fields, font_overrides=None):
         for widget in page.widgets():
             name = widget.field_name
             if name not in fields:
-                continue
+                # XFA-flattened templates (e.g. probcta.pdf) carry full dotted
+                # paths like "topmostSubform[0].Page1[0].TextField13[0]" while
+                # mappings use the bare leaf name. Fall back to the last dotted
+                # segment — only for dotted names, so plain-named templates are
+                # unaffected.
+                if "." in name and name.rsplit(".", 1)[1] in fields:
+                    name = name.rsplit(".", 1)[1]
+                else:
+                    continue
             value = fields[name]
             if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
                 widget.field_value = bool(value)
@@ -3144,20 +3152,27 @@ def fill_cta_pdf(data):
     fields["Decedent_Name"]   = dec
     fields["Decedent_AKA"]    = aka
     fields["File_No"]         = file_no
+    # "County" covers both the caption COUNTY OF and the
+    # "TO THE SURROGATE'S COURT, COUNTY OF" line (same field name).
+    fields["County"]          = county
 
     # Section 1(a) — Petitioner info
-    fields["TextField13[0]"]  = pet                  # Petitioner name
-    fields["TextField14[0]"]  = pet_street            # Street address
-    fields["TextField15[0]"]  = pet_city              # City/Village/Town
-    fields["TextField16[0]"]  = pet_state             # State... but wrong field?
-    fields["TextField17[0]"]  = dec_county            # County
+    # TextField13 = trailing blank on the "is/are as follows:" lead-in (left
+    # empty); 14 = Name; 15/16 = Domicile (Street and Number)/(City, Village
+    # or Town); 17-20 = County/State/Zip/Telephone; 21 = Mailing address.
+    fields["TextField13[0]"]  = ""
+    fields["TextField14[0]"]  = pet                   # Petitioner name
+    fields["TextField15[0]"]  = pet_street            # Street and Number
+    fields["TextField16[0]"]  = pet_city              # City/Village/Town
+    fields["TextField17[0]"]  = v("petitionerCounty", county)  # County
     fields["TextField18[0]"]  = pet_state             # State
     fields["TextField19[0]"]  = pet_zip               # Zip
     fields["TextField20[0]"]  = ""                    # Telephone
     fields["TextField21[0]"]  = ""                    # Mailing address if different
 
-    # Citizenship checkboxes
-    if "us" in pet_cit.lower() or "citizen" in pet_cit.lower():
+    # Citizenship checkboxes (normalize "U.S.A." → "usa" before matching)
+    _cit = pet_cit.lower().replace(".", "").replace(" ", "")
+    if "us" in _cit or "citizen" in _cit or "america" in _cit:
         fields["CheckBox1[0]"] = True   # USA
     else:
         fields["CheckBox2[0]"] = True   # Other
@@ -3167,12 +3182,14 @@ def fill_cta_pdf(data):
     fields["TextField23[0]"]  = ""
 
     # Interest checkboxes
+    # Template geometry: CheckBox5 = Sole Beneficiary, CheckBox7 = Residuary
+    # Beneficiary (same row, right), CheckBox6 = Other [Specify] (next row).
     if "sole" in pet_interest.lower():
         fields["CheckBox5[0]"] = True   # Sole Beneficiary
     elif "residuary" in pet_interest.lower():
-        fields["CheckBox6[0]"] = True   # Residuary Beneficiary
+        fields["CheckBox7[0]"] = True   # Residuary Beneficiary
     else:
-        fields["CheckBox7[0]"] = True   # Other
+        fields["CheckBox6[0]"] = True   # Other
         fields["TextField32[0]"] = pet_interest
 
     # 1(b) — Is admin CTA an attorney?
@@ -3233,8 +3250,9 @@ def fill_cta_pdf(data):
     fields["TextField58[0]"]  = ""           # Other relief
     fields["TextField59[0]"]  = today()      # Dated
 
-    # Petitioner signatures (print names)
-    fields["TextField60[0]"]  = pet          # Signature line 1 (print name)
+    # Petitioner signature block — signature lines stay blank for wet
+    # signatures; only the Print Name line is filled.
+    fields["TextField60[0]"]  = ""           # Signature line 1 (wet signature)
     fields["TextField61[0]"]  = ""           # Signature line 2
     fields["TextField62[0]"]  = pet          # Print name 1
     fields["TextField63[0]"]  = ""           # Print name 2
@@ -3250,6 +3268,18 @@ def fill_cta_pdf(data):
     fields["came_F79"]                 = pet     # "came [name]"
     fields["Date0"]                    = today()
     fields["Year1"]                    = ""
+    # Attorney block at the bottom of the oath page
+    atty_name  = data.get("attorneyName")  or "Jessica Wilson, Esq."
+    atty_firm  = data.get("firmName")      or "Law Office of Jessica Wilson PC"
+    atty_phone = data.get("attorneyPhone") or "(212) 739-1736"
+    atty_addr  = data.get("attorneyAddress") or ", ".join(filter(None, [
+        data.get("firmAddress", "221 Columbia Street"),
+        data.get("firmAddress2", "Brooklyn, New York 11231"),
+    ]))
+    fields["Print Name_F911"]          = atty_name
+    fields["Firm Name_F1012"]          = atty_firm
+    fields["Tel No_F1113"]             = atty_phone
+    fields["Address of Attorney_F1214"] = atty_addr
 
     # ═══ PAGE 3: Corporate Verification ═══════════════════════════════════
     fields["TextField86[0]"]  = ""    # State
@@ -3270,14 +3300,15 @@ def fill_cta_pdf(data):
     fields["TextField116[0]"] = pet_street             # Petitioner domicile
     fields["TextField117[0]"] = f"{pet_city}, {pet_state}"
     fields["TextField118[0]"] = county                 # County
-    fields["TextField120[0]"] = dec                    # Estate of
+    # TextField120 = citation return date ("on ___") — court fills this in.
+    fields["TextField120[0]"] = ""
     fields["TextField123[0]"] = f"{dec_street}, {dec_city}, {dec_state}"  # Domicile
-    fields["TextField124[0]"] = dec_county             # County
+    fields["TextField124[0]"] = dec                    # "estate of ___"
     fields["TextField125[0]"] = ""                     # Surrogate name
     fields["TextField126[0]"] = letters_to             # Letters to
-    fields["TextField135[0]"] = ""                     # Attorney for petitioner
-    fields["TextField136[0]"] = ""                     # Telephone
-    fields["TextField137[0]"] = ""                     # Address of attorney
+    fields["TextField135[0]"] = atty_name              # Attorney for petitioner
+    fields["TextField136[0]"] = atty_phone             # Telephone
+    fields["TextField137[0]"] = atty_addr              # Address of attorney
 
     # ═══ PAGE 5: CTA-3 Waiver/Renunciation ═══════════════════════════════
     fields["TextField138[0]"] = county                 # County
@@ -3292,8 +3323,16 @@ def fill_cta_pdf(data):
     # CheckBox15 = creditor
     # CheckBox16 = other
 
-    fields["TextField144[0]"] = letters_to             # Letters CTA to
-    fields["TextField145[0]"] = county                 # County for notary
+    # TextField144 = "appears ... in the Surrogate's Court of ___ County"
+    fields["TextField144[0]"] = county
+    # TextField145 = ¶3 "Consents that Letters ... be granted by the Court to ___"
+    fields["TextField145[0]"] = letters_to
+    # Jurat COUNTY OF (TextField152) left blank — the notary fills it in
+    # wherever the waiver is actually signed (per firm practice).
+    # Attorney block at the bottom
+    fields["TextField158[0]"] = atty_name              # Name of Attorney
+    fields["TextField159[0]"] = atty_phone             # Tel. No.
+    fields["TextField160[0]"] = atty_addr              # Address of Attorney
 
     # ═══ PAGE 6: P-12 Affidavit of No Debt ═══════════════════════════════
     fields["TextField161[0]"] = county                 # County
@@ -3306,6 +3345,11 @@ def fill_cta_pdf(data):
     fields["TextField168[0]"] = dec_county             # County of residence
     fields["TextField169[0]"] = pet_state              # State
     fields["TextField171[0]"] = personal               # Estate value
+    fields["TextField172[0]"] = v("miscDebts", "NONE") # [If "none", write "NONE"]
+    fields["TextField189[0]"] = pet                    # Print Name (signature stays blank)
+    fields["TextField191[0]"] = atty_name              # Name of Attorney
+    fields["TextField192[0]"] = atty_phone             # Tel. No.
+    fields["TextField193[0]"] = atty_addr              # Address of Attorney
 
     template = os.path.join(PROBATE_TEMPLATES_DIR, "probcta.pdf")
     return fill_pdf(template, fields)
