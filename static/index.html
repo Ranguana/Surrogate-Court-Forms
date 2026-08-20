@@ -1358,6 +1358,9 @@ function renderDists() {
         <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer">
           <input type="checkbox" ${d.isMinor?'checked':''} onchange="ud(${i},'isMinor',this.checked);renderDists()"> Minor/Under Disability
         </label>
+        <label style="font-size:12px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:4px;cursor:pointer" title="Corporation / charity / institution — waiver generates on the A-9 corporate form instead of the A-8">
+          <input type="checkbox" ${d.isCorporate?'checked':''} onchange="ud(${i},'isCorporate',this.checked);renderDists()"> Corporation
+        </label>
       </div>
       <div class="grid2">
         <div class="field"><label>Full Name</label><input value="${d.name}" oninput="ud(${i},'name',this.value)"></div>
