@@ -772,6 +772,25 @@ def _case_files_dir(case_name):
     return os.path.join(_case_files_root(), safe)
 
 
+def _page_jpeg_b64(pdf_doc, page_num, max_side=1568, quality=70):
+    """Render a PDF page as base64 JPEG, capped to max_side pixels on the
+    long edge. JPEG at quality 70 is ~10-20x smaller than the 150dpi PNGs
+    we used to send, which is what pushed multi-document packets past the
+    Anthropic API's request size limit (HTTP 413 request_too_large)."""
+    import fitz as _fitz
+    import base64 as _b64
+    page = pdf_doc[page_num]
+    rect = page.rect
+    zoom = min(max_side / max(rect.width, rect.height), 150 / 72)
+    pix = page.get_pixmap(matrix=_fitz.Matrix(zoom, zoom))
+    return _b64.b64encode(pix.tobytes("jpg", jpg_quality=quality)).decode("utf-8")
+
+
+# Total base64 image payload allowed per Claude request. The API rejects
+# requests over ~32MB; leave generous headroom for text and JSON overhead.
+_MAX_IMAGE_B64_BYTES = 18 * 1024 * 1024
+
+
 @app.route("/smart-intake", methods=["POST"])
 def smart_intake():
     """Accept one or more PDFs, extract text, send to Claude, return probate field JSON.
@@ -890,13 +909,10 @@ def smart_intake():
                 # Cap and prefer the tail
                 pages_to_image = sorted(pages_to_image)[-5:]
                 for page_num in pages_to_image:
-                    pix = pdf_doc[page_num].get_pixmap(dpi=150)
-                    img_bytes = pix.tobytes("png")
-                    img_b64 = _b64.b64encode(img_bytes).decode("utf-8")
                     doc_images.append({
                         "filename": f.filename,
                         "page": page_num + 1,
-                        "data": img_b64,
+                        "data": _page_jpeg_b64(pdf_doc, page_num),
                     })
                 pdf_doc.close()
                 if pages_to_image:
@@ -932,12 +948,10 @@ def smart_intake():
                     import base64 as _b64
                     image_contents = []
                     for page_num in range(min(len(pdf_doc), 10)):  # max 10 pages
-                        pix = pdf_doc[page_num].get_pixmap(dpi=200)
-                        img_bytes = pix.tobytes("png")
-                        img_b64 = _b64.b64encode(img_bytes).decode("utf-8")
                         image_contents.append({
                             "type": "image",
-                            "source": {"type": "base64", "media_type": "image/png", "data": img_b64}
+                            "source": {"type": "base64", "media_type": "image/jpeg",
+                                       "data": _page_jpeg_b64(pdf_doc, page_num)}
                         })
                     pdf_doc.close()
                     if image_contents:
@@ -1020,9 +1034,21 @@ def smart_intake():
         # If we collected page images, send them as a multimodal message —
         # text prompt first, then each image labeled by source filename + page,
         # then a closing instruction that clarifies how to use the images.
-        if doc_images:
+        # Enforce a total payload budget so many-document packets can't
+        # push the request past the API size limit (413 request_too_large).
+        # Images are ordered by file; keep as many as fit and drop the rest.
+        total_b64 = 0
+        kept_images = []
+        for img in doc_images:
+            if total_b64 + len(img["data"]) > _MAX_IMAGE_B64_BYTES:
+                print(f"[SMART-INTAKE] Image budget reached — sending "
+                      f"{len(kept_images)} of {len(doc_images)} page images")
+                break
+            total_b64 += len(img["data"])
+            kept_images.append(img)
+        if kept_images:
             content = [{"type": "text", "text": prompt}]
-            for img in doc_images:
+            for img in kept_images:
                 content.append({
                     "type": "text",
                     "text": f"\n[Image of {img['filename']} page {img['page']}]"
@@ -1031,7 +1057,7 @@ def smart_intake():
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "media_type": "image/png",
+                        "media_type": "image/jpeg",
                         "data": img["data"],
                     },
                 })
@@ -1053,7 +1079,7 @@ def smart_intake():
             message_payload = prompt
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": message_payload}],
         )
         response_text = message.content[0].text.strip()
@@ -1076,6 +1102,13 @@ def smart_intake():
 
     except Exception as e:
         traceback.print_exc()
+        if "request_too_large" in str(e):
+            return jsonify({"error": (
+                "The uploaded documents are too large to process in one "
+                "request. Try uploading fewer files at once (e.g. the will "
+                "and death certificate first, then re-run Smart Intake with "
+                "the rest)."
+            )}), 500
         return jsonify({"error": f"Claude error: {e}"}), 500
 
 
@@ -1392,7 +1425,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.41"
+APP_VERSION = "1.6.42"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 
