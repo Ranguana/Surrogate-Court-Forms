@@ -1537,7 +1537,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.46"
+APP_VERSION = "1.6.47"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

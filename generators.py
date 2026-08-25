@@ -5123,6 +5123,26 @@ def _se_sub_collapse(p, rx, repl):
     return True
 
 
+def _se_fill_left_of(p, marker_rx, value):
+    """Insert value immediately before the first marker_rx match, consuming
+    an equal width of the leading spaces so everything after the marker
+    (tabs, right-column captions) keeps its horizontal position."""
+    m = marker_rx.search(p.text)
+    if not m or not value:
+        return False
+    i = m.start()
+    if p.text[:i].strip():
+        return False
+    new = " " * max(0, i - len(value)) + value + p.text[i:]
+    if p.runs:
+        p.runs[0].text = new
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(new)
+    return True
+
+
 _SE_BLANK = re.compile(r"_{3,}")
 
 
@@ -5302,8 +5322,9 @@ def generate_se1c(data, dist):
     addr    = (dist.get("address") or "").strip()
 
     _se_sub(P[1], re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF  {county.upper()}")
-    # Caption decedent name sits on a mostly-blank line ending in a comma
-    _se_sub(P[5], re.compile(r"^\s{20,},"), f"{dec},")
+    # Caption decedent name — right-aligned against the comma so the
+    # "(as of 11/2019)" right column keeps its position
+    _se_fill_left_of(P[5], re.compile(r","), dec)
     if file_no:
         _se_sub(P[7], re.compile(r"(File No\.)\s*"), rf"\g<1> {file_no}  ")
     # Domiciliary address goes on the blank line under "...address is"
@@ -5350,19 +5371,40 @@ def generate_se1d(data):
     pet     = petitioner_full(data)
 
     _se_sub(P[1], re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF  {county.upper()}")
+    # Caption decedent name — right-aligned against the comma so the
+    # "TO ARTICLE 13, SCPA" right column keeps its position.
     for p in P[2:10]:
-        if _se_sub(p, re.compile(r"^\s{20,},"), f"{dec},"):
+        if _se_fill_left_of(p, re.compile(r","), dec):
             break
     if file_no:
         for p in P[2:12]:
             if _se_sub(p, re.compile(r"(File No\.)\s*$"), rf"\g<1> {file_no}"):
                 break
-    # Venue of the verification + affiant name on the ",, being duly sworn" line
     for p in P:
         _se_sub_collapse(p, re.compile(r"STATE OF\s*_+"), "STATE OF NEW YORK ")
         _se_sub_collapse(p, re.compile(r"COUNTY OF\s*_+"),
                          f"COUNTY OF {county.upper()} ")
-        _se_sub_collapse(p, re.compile(r"^\s*,,"), f"{pet},")
+        # Affiant (the petitioner) on the verification line, position kept:
+        # "                     [name], being duly sworn, deposes and says"
+        if ",, being duly sworn" in p.text:
+            _se_fill_left_of(p, re.compile(r",,"), pet)
+            _se_sub_collapse(p, re.compile(r",,"), ",")
+    # The voluntary administrator IS the petitioner — print their name on
+    # the line above the "Print Name of Voluntary Administrator" label
+    # (the signature line above "Voluntary Administrator" stays blank).
+    for idx, p in enumerate(P):
+        if p.text.strip() == "Print Name of Voluntary Administrator" and idx > 0:
+            prev = P[idx - 1]
+            if not prev.text.strip():
+                pad = max(0, (max(len(prev.text), len(pet)) - len(pet)) // 2)
+                new = " " * pad + pet
+                if prev.runs:
+                    prev.runs[0].text = new
+                    for r in prev.runs[1:]:
+                        r.text = ""
+                else:
+                    prev.add_run(new)
+            break
 
     _validate_docx(doc, "generate_se1d")
     return make_docx_bytes(doc)
