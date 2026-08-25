@@ -781,6 +781,34 @@ def generate_heirship(data):
     divorce_year      = (data.get("divorceYear") or "").strip()
     prior_spouse_death = (data.get("priorSpouseDeathDate") or "").strip()
     children_note = data.get("childrenNote", "").strip()
+    # No explicit children note — derive from the distributee list so the
+    # affidavit never claims "no children" while a son/daughter inherits.
+    # Matches son/daughter/child incl. adopted and non-marital; excludes
+    # in-laws, stepchildren, and grandchildren (issue, but not children).
+    if not children_note:
+        _child_rx = re.compile(
+            r"^(adopted\s+|non-?marital\s+)?(son|daughter|child)$", re.IGNORECASE)
+        _grand_rx = re.compile(r"^grand(son|daughter|child)$", re.IGNORECASE)
+        dists = [d for d in (data.get("distributees") or []) if d.get("name")]
+        child_dists = [d for d in dists
+                       if _child_rx.match((d.get("relationship") or "").strip())]
+        grand_dists = [d for d in dists
+                       if _grand_rx.match((d.get("relationship") or "").strip())]
+        parts = []
+        if child_dists:
+            n = len(child_dists)
+            names = ", ".join(d["name"].strip() for d in child_dists)
+            parts.append(f"The decedent was survived by {n} "
+                         f"child{'ren' if n > 1 else ''}, namely: {names}.")
+        if grand_dists:
+            # A distributee grandchild takes by representation — their parent
+            # (the decedent's child) predeceased, so "no children" is false.
+            names = ", ".join(d["name"].strip() for d in grand_dists)
+            parts.append(("The decedent was also survived by" if child_dists
+                          else "The decedent had one or more children who "
+                               "predeceased the decedent, and was survived by")
+                         + f" issue of predeceased child(ren), namely: {names}.")
+        children_note = " ".join(parts)
     mother_name = data.get("motherName", "")
     mother_dod = data.get("motherDOD", "")
     father_name = data.get("fatherName", "")
