@@ -164,8 +164,11 @@ def replace_in_doc(doc, replacements):
                     run.text = run.text.replace(key, value or "")
                     replaced_in_run = True
             # If the key still appears (e.g., split across runs), consolidate
-            # the full paragraph text into the first run.
-            if key in para.text:
+            # the full paragraph text into the first run. Only when no run
+            # contained the whole key — when the replacement itself contains
+            # the key (e.g. "Mother: " → "Mother: Jane Doe"), re-testing
+            # para.text after a successful run replacement double-applies.
+            if not replaced_in_run and key in para.text:
                 full_text = para.text.replace(key, value or "")
                 if para.runs:
                     para.runs[0].text = full_text
@@ -759,6 +762,8 @@ def generate_heirship(data):
     else:
         template = "Affidavit_of_Heirship_Full_Admin.docx"
         letters_phrase = "Letters of Administration"
+    if proceeding == "SmallEstate":
+        letters_phrase = "a Certificate of Voluntary Administration"
     doc = Document(os.path.join(WORD_TEMPLATES_DIR, template))
     decedent = decedent_full(data)
     county = data.get("county", "")
@@ -813,7 +818,24 @@ def generate_heirship(data):
     mother_dod = data.get("motherDOD", "")
     father_name = data.get("fatherName", "")
     father_dod = data.get("fatherDOD", "")
-    sole_distributee = (data.get("soleDistributee") or "").strip() or petitioner
+    # "Therefore, X is the sole distributee" must name the actual
+    # distributee(s), not the petitioner — the filer may not be a distributee
+    # at all (e.g. a nephew filing while the decedent's sibling inherits).
+    named_dists = [d["name"].strip() for d in (data.get("distributees") or [])
+                   if d.get("name")]
+    sole_override = (data.get("soleDistributee") or "").strip()
+    if sole_override:
+        therefore_sentence = (f"Therefore, {sole_override} is the sole "
+                              f"distributee of the Estate of {decedent}")
+    elif len(named_dists) == 1:
+        therefore_sentence = (f"Therefore, {named_dists[0]} is the sole "
+                              f"distributee of the Estate of {decedent}")
+    elif named_dists:
+        therefore_sentence = (f"Therefore, the distributees of the Estate of "
+                              f"{decedent} are: {', '.join(named_dists)}")
+    else:
+        therefore_sentence = (f"Therefore, {petitioner} is the sole "
+                              f"distributee of the Estate of {decedent}")
 
     was_married = marital_status in ("married", "divorced", "widowed")
     has_children = bool(children_note and "never had" not in children_note.lower())
@@ -865,15 +887,23 @@ def generate_heirship(data):
                     "The decedent never had any children, adopted, out of wedlock nor marital.")
 
         elif "The marriage of" in text and "bore no children" in text:
-            if was_married:
+            # Only truthful for a marriage without children — delete both
+            # for never-married decedents and when children exist.
+            if was_married and not has_children:
                 replace_para(para, "___________ and ____________",
                              f"{decedent} and {spouse_name}")
             else:
                 paras_to_delete.append(i)
 
         elif "There were no children of the decedent" in text:
-            if was_married or has_children:
-                paras_to_delete.append(i)
+            # Always redundant — the children sentence above covers both the
+            # has-children and no-children cases.
+            paras_to_delete.append(i)
+
+        elif "father is/died on" in text:
+            # Leftover template sentinel with blanks; the Mother/Father +
+            # Date of Death block above already states the parents' status.
+            paras_to_delete.append(i)
 
     for i in sorted(paras_to_delete, reverse=True):
         p = doc.paragraphs[i]._element
@@ -885,6 +915,9 @@ def generate_heirship(data):
 
     replace_in_doc(doc, {
         "COUNTY OF _____________": f"COUNTY OF {county.upper()}",
+        **({"ADMINISTRATION PROCEEDING, ESTATE OF":
+            "VOLUNTARY ADMINISTRATION, ESTATE OF"}
+           if proceeding == "SmallEstate" else {}),
         "___________________\t\t\t\t\tAFFIDAVIT OF HEIRSHIP": f"{decedent}\t\t\t\t\tAFFIDAVIT OF HEIRSHIP",
         "A/K/A ___________________\t\t\t\tFile No.:": f"A/K/A {data.get('decedentAKA', '')}\t\t\t\tFile No.: {data.get('fileNo', '')}",
         "COUNTY OF \t\t\t)": "COUNTY OF \t\t\t)",  # Leave blank — affiant may be out of state
@@ -897,7 +930,7 @@ def generate_heirship(data):
         "Mother: ": f"Mother: {mother_name}",
         "Father: ": f"Father: {father_name}",
         f"Therefore, ______________ is the sole distributee of the Estate of ______________":
-            f"Therefore, {sole_distributee} is the sole distributee of the Estate of {decedent}",
+            therefore_sentence,
         f"This affidavit is made with my personal knowledge knowing the ______________ County Surrogate\u2019s Court will rely thereon in issuing Letters Testamentary to _________________, the petitioner." if proceeding == "Probate" else
         f"This affidavit is made with my personal knowledge knowing the ______________ County Surrogate\u2019s Court will rely thereon in issuing Letters of Administration to _________________, the petitioner.":
             f"This affidavit is made with my personal knowledge knowing the {county} County Surrogate\u2019s Court will rely thereon in issuing {letters_phrase} to {petitioner}, the petitioner.",
