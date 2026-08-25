@@ -206,6 +206,8 @@ from generators import (
     generate_notice_of_probate, generate_affidavit_of_comparison,
     generate_petition_scpa_2203,
     generate_refunding_agreement, generate_formal_accounting,
+    # Small Estate (SCPA Article 13)
+    generate_se3a, generate_se1c, generate_se1d, SMALL_ESTATE_DIR,
     COUNTY_INFO, today, decedent_full, petitioner_full
 )
 
@@ -274,6 +276,112 @@ def generate_packet():
         print(f"[ERR] 01 Cover letter: {e}")
         traceback.print_exc()
         errors.append(f"Cover letter: {e}")
+
+    # ── SMALL ESTATE (SCPA Article 13) — self-contained packet ──────────────
+    # Voluntary administration is a one-form proceeding (SE-3A) with no
+    # process, citations, or oath, so it skips the generic petition flow:
+    #   02 = SE-3A affidavit (the entire "petition")
+    #   03 = SE-1C renunciation per waiver-marked distributee
+    #   04/05 = heirship affidavit + FT-1 when the family-tree trigger applies
+    #   06 = SE-1D report & account (blank items — completed after distribution)
+    #   07 = court's voluntary administration checklist (reference copy)
+    if proceeding == "SmallEstate":
+        try:
+            print("[TRYING] 02 generate_se3a()")
+            files.append((f"02_SE3A_Affidavit_Voluntary_Admin_{last_name}.docx",
+                          generate_se3a(data)))
+            print("[OK] 02 SE-3A affidavit")
+        except Exception as e:
+            print(f"[ERR] 02 SE-3A: {e}")
+            traceback.print_exc()
+            errors.append(f"SE-3A affidavit: {e}")
+
+        pet_name = petitioner_full(data).strip().lower()
+        for dist in data.get("distributees", []):
+            if dist.get("disposition") == "waiver" and dist.get("name"):
+                # The filing distributee doesn't renounce — they're the
+                # voluntary administrator.
+                if dist["name"].strip().lower() == pet_name:
+                    continue
+                safe = dist["name"].replace(" ", "_")
+                try:
+                    print(f"[TRYING] 03 generate_se1c() for {dist['name']!r}")
+                    files.append((f"03_SE1C_Renunciation_{safe}.docx",
+                                  generate_se1c(data, dist)))
+                    print(f"[OK] 03 SE-1C renunciation: {dist['name']}")
+                except Exception as e:
+                    print(f"[ERR] 03 SE-1C {dist['name']}: {e}")
+                    traceback.print_exc()
+                    errors.append(f"SE-1C renunciation for {dist['name']}: {e}")
+
+        se_needs_ft = needs_family_tree_affidavit(data)
+        if se_needs_ft:
+            reason = family_tree_trigger_reason(data)
+            print(f"[SMALL ESTATE] Family tree affidavit required — {reason}")
+            try:
+                print("[TRYING] 04 generate_heirship()")
+                files.append((f"04_Affidavit_of_Heirship_{last_name}.docx",
+                              generate_heirship(data)))
+                print("[OK] 04 Heirship affidavit")
+            except Exception as e:
+                print(f"[ERR] 04 Heirship affidavit: {e}")
+                traceback.print_exc()
+                errors.append(f"Heirship affidavit: {e}")
+            try:
+                print("[TRYING] 05 generate_ft1()")
+                files.append((f"05_FT1_Family_Tree_{last_name}.pdf", generate_ft1(data)))
+                print("[OK] 05 FT-1 Family Tree")
+            except Exception as e:
+                print(f"[ERR] 05 FT-1: {e}")
+                traceback.print_exc()
+                errors.append(f"FT-1: {e}")
+
+        try:
+            print("[TRYING] 06 generate_se1d()")
+            files.append((f"06_SE1D_Report_and_Account_{last_name}.docx",
+                          generate_se1d(data)))
+            print("[OK] 06 SE-1D report & account")
+        except Exception as e:
+            print(f"[ERR] 06 SE-1D: {e}")
+            traceback.print_exc()
+            errors.append(f"SE-1D report & account: {e}")
+
+        try:
+            with open(os.path.join(SMALL_ESTATE_DIR, "v-chklst-frm.pdf"), "rb") as ck:
+                files.append(("07_Voluntary_Admin_Checklist.pdf", ck.read()))
+            print("[OK] 07 Checklist reference")
+        except Exception as e:
+            print(f"[ERR] 07 Checklist: {e}")
+            errors.append(f"Checklist: {e}")
+
+        ft_info = (f"Required — {family_tree_trigger_reason(data)}" if se_needs_ft
+                   else "Not required (spouse/children as distributees)")
+        summary = build_summary(data, proceeding, len(files), errors, ft_info=ft_info)
+        files.insert(0, (f"00_CASE_SUMMARY_{last_name}.txt", summary.encode("utf-8")))
+        if errors:
+            files.append(("ERRORS.txt", "\n".join(errors).encode("utf-8")))
+        print(f"[PACKET] {len(files)} files in ZIP  errors={errors or 'none'}\n")
+
+        saved_to = None
+        try:
+            saved_to = save_to_output(data, files)
+            print(f"[DROPBOX] Saved {len(files)} files → {saved_to}")
+        except Exception as e:
+            print(f"[DROPBOX] Save failed: {e}")
+            traceback.print_exc()
+
+        zip_bytes = make_zip(files)
+        response = send_file(
+            io.BytesIO(zip_bytes),
+            as_attachment=True,
+            download_name=f"{last_name}_packet.zip",
+            mimetype="application/zip"
+        )
+        if errors:
+            response.headers["X-Generation-Errors"] = str(len(errors))
+        if saved_to:
+            response.headers["X-Saved-To"] = saved_to
+        return response
 
     # ── 02-04. Main petition (and oath + witness for Probate) ────────────────────
     # Probate:         02=P-1, 03=Oath & Designation, 04=Attesting Witness
@@ -635,7 +743,8 @@ def build_summary(data, proceeding, doc_count, errors, ft_info=None):
         "Administration": "ADMINISTRATION",
         "NonDomiciliary": "NON-DOMICILIARY ADMINISTRATION",
         "Ancillary": "ANCILLARY ADMINISTRATION",
-        "AdminCTA": "ADMINISTRATION C.T.A."
+        "AdminCTA": "ADMINISTRATION C.T.A.",
+        "SmallEstate": "SMALL ESTATE (VOLUNTARY ADMINISTRATION, SCPA ART. 13)"
     }.get(proceeding, proceeding.upper())
     lines = [
         "=" * 60,

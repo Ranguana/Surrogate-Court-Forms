@@ -132,12 +132,14 @@ def today():
 
 
 def format_date_long(date_str):
-    """Convert MM/DD/YYYY to 'Month DD, YYYY' (e.g. '03/15/1945' → 'March 15, 1945')."""
-    try:
-        dt = datetime.strptime(date_str, "%m/%d/%Y")
-        return dt.strftime("%B %d, %Y")
-    except Exception:
-        return date_str
+    """Convert MM/DD/YYYY or YYYY-MM-DD to 'Month DD, YYYY'
+    (e.g. '03/15/1945' → 'March 15, 1945')."""
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str, fmt).strftime("%B %d, %Y")
+        except Exception:
+            continue
+    return date_str
 
 
 def nonzero(v):
@@ -209,10 +211,15 @@ def _validate_docx(doc, generator_name):
     give us a fast signal when a substitution path was missed.
     """
     token_rx = re.compile(r'\[[^\[\]\n]{1,80}\]')
+    # Checkbox furniture on official court forms — "[    ]" / "[ X ]" — is
+    # intentional, not an unreplaced placeholder.
+    checkbox_rx = re.compile(r'\[\s*X?\s*\]')
     found = []
 
     def _scan(p, location):
         for m in token_rx.finditer(p.text or ""):
+            if checkbox_rx.fullmatch(m.group(0)):
+                continue
             found.append((location, m.group(0)))
 
     for pi, p in enumerate(doc.paragraphs):
@@ -435,7 +442,11 @@ def generate_cover_letter(data):
 
     _para("Greetings,", space_after=6)
 
-    proc_word = proceeding.lower()
+    proc_word = {
+        "NonDomiciliary": "non-domiciliary administration",
+        "AdminCTA": "administration c.t.a.",
+        "SmallEstate": "voluntary administration (small estate)",
+    }.get(proceeding, proceeding.lower())
     _para(
         f"Our office efiled the above referenced petition for {proc_word} on {efile_date}. "
         f"Please find enclosed the following original documents required by the Court:",
@@ -5006,4 +5017,291 @@ def generate_formal_accounting(form_data, entries):
                  [("Description", "description"), ("Amount", "amount")])
 
     _validate_docx(doc, "generate_formal_accounting")
+    return make_docx_bytes(doc)
+
+
+# ─── SMALL ESTATE / VOLUNTARY ADMINISTRATION (SCPA Article 13) ───────────────
+# Official 11/2019 court forms shipped as underscore-blank Word documents in
+# templates/Small Estate/. Filled with the same regex-substitution approach as
+# the P-4 waiver: match a labeled blank, replace inside the run that holds it,
+# collapsing to the first run only when the blank is split across runs.
+
+SMALL_ESTATE_DIR = os.path.join(TEMPLATES_DIR, "Small Estate")
+
+
+def _se_sub(p, rx, repl):
+    """Regex-substitute inside paragraph p (first match only)."""
+    if not rx.search(p.text):
+        return False
+    for run in p.runs:
+        if rx.search(run.text):
+            run.text = rx.sub(repl, run.text, count=1)
+            return True
+    full = rx.sub(repl, p.text, count=1)
+    if p.runs:
+        p.runs[0].text = full
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(full)
+    return True
+
+
+def _se_sub_collapse(p, rx, repl):
+    """Like _se_sub but always substitutes on the full paragraph text and
+    collapses to the first run — for blanks whose underscores span runs."""
+    if not rx.search(p.text):
+        return False
+    full = rx.sub(repl, p.text, count=1)
+    if p.runs:
+        p.runs[0].text = full
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(full)
+    return True
+
+
+_SE_BLANK = re.compile(r"_{3,}")
+
+
+def _se_fill_blanks(p, values):
+    """Replace the Nth underscore-run in paragraph p with values[N].
+    A None/empty value keeps that blank as underscores. Collapses the
+    paragraph into its first run (uniform formatting on these forms)."""
+    if not _SE_BLANK.search(p.text):
+        return
+    vals = list(values)
+
+    def _repl(m):
+        if not vals:
+            return m.group(0)
+        v = vals.pop(0)
+        return str(v) if v not in (None, "") else m.group(0)
+
+    full = _SE_BLANK.sub(_repl, p.text)
+    if full == p.text:
+        return
+    if p.runs:
+        p.runs[0].text = full
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(full)
+
+
+def _se_check(p, which=0):
+    """Mark the (which)th '[    ]' checkbox in paragraph p with an X."""
+    boxes = list(re.finditer(r"\[\s+\]", p.text))
+    if which >= len(boxes):
+        return
+    b = boxes[which]
+    full = p.text[:b.start()] + "[ X ]" + p.text[b.end():]
+    if p.runs:
+        p.runs[0].text = full
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(full)
+
+
+def _se_money(v):
+    try:
+        return f"{float(str(v).replace(',', '').replace('$', '').strip()):,.2f}"
+    except (ValueError, TypeError):
+        return str(v or "")
+
+
+def _se_attorney_block(data):
+    return {
+        "name": data.get("attorneyName") or "Jessica Wilson, Esq.",
+        "firm": data.get("firmName") or "Law Office of Jessica Wilson",
+        "phone": data.get("attorneyPhone") or "(212) 739-1736",
+        "address": data.get("attorneyAddress") or data.get("firmAddress")
+                   or "221 Columbia Street, Brooklyn NY 11231",
+    }
+
+
+def generate_se3a(data):
+    """Fill the SE-3A Affidavit in Relation to Settlement of Estate Under
+    Article 13, SCPA — the main (and only) petition document for a Small
+    Estate / Voluntary Administration proceeding."""
+    doc = Document(os.path.join(SMALL_ESTATE_DIR, "Small Estate - Aff SE-3A.docx"))
+    P = doc.paragraphs
+
+    county   = (data.get("county") or "").strip()
+    file_no  = (data.get("fileNo") or "").strip()
+    dec      = decedent_full(data)
+    aka      = (data.get("decedentAKA") or "").strip()
+    dec_name = f"{dec} a/k/a {aka}" if aka else dec
+    pet      = petitioner_full(data)
+    rel      = (data.get("petitionerRelationship") or "").strip()
+    testate  = bool((data.get("willDate") or "").strip()
+                    or (data.get("willBeneficiaries") or []))
+
+    # Caption + venue
+    _se_sub(P[1],  re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF  {county.upper()}")
+    _se_fill_blanks(P[7],  [dec_name, file_no])
+    _se_sub_collapse(P[11], re.compile(r"STATE OF\s*_+"),  "STATE OF NEW YORK ")
+    _se_sub_collapse(P[13], re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF {county.upper()} ")
+    _se_fill_blanks(P[15], [pet])
+
+    # (1) Affiant address / email
+    _se_fill_blanks(P[17], [f"{data.get('petitionerStreet', '')}"
+                            f"                    {data.get('petitionerCity', '')}"])
+    _se_fill_blanks(P[20], [f"{data.get('petitionerCounty', '')}"
+                            f"                    {data.get('petitionerState', '')}"
+                            f"          {data.get('petitionerZip', '')}"
+                            f"               {data.get('petitionerPhone', '')}"])
+    _se_fill_blanks(P[26], [data.get("petitionerEmail", "")])
+
+    # (2) Interest
+    if rel.lower() in ("", "other"):
+        _se_check(P[32])
+    else:
+        _se_check(P[29])
+        _se_fill_blanks(P[29], [rel])
+
+    # (3) Decedent
+    _se_fill_blanks(P[37], [dec_name])
+    _se_fill_blanks(P[39], [f"{data.get('decedentStreet', '')}      "
+                            f"{data.get('decedentCity', '')}      "
+                            f"{county} County      {data.get('decedentState', '')}"])
+    _se_fill_blanks(P[42], [format_date_long(data.get("decedentDOD", "")) + "      ",
+                            data.get("decedentPlaceOfDeath", "")])
+    _se_fill_blanks(P[45], [data.get("decedentCitizenship", "") or "United States"])
+
+    # (4) Testate / intestate
+    _se_check(P[49] if testate else P[48])
+
+    # (6) Distributees (4 rows on the form)
+    dists = [d for d in (data.get("distributees") or []) if d.get("name")]
+    for row_idx, para_idx in enumerate((69, 71, 73, 75)):
+        if row_idx < len(dists):
+            d = dists[row_idx]
+            _se_fill_blanks(P[para_idx], [d.get("name", ""),
+                                          d.get("address", ""),
+                                          d.get("relationship", "")])
+
+    # (7) Will beneficiaries (4 rows) — only when testate
+    if testate:
+        bens = [b for b in (data.get("willBeneficiaries") or [])
+                if b.get("name") and not b.get("deceased")]
+        for row_idx, para_idx in enumerate((82, 84, 86, 88)):
+            if row_idx < len(bens):
+                b = bens[row_idx]
+                _se_fill_blanks(P[para_idx], [b.get("name", ""),
+                                              b.get("address", ""),
+                                              (b.get("interest") or b.get("bequest", ""))])
+
+    # (9) Personal property items (5 rows) + total
+    assets = [a for a in (data.get("assets") or [])
+              if a.get("institution") and a.get("category") != "Real Estate"]
+    total = 0.0
+    for row_idx, para_idx in enumerate((101, 103, 105, 107, 109)):
+        if row_idx < len(assets):
+            a = assets[row_idx]
+            label = " — ".join(filter(None, [a.get("institution", ""),
+                                             a.get("accountNumber", "")]))
+            _se_fill_blanks(P[para_idx], [label, _se_money(a.get("value"))])
+            try:
+                total += float(str(a.get("value", "0")).replace(",", "").replace("$", ""))
+            except (ValueError, TypeError):
+                pass
+    if total > 0:
+        _se_fill_blanks(P[113], [f"{total:,.2f}"])
+    elif data.get("personalPropertyValue"):
+        _se_fill_blanks(P[113], [_se_money(data.get("personalPropertyValue"))])
+
+    # Signature block — print name under signature line
+    _se_fill_blanks(P[149], [pet])
+
+    # Attorney block
+    atty = _se_attorney_block(data)
+    _se_fill_blanks(P[164], [atty["name"]])
+    _se_fill_blanks(P[165], [atty["firm"] + "      ", atty["phone"]])
+    _se_fill_blanks(P[166], [atty["address"]])
+
+    _validate_docx(doc, "generate_se3a")
+    return make_docx_bytes(doc)
+
+
+def generate_se1c(data, dist):
+    """Fill the SE-1C Renunciation of Voluntary Administration for one
+    distributee who is renouncing the right to serve. Signature, notary and
+    date blanks stay open for manual completion at signing."""
+    doc = Document(os.path.join(SMALL_ESTATE_DIR, "Small Estate - Renunc SE-1C.docx"))
+    P = doc.paragraphs
+
+    county  = (data.get("county") or "").strip()
+    file_no = (data.get("fileNo") or "").strip()
+    dec     = decedent_full(data)
+    name    = (dist.get("name") or "").strip()
+    rel     = (dist.get("relationship") or "").strip()
+    addr    = (dist.get("address") or "").strip()
+
+    _se_sub(P[1], re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF  {county.upper()}")
+    # Caption decedent name sits on a mostly-blank line ending in a comma
+    _se_sub(P[5], re.compile(r"^\s{20,},"), f"{dec},")
+    if file_no:
+        _se_sub(P[7], re.compile(r"(File No\.)\s*"), rf"\g<1> {file_no}  ")
+    # Domiciliary address goes on the blank line under "...address is"
+    if addr:
+        target = P[12] if len(P) > 12 else None
+        if target is not None and not target.text.strip():
+            target.add_run(addr)
+    # Distributee checkbox + relationship
+    _se_check(P[21])
+    if rel:
+        _se_sub(P[21], re.compile(r"related as a\s*$"), f"related as a {rel}")
+    # Renouncing party print name
+    _se_fill_blanks(P[29], [name])
+    # Acknowledgment venue
+    _se_sub(P[31], re.compile(r"STATE OF\s{10,}"), "STATE OF NEW YORK" + " " * 20)
+    _se_sub(P[33], re.compile(r"COUNTY OF\s{10,}"),
+            f"COUNTY OF {county.upper()}" + " " * 20)
+    # Attorney block
+    atty = _se_attorney_block(data)
+    _se_sub(P[44], re.compile(r"(Print Name of Attorney:)\s{5,}"),
+            rf"\g<1> {atty['name']}")
+    _se_sub(P[45], re.compile(r"(Firm Name:)\s{5,}"),
+            rf"\g<1> {atty['firm']}      ")
+    _se_sub(P[45], re.compile(r"(Tel\. No\.)\s*"), rf"\g<1> {atty['phone']}")
+    _se_sub(P[46], re.compile(r"(Address of Attorney:)\s{5,}"),
+            rf"\g<1> {atty['address']}")
+
+    _validate_docx(doc, "generate_se1c")
+    return make_docx_bytes(doc)
+
+
+def generate_se1d(data):
+    """Fill the caption of the SE-1D Report and Account in Settlement of
+    Estate Pursuant to Article 13, SCPA. Item/disbursement rows are left
+    blank — this form is completed after distribution with the actual
+    receipts, so only the caption, venue, and names are pre-filled."""
+    doc = Document(os.path.join(SMALL_ESTATE_DIR,
+                                "Small Estate - Report & Acct SE-1D.docx"))
+    P = doc.paragraphs
+
+    county  = (data.get("county") or "").strip()
+    file_no = (data.get("fileNo") or "").strip()
+    dec     = decedent_full(data)
+    pet     = petitioner_full(data)
+
+    _se_sub(P[1], re.compile(r"COUNTY OF\s*_+"), f"COUNTY OF  {county.upper()}")
+    for p in P[2:10]:
+        if _se_sub(p, re.compile(r"^\s{20,},"), f"{dec},"):
+            break
+    if file_no:
+        for p in P[2:12]:
+            if _se_sub(p, re.compile(r"(File No\.)\s*$"), rf"\g<1> {file_no}"):
+                break
+    # Venue of the verification + affiant name on the ",, being duly sworn" line
+    for p in P:
+        _se_sub_collapse(p, re.compile(r"STATE OF\s*_+"), "STATE OF NEW YORK ")
+        _se_sub_collapse(p, re.compile(r"COUNTY OF\s*_+"),
+                         f"COUNTY OF {county.upper()} ")
+        _se_sub_collapse(p, re.compile(r"^\s*,,"), f"{pet},")
+
+    _validate_docx(doc, "generate_se1d")
     return make_docx_bytes(doc)

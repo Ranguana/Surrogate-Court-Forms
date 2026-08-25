@@ -471,6 +471,7 @@ body {
           <button class="proc-btn" onclick="setProceeding('NonDomiciliary',this)">🏠 Non-Domiciliary<small>Lived out of state, no prior letters</small></button>
           <button class="proc-btn" onclick="setProceeding('Ancillary',this)">🗺 Ancillary<small>Letters already issued elsewhere</small></button>
           <button class="proc-btn" onclick="setProceeding('AdminCTA',this)">📑 Admin CTA<small>Will exists, executor can't serve</small></button>
+          <button class="proc-btn" onclick="setProceeding('SmallEstate',this)">💼 Small Estate<small>≤ $50k personal property (Art. 13)</small></button>
         </div>
       </div>
       <div class="grid2">
@@ -771,6 +772,7 @@ body {
             <option>Letters of Administration c.t.a.</option>
             <option>Temporary Administration</option>
             <option>Ancillary Letters of Administration</option>
+            <option>Certificate of Voluntary Administration</option>
             <option>Ancillary Letters of Administration d.b.n.</option>
           </select>
         </div>
@@ -1139,7 +1141,7 @@ const ft = { spouse:null, children:null, parents:null, siblings:null, grandparen
 const FT_ORDER = ["spouse","children","parents","siblings","grandparents","auntsUncles","firstCousins"];
 
 // Proceeding checklist state: arrays of booleans per proceeding type
-const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[], AdminCTA:[] };
+const proceedingChecklist = { Probate:[], Administration:[], NonDomiciliary:[], Ancillary:[], AdminCTA:[], SmallEstate:[] };
 
 // Persisted will-beneficiaries list (round-trips through save/load and
 // flows into the petition via getFormData()). Declared here because
@@ -1222,6 +1224,18 @@ const CHECKLIST_ITEMS = {
     "Death Certificate of spouse — if widowed",
     "Divorce decree — if previously divorced",
   ],
+  SmallEstate: [
+    "Confirm personal property ≤ $50,000 (excluding joint/POD accounts, jointly owned property, and EPTL 5-3.1 exempt items)",
+    "Certified death certificate (original)",
+    "Original Will + one copy — if there is one (filed, not probated)",
+    "Copy of paid funeral bill or receipt",
+    "$1 filing fee (cash or money order)",
+    "Asset list with institutions, account numbers, and values",
+    "Names, addresses, and relationships of all distributees",
+    "Family Tree Affidavit — if filer is sole distributee, aunt/uncle, or child of never-married father",
+    "Stamped pre-addressed envelopes for distributees (county-dependent)",
+    "NYSCEF e-filing account ready (Kings County requires e-filing)",
+  ],
 };
 const FT_STEPS = [
   { key:"spouse",       q:"Is there a surviving spouse (husband/wife)?",
@@ -1294,6 +1308,7 @@ function setProceeding(type, btn) {
   if(type==="Probate")           lt.value = "Letters Testamentary";
   else if(type==="Ancillary")    lt.value = "Ancillary Letters of Administration";
   else if(type==="AdminCTA")     lt.value = "Letters of Administration c.t.a.";
+  else if(type==="SmallEstate")  lt.value = "Certificate of Voluntary Administration";
   else                           lt.value = "Letters of Administration";
   updateSummary(); updateDocList(); renderChecklist();
 }
@@ -1745,6 +1760,18 @@ function getDocList(){
     d.push({name:"Waiver / Renunciation",on:true});
     d.push({name:"Affidavit of No Debt",on:true});
   }
+  if(proceeding==="SmallEstate"){
+    d.push({name:"SE-3A Affidavit of Voluntary Administration",on:true});
+    const sePet=[g("petitionerFirstName"),g("petitionerMiddleName"),g("petitionerLastName")].filter(Boolean).join(" ").trim().toLowerCase();
+    const renounce=distributees.filter(x=>x.name&&x.disposition==="waiver"&&x.name.trim().toLowerCase()!==sePet).length;
+    if(renounce>0) d.push({name:`SE-1C Renunciation ×${renounce}`,on:true});
+    d.push({name:"Affidavit of Heirship + Family Tree (FT-1)",on:true,note:"if sole distributee / aunt-uncle / non-marital line"});
+    d.push({name:"SE-1D Report & Account",on:true,note:"filed after distribution"});
+    d.push({name:"Voluntary Admin Checklist",on:true,note:"reference"});
+    const tbds=distributees.filter(x=>x.name&&x.disposition==="tbd").length;
+    if(tbds>0) d.push({name:`${tbds} distributee(s) TBD`,on:false});
+    return d;
+  }
   d.push({name:"805 Affidavit",on:checks.dispenseBond});
   if(proceeding!=="Probate"){d.push({name:"Affidavit of Heirship",on:true});d.push({name:"Family Tree (FT-1)",on:true});}
   d.push({name:"Attorney Certification",on:true});
@@ -1913,7 +1940,7 @@ Return raw JSON only — no markdown, no backticks, no explanation.`,
     for(const k of selF){if(parsed[k]!=null&&parsed[k]!==""){const el=document.getElementById(k);if(el){el.value=String(parsed[k]);count++;}}}
 
     if(parsed.proceedingType){
-      const ptMap={"Probate":"Probate","Administration":"Administration","Ancillary":"Ancillary","NonDomiciliary":"NonDomiciliary","Non-Domiciliary":"NonDomiciliary","AdminCTA":"AdminCTA","Admin CTA":"AdminCTA"};
+      const ptMap={"Probate":"Probate","Administration":"Administration","Ancillary":"Ancillary","NonDomiciliary":"NonDomiciliary","Non-Domiciliary":"NonDomiciliary","AdminCTA":"AdminCTA","Admin CTA":"AdminCTA","SmallEstate":"SmallEstate","Small Estate":"SmallEstate"};
       const pt=ptMap[parsed.proceedingType]||parsed.proceedingType;
       const pb=document.querySelector(`.proc-btn[onclick*="${pt}"]`);
       if(pb) setProceeding(pt,pb);
