@@ -296,9 +296,12 @@ def generate_packet():
             traceback.print_exc()
             errors.append(f"SE-3A affidavit: {e}")
 
+        # Every named distributee except the filer gets an SE-1C — voluntary
+        # administration has no citation/waiver process, so the "waiver"
+        # disposition doesn't gate here; competing distributees renounce.
         pet_name = petitioner_full(data).strip().lower()
         for dist in data.get("distributees", []):
-            if dist.get("disposition") == "waiver" and dist.get("name"):
+            if dist.get("name"):
                 # The filing distributee doesn't renounce — they're the
                 # voluntary administrator.
                 if dist["name"].strip().lower() == pet_name:
@@ -1534,7 +1537,7 @@ def find_estate():
     return jsonify({"matches": matches, "name": name})
 
 
-APP_VERSION = "1.6.44"
+APP_VERSION = "1.6.45"
 GITHUB_REPO = "Ranguana/Surrogate-Court-Forms"
 
 

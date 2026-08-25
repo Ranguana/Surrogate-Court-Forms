@@ -1763,7 +1763,7 @@ function getDocList(){
   if(proceeding==="SmallEstate"){
     d.push({name:"SE-3A Affidavit of Voluntary Administration",on:true});
     const sePet=[g("petitionerFirstName"),g("petitionerMiddleName"),g("petitionerLastName")].filter(Boolean).join(" ").trim().toLowerCase();
-    const renounce=distributees.filter(x=>x.name&&x.disposition==="waiver"&&x.name.trim().toLowerCase()!==sePet).length;
+    const renounce=distributees.filter(x=>x.name&&x.name.trim().toLowerCase()!==sePet).length;
     if(renounce>0) d.push({name:`SE-1C Renunciation ×${renounce}`,on:true});
     d.push({name:"Affidavit of Heirship + Family Tree (FT-1)",on:true,note:"if sole distributee / aunt-uncle / non-marital line"});
     d.push({name:"SE-1D Report & Account",on:true,note:"filed after distribution"});
