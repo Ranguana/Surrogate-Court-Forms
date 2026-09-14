@@ -556,6 +556,23 @@ body {
           <div class="hint">State where decedent was domiciled</div>
         </div>
       </div>
+      <div class="field" id="nondom-statute-row" style="display:none">
+        <label>Domicile State Intestacy Statute</label>
+        <input id="domicileIntestacyStatute" placeholder="e.g. Va. Code § 64.2-200">
+        <div class="hint">Cited in the Non-Domiciliary affidavit (distributees under the domicile state's law). Left blank, the affidavit prints a blank line.</div>
+      </div>
+      <div id="nondom-distributees-row" style="display:none">
+        <div class="field"><label>Distributees Under Domicile State Law</label>
+          <select id="domicileDistributeesDiffer">
+            <option value="">Same as under New York law</option>
+            <option value="different">Different from New York law</option>
+          </select>
+          <div class="hint">NY real property passes under NY law; personal property under the domicile state's law (EPTL 3-5.1).</div>
+        </div>
+        <div class="field"><label>Domicile State Distributees (only if different)</label>
+          <textarea id="domicileDistributees" rows="3" placeholder="One per line, e.g. Jane Doe, daughter"></textarea>
+        </div>
+      </div>
       <div class="sub-head">Family Background (for Heirship Affidavit)</div>
       <div class="grid2">
         <div class="field"><label>Mother's Full Name</label><input id="motherName"></div>
@@ -1299,6 +1316,8 @@ function setProceeding(type, btn) {
   btn.classList.add("selected");
   const nonNY = type==="Ancillary"||type==="NonDomiciliary";
   document.getElementById("foreign-state-row").style.display   = nonNY ? "block" : "none";
+  document.getElementById("nondom-statute-row").style.display  = type==="NonDomiciliary" ? "block" : "none";
+  document.getElementById("nondom-distributees-row").style.display = type==="NonDomiciliary" ? "block" : "none";
   document.getElementById("q-selfprove-row").style.display     = type==="Probate" ? "flex" : "none";
   document.getElementById("nav-will").style.display            = (type==="Administration"||type==="NonDomiciliary") ? "none" : "flex";
   document.getElementById("ancillary-fields").style.display    = type==="Ancillary" ? "block" : "none";
@@ -1701,7 +1720,7 @@ function getFormData() {
     decedentPlaceOfDeath:g("decedentPlaceOfDeath"), decedentSex:g("decedentSex"), ssn:g("ssn"),
     decedentStreet:g("decedentStreet"), decedentCity:g("decedentCity"),
     decedentCounty:g("decedentCounty"), decedentState:g("decedentState"), decedentZip:g("decedentZip"),
-    decedentCitizenship:g("decedentCitizenship"), foreignState:g("foreignState"),
+    decedentCitizenship:g("decedentCitizenship"), foreignState:g("foreignState"), domicileIntestacyStatute:g("domicileIntestacyStatute"), domicileDistributeesDiffer:g("domicileDistributeesDiffer"), domicileDistributees:g("domicileDistributees"),
     motherName:g("motherName"), motherDOD:g("motherDOD"),
     fatherName:g("fatherName"), fatherDOD:g("fatherDOD"),
     maritalStatus:g("maritalStatus"), spouseName:g("spouseName"),
@@ -1752,6 +1771,7 @@ function getDocList(){
   }
   if(proceeding==="Administration")  d.push({name:"Administration Petition (A-1)",on:true});
   if(proceeding==="NonDomiciliary")  d.push({name:"Non-Domiciliary Petition (A-1)",on:true});
+  if(proceeding==="NonDomiciliary")  d.push({name:"Affidavit in Support of Non-Dom Proceeding",on:true,note:"edit case facts in Word"});
   if(proceeding==="Ancillary")       d.push({name:"Ancillary Petition (AA-1)",on:true});
   if(proceeding==="AdminCTA"){
     d.push({name:"CTA Petition (CTA-1)",on:true});
@@ -3191,7 +3211,7 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentSex","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentSex","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","domicileIntestacyStatute","domicileDistributeesDiffer","domicileDistributees","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   // CTA: ctaPetitionerInterest may hold custom "Other" text — re-route into Other input
   const _cpiSel = document.getElementById('ctaPetitionerInterest');

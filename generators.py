@@ -9,6 +9,8 @@ import re
 import traceback
 from datetime import datetime
 from docx import Document
+from copy import deepcopy
+from docx.text.paragraph import Paragraph
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 import fitz
@@ -5407,4 +5409,198 @@ def generate_se1d(data):
             break
 
     _validate_docx(doc, "generate_se1d")
+    return make_docx_bytes(doc)
+
+
+# ─── NON-DOMICILIARY AFFIDAVIT ────────────────────────────────────────────────
+# Affidavit in Support of Non-Domiciliary Proceeding. Caption, venue and jurat
+# come from templates/Non-Dom Affidavit.docx; the numbered body is rebuilt from
+# the template's paragraph formats to cover the administration checklist's
+# non-domiciliary items (A-CHKLST ¶2):
+#   - no original probate/administration filed or to be filed anywhere
+#   - estate assets left in New York (asset, value, county)
+#   - distributees under domicile law, or that they're the same as New York's
+#   - an express request for non-domiciliary treatment
+# Paragraph-index based — re-check the indices below if the template is swapped.
+
+NONDOM_AFFIDAVIT_TEMPLATE = os.path.join(TEMPLATES_DIR, "Non-Dom Affidavit.docx")
+
+
+def _nd_set_text(p, text):
+    """Collapse a paragraph's runs into the first run holding `text`."""
+    if p.text == text:
+        return
+    runs = p.runs
+    runs[0].text = text
+    for r in runs[1:]:
+        r.text = ""
+
+
+def _nd_align(p, pos):
+    """Replace the template's run of default-stop tabs with one tab to a fixed
+    stop, so the column doesn't drift with the width of the name / county
+    typed before it. Keeps each run's formatting."""
+    kept = False
+    for r in p.runs:
+        if "\t" not in r.text:
+            continue
+        out = []
+        for ch in r.text:
+            if ch == "\t":
+                if kept:
+                    continue
+                kept = True
+            out.append(ch)
+        r.text = "".join(out)
+    stops = p.paragraph_format.tab_stops
+    stops.clear_all()
+    stops.add_tab_stop(Inches(pos))
+
+
+def _nd_new_list(doc, proto_p):
+    """New numbering instance sharing proto's list format but restarting at
+    a), so consecutive sub-lists don't continue each other's lettering."""
+    numbering = doc.part.numbering_part.element
+    old = proto_p.pPr.numPr
+    abstract_id = numbering.num_having_numId(old.numId.val).abstractNumId.val
+    num = numbering.add_num(abstract_id)
+    ilvl = old.ilvl.val if old.ilvl is not None else 0
+    num.add_lvlOverride(ilvl=ilvl).add_startOverride(1)
+    return num.numId
+
+
+def generate_nondom_affidavit(data):
+    doc = Document(NONDOM_AFFIDAVIT_TEMPLATE)
+    P = doc.paragraphs
+    blank = "_______________"
+
+    def v(key):
+        return str(data.get(key) or "").strip()
+
+    county = v("county")
+    county_name = f"{county or blank} County"
+    dec = decedent_full(data) or blank
+    aka = v("decedentAKA")
+    pet = petitioner_full(data) or blank
+    rel = v("petitionerRelationship")
+    dod = format_date_long(v("decedentDOD")) or blank
+
+    # Domicile state: the explicit foreign-domicile field wins; the address
+    # state is only a fallback when it isn't New York (the form's default).
+    addr_state = v("decedentState")
+    dom_state = (v("foreignState")
+                 or (addr_state if addr_state.upper() not in ("NY", "NEW YORK") else "")
+                 or blank)
+    dom_county = re.sub(r"\s+county$", "", v("decedentCounty"), flags=re.IGNORECASE)
+    domicile = f"{dom_county} County, {dom_state}" if dom_county else dom_state
+    statute = v("domicileIntestacyStatute") or blank
+
+    def addr(prefix, state):
+        return ", ".join(filter(None, [
+            v(f"{prefix}Street"), v(f"{prefix}City"),
+            " ".join(filter(None, [state, v(f"{prefix}Zip")])),
+        ])) or blank
+    dec_addr = addr("decedent", addr_state)
+    pet_addr = addr("petitioner", v("petitionerState"))
+
+    # Caption, venue, deponent, signature, jurat
+    replace_para(P[1], "BRONX", county.upper() or blank)
+    replace_para(P[12], "BRONX", county.upper() or blank)
+    replace_para(P[5], "[DECEDENT NAME]", dec)
+    replace_para(P[6], "a/k/a", f"a/k/a {aka}" if aka else "")
+    # "File No: 20" + "2" + "1" + "-" — refill the non-bold "File No:" run
+    # rather than collapsing into the paragraph's bold first run.
+    fno = P[7].runs
+    k = next(i for i, r in enumerate(fno) if "File No:" in r.text)
+    fno[k].text = f"\tFile No: {v('fileNo') or blank}"
+    for r in fno[k + 1:]:
+        r.text = ""
+    replace_para(P[14], "[PETITIONER NAME]", pet)
+    replace_para(P[14], "being duly sworn deposes and says", "being duly sworn, depose and say")
+    replace_para(P[32], "[PETITIONER NAME]", pet)
+    replace_para(P[34], ", 2020", ", 20__")
+    for i in (4, 5, 6, 7):      # right-hand caption column
+        _nd_align(P[i], 4.0)
+    for i in (10, 11, 12):      # STATE OF / )ss: / COUNTY OF venue block
+        _nd_align(P[i], 2.75)
+
+    # New York estate assets come from the petition's property fields, so the
+    # affidavit matches A-1 ¶3 — the asset tracker also holds non-probate items
+    # (life insurance, beneficiary-designated accounts).
+    real_desc = "; ".join(ln.strip().rstrip(".")
+                          for ln in v("realPropertyDescription").splitlines() if ln.strip())
+    real_val = nonzero(v("realPropertyValue"))
+    pers_val = nonzero(v("personalPropertyValue"))
+    has_real = bool(real_desc or real_val)
+    assets = []
+    if has_real:
+        assets.append(f"real property at {real_desc or blank}, with an estimated value of "
+                      f"${_se_money(real_val) if real_val else blank}")
+    if pers_val:
+        assets.append(f"personal property with an estimated value of ${_se_money(pers_val)}")
+    if not assets:
+        assets.append(f"property at {blank}, with an estimated value of ${blank}")
+    situs = "The real property is" if has_real else "Said property is"
+
+    ny_dists = [f"{d['name'].strip()}, {(d.get('relationship') or '').strip().lower() or blank}"
+                for d in (data.get("distributees") or []) if (d.get("name") or "").strip()]
+    dom_dists = [ln.strip().rstrip(";.,")
+                 for ln in v("domicileDistributees").splitlines() if ln.strip()]
+
+    body = [
+        f"I am the {rel.lower() or blank} of the decedent, reside at {pet_addr}, "
+        f"and am the petitioner in the above-captioned matter.",
+        f"{dec} (the “decedent”) died on {dod}, a resident and domiciliary of {domicile}. "
+        f"The decedent’s residence address at the time of death was {dec_addr}.",
+        f"No original probate or administration proceeding has been or will be filed in "
+        f"any jurisdiction, including {dom_state}, with respect to the decedent’s estate.",
+        f"The decedent left estate assets in the State of New York, consisting of "
+        f"{', and '.join(assets)}. {situs} located in {county_name}, New York.",
+    ]
+    # EPTL 3-5.1: NY realty passes under NY law, personal property under the
+    # domicile's — so the attorney can list domicile distributees separately.
+    if v("domicileDistributeesDiffer") == "different":
+        dist_paras = [
+            ("The distributees of the decedent under the laws of the State of New York "
+             "(EPTL 4-1.1) are as follows:", ny_dists),
+            (f"The distributees of the decedent under the laws of {dom_state}, "
+             f"specifically {statute}, are as follows:", dom_dists),
+        ]
+    else:
+        dist_paras = [
+            (f"The distributees of the decedent under the laws of {dom_state}, specifically "
+             f"{statute}, are the same as the distributees under the laws of the State of "
+             f"New York (EPTL 4-1.1), and are as follows:", ny_dists),
+        ]
+    closing = (f"I respectfully request that this Court grant non-domiciliary treatment of "
+               f"this proceeding. I make this affidavit knowing that the {county_name} "
+               f"Surrogate’s Court will rely on the truth of the statements made herein in "
+               f"issuing Non-Domiciliary Letters of Administration to your Petitioner in "
+               f"this matter.")
+
+    # Rebuild the numbered body (template paras 16-29) ahead of the blank
+    # list paragraph (30), cloning the numbered (16) and lettered (24) formats.
+    num_proto, sub_proto, anchor = P[16], P[24], P[30]
+
+    def add(proto, text, num_id=None):
+        el = deepcopy(proto._p)
+        anchor._p.addprevious(el)
+        if num_id is not None:
+            el.pPr.numPr.numId.val = num_id
+        _nd_set_text(Paragraph(el, proto._parent), text)
+
+    for text in body:
+        add(num_proto, text)
+    for text, names in dist_paras:
+        add(num_proto, text)
+        items = names or [blank]
+        list_id = _nd_new_list(doc, sub_proto._p)
+        for n, item in enumerate(items):
+            end = "." if n == len(items) - 1 else "; and" if n == len(items) - 2 else ";"
+            add(sub_proto, item + end, list_id)
+    add(num_proto, closing)
+    for p in P[16:30]:
+        p._p.getparent().remove(p._p)
+
+    _validate_docx(doc, "generate_nondom_affidavit")
     return make_docx_bytes(doc)

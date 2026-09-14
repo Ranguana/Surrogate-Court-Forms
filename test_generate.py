@@ -25,6 +25,7 @@ from generators import (
     generate_accounting_excel,
     generate_auth_letter,
     generate_instruction_letter,
+    generate_nondom_affidavit,
 )
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "test_output")
@@ -359,6 +360,33 @@ SAMPLE_ASSETS = [
 ]
 
 
+# ─── NON-DOMICILIARY SAMPLE DATA (fictitious) ─────────────────────────────────
+
+NONDOM_DATA = {
+    **ADMIN_DATA,
+    "proceedingType": "NonDomiciliary",
+    "decedentFirstName": "Mary",
+    "decedentSex": "Female",
+    "decedentStreet": "100 Example Lane",
+    "decedentCity": "Richmond",
+    "decedentCounty": "Henrico",
+    "decedentState": "VA",
+    "decedentZip": "23220",
+    "foreignState": "Virginia",
+    "domicileIntestacyStatute": "Va. Code § 64.2-200",
+    "petitionerRelationship": "Son",
+    "realPropertyDescription": "123 Sample Street, Bronx, New York 10400",
+    "realPropertyValue": "450000",
+    "personalPropertyValue": "25000",
+}
+
+NONDOM_DIFFER_DATA = {
+    **NONDOM_DATA,
+    "domicileDistributeesDiffer": "different",
+    "domicileDistributees": "Jane Sample, daughter\nJohn Sample, son",
+}
+
+
 def save(filename, data_bytes):
     path = os.path.join(OUT_DIR, filename)
     with open(path, "wb") as f:
@@ -472,6 +500,12 @@ def main():
     # ════════════════════════════════════════════════════════════════════════════
     print("\n── ACCOUNTING & LETTERS ───────────────────────────────────────────")
     # ════════════════════════════════════════════════════════════════════════════
+
+    # Non-Domiciliary affidavit in support
+    run("NonDom_02b_Affidavit.docx",
+        generate_nondom_affidavit, NONDOM_DATA)
+    run("NonDom_02b_Affidavit_distributees_differ.docx",
+        generate_nondom_affidavit, NONDOM_DIFFER_DATA)
 
     run("Accounting_Smith.xlsx",
         generate_accounting_excel, ADMIN_DATA, SAMPLE_ASSETS)

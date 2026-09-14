@@ -190,6 +190,7 @@ from generators import (
     generate_waiver_cover, generate_attorney_cert, generate_designee_affidavit,
     generate_probate_docs, fill_ancillary_pdf,
     fill_administration_pdf, fill_nondom_pdf, fill_cta_pdf, generate_ft1,
+    generate_nondom_affidavit,
     generate_auth_letter, generate_instruction_letter,
     generate_accounting_excel, fill_schedule_da_pdf,
     needs_family_tree_affidavit, needs_family_tree_diagram,
@@ -425,6 +426,19 @@ def generate_packet():
             print(f"[ERR] 02 petition: {e}")
             traceback.print_exc()
             errors.append(f"Main petition: {e}")
+
+    # ── 02b. Affidavit in Support of Non-Domiciliary Proceeding ────────────────
+    # "02b" sorts right after the 02 petition without renumbering later slots.
+    if proceeding == "NonDomiciliary":
+        try:
+            print("[TRYING] 02b generate_nondom_affidavit()")
+            files.append((f"02b_Affidavit_NonDomiciliary_{last_name}.docx",
+                          generate_nondom_affidavit(data)))
+            print("[OK] 02b NonDomiciliary affidavit")
+        except Exception as e:
+            print(f"[ERR] 02b NonDomiciliary affidavit: {e}")
+            traceback.print_exc()
+            errors.append(f"Non-Dom affidavit: {e}")
 
     # ── 805 Affidavit (always)
     # Probate:    slot 05  (after petition 02, oath 03, witness 04)
