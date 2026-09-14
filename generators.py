@@ -1166,7 +1166,14 @@ def fill_pdf(template_path, fields, font_overrides=None, autofit=False):
             if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
                 widget.field_value = bool(value)
             elif widget.field_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
-                widget.field_value = str(value).lstrip("/")
+                # A radio group is one field with a widget per option. Setting
+                # the value on every widget in turn left the LAST option
+                # selected — turn on only the widget whose on-state matches.
+                want = str(value).lstrip("/")
+                on_states = [st for st in (widget.button_states() or {}).get("normal", []) if st != "Off"]
+                if want not in on_states:
+                    continue
+                widget.field_value = True
             else:
                 s = str(value) if value is not None else ""
                 widget.field_value = s
@@ -2056,25 +2063,27 @@ def fill_probate_pdf(data):
 # ─── ANCILLARY ADMIN PDF (AA-1) ───────────────────────────────────────────────
 
 def fill_ancillary_pdf(data):
-    """Fill the AA-1 Ancillary Administration Petition PDF form.
+    """Fill the AA-1 Ancillary Administration Petition PDF form (admin_ancil.pdf).
 
-    Field mappings verified against admin_ancil.pdf template:
-    - Text Field 19 = Mailing Address (NOT citizenship)
-    - Text Field 20 = Citizen of (petitioner 1)
-    - Radio Button 2 = Interest of petitioner (/0=Admin, /1=Distributee, /2=Creditor, /3=Other)
-    - Text Field 28 = Distributee relationship text
-    - Text Field 29 = Other/specify text for interest
-    - Text Field 76 = WHEREFORE "Letters to" name (parent-child field)
-    - Radio Button 3 = WHEREFORE prayer type (/0=Ancillary Letters, /1=d.b.n.)
-    - Text Field 75 = "No other persons interested" paragraph (NOT WHEREFORE)
+    Field map verified against the printed labels of the 1/21 revision:
+    - p1: 8-13 caption; 14-20 petitioner; Radio Button 1 caption letters type
+      (0 = Ancillary Letters, 1 = d.b.n.); Radio Button 2 interest (0 Admin,
+      1 Distributee, 2 Creditor, 3 Other); 28 relationship; 29 Other text;
+      30-37 ¶2 decedent (name, DOD, place, street, city, county, state, citizen).
+    - p2: 38-42 ¶3 foreign letters; 43-47 ¶4(a) values; 48-49 ¶4(b); 50 ¶5.
+    - p3: 57-65 ¶6(a) rows; 66-73 ¶6(b) rows + disability; 74-75 ¶7 "except";
+      Radio Button 3 + 76 (Letters to) / 78 (d.b.n. to), 77/79 continuation
+      lines; 80 Dated; 81 print name.
+    - p4: 85-89 caption; 90-91 verification venue (notary fills); Radio
+      Button 4 oath; 92 designation county; 93-96 domicile; 97 print name;
+      101-104 attorney.
+    Fields 76-109 also have zero-height "Office Use" twins on p1 sharing the
+    name; they render nothing.
     """
     dec = decedent_full(data)
     pet = petitioner_full(data)
-    # Letters always issued to the petitioner's full legal name. One
-    # source of truth — data.lettersTo is intentionally ignored, since
-    # using it as an override produced inconsistencies between the
-    # petition caption (full name) and the "Letters Testamentary to:"
-    # line / waiver "be issued to" (short name).
+    # Letters always issued to the petitioner's full legal name (see
+    # fill_administration_pdf) — data.lettersTo is intentionally ignored.
     letters_to = petitioner_full(data)
     county = data.get("county", "")
     foreign_state = data.get("foreignState", "")
@@ -2083,33 +2092,15 @@ def fill_ancillary_pdf(data):
         val = str(data.get(key, "") or "").strip()
         return val if val else default
 
-    # Compute total NY property value
-    try:
-        total = sum(float(data.get(k) or 0) for k in [
-            "personalPropertyValue", "improvedRealProperty",
-            "unimprovedRealProperty", "grossRents18mo"
-        ])
-        total_str = f"{total:,.2f}" if total > 0 else "0.00"
-    except Exception:
-        total_str = ""
+    total = sum(_money_value(data.get(k)) for k in (
+        "personalPropertyValue", "improvedRealProperty",
+        "unimprovedRealProperty", "grossRents18mo"))
 
-    petitioner_address = ", ".join(filter(None, [
-        data.get("petitionerStreet", ""),
-        data.get("petitionerCity", ""),
-        data.get("petitionerState", ""),
-        data.get("petitionerZip", "")
-    ]))
+    is_dbn = "d.b.n" in v("lettersType").lower()
+    letters_radio = "1" if is_dbn else "0"
 
-    # Petitioner interest logic
     pet_interest = v("petitionerInterest", "Distributee")
-    is_distributee = pet_interest.lower() == "distributee"
-
-    # Radio button values
-    radio_interest_val = "/1" if is_distributee else "/3"
-    if pet_interest.lower() == "administrator":
-        radio_interest_val = "/0"
-    elif pet_interest.lower() == "creditor":
-        radio_interest_val = "/2"
+    interest_radio = {"administrator": "0", "distributee": "1", "creditor": "2"}.get(pet_interest.lower(), "3")
 
     fields = {
         # ── PAGE 1 ────────────────────────────────────────────────
@@ -2119,28 +2110,28 @@ def fill_ancillary_pdf(data):
         "Text Field 11": foreign_state,
         "Text Field 12": v("fileNo"),
         "Text Field 13": county,
+        "Radio Button 1": letters_radio,
 
         "Text Field 14": pet,
         "Text Field 15": v("petitionerStreet"),
         "Text Field 16": v("petitionerCity"),
         "Text Field 17": v("petitionerState"),
         "Text Field 18": v("petitionerZip"),
-        "Text Field 19": petitioner_address,
+        "Text Field 19": "",                       # mailing address — only if different
         "Text Field 20": v("petitionerCitizenship", "U.S.A."),
 
-        # Interest of petitioner (radio + text)
-        "Radio Button 2": radio_interest_val,
-        "Text Field 28": v("petitionerRelationship") if is_distributee else "",
-        "Text Field 29": "" if is_distributee else pet_interest,
+        "Radio Button 2": interest_radio,
+        "Text Field 28": v("petitionerRelationship") if interest_radio == "1" else "",
+        "Text Field 29": pet_interest if interest_radio == "3" else "",
 
-        # Para 2 — Decedent
-        "Text Field 30": v("decedentDOD"),
-        "Text Field 31": v("decedentPlaceOfDeath"),
-        "Text Field 32": v("decedentStreet"),
-        "Text Field 33": v("decedentCity"),
-        "Text Field 34": v("decedentCounty"),
-        "Text Field 35": foreign_state,
-        "Text Field 36": v("decedentZip"),
+        # ¶2 — Decedent (no separate zip widget; zip rides with the state)
+        "Text Field 30": dec,
+        "Text Field 31": v("decedentDOD"),
+        "Text Field 32": v("decedentPlaceOfDeath"),
+        "Text Field 33": v("decedentStreet"),
+        "Text Field 34": v("decedentCity"),
+        "Text Field 35": v("decedentCounty"),
+        "Text Field 36": " ".join(filter(None, [foreign_state or v("decedentState"), v("decedentZip")])),
         "Text Field 37": v("decedentCitizenship", "U.S.A."),
 
         # ── PAGE 2 ────────────────────────────────────────────────
@@ -2148,13 +2139,13 @@ def fill_ancillary_pdf(data):
         "Text Field 39": v("foreignLettersIssuedTo", letters_to),
         "Text Field 40": v("foreignCourtName"),
         "Text Field 41": foreign_state,
-        "Text Field 42": v("foreignBondAmount", "0"),
+        "Text Field 42": _money_str(v("foreignBondAmount", "0")),
 
-        "Text Field 43": v("personalPropertyValue", "0.00"),
-        "Text Field 44": v("improvedRealProperty", "0.00"),
-        "Text Field 45": v("unimprovedRealProperty", "0.00"),
-        "Text Field 46": v("grossRents18mo", "0.00"),
-        "Text Field 47": total_str,
+        "Text Field 43": _money_str(v("personalPropertyValue", "0")),
+        "Text Field 44": _money_str(v("improvedRealProperty", "0")),
+        "Text Field 45": _money_str(v("unimprovedRealProperty", "0")),
+        "Text Field 46": _money_str(v("grossRents18mo", "0")),
+        "Text Field 47": f"{total:,.2f}",
 
         "Text Field 48": v("otherAssets", "NONE"),
         "Text Field 49": "",
@@ -2162,37 +2153,56 @@ def fill_ancillary_pdf(data):
         "Text Field 50": "N/A",
 
         # ── PAGE 3 ────────────────────────────────────────────────
-        # WHEREFORE clause
-        "Text Field 76": letters_to,
-        "Radio Button 3": "/0",
-        "Text Field 1065": "",
-        "Text Field 77":   "",
-        "Text Field 79":   "NONE",
-        "Text Field 80":   "",
+        "Text Field 74": "NONE",                   # ¶7 "…has been made, except"
+        "Text Field 75": "",
+        "Radio Button 3": letters_radio,
+        "Text Field 76": "" if is_dbn else letters_to,
+        "Text Field 77": "",
+        "Text Field 78": letters_to if is_dbn else "",
+        "Text Field 79": "",
+        "Text Field 80": "",                       # Dated — at signing
+        "Text Field 81": pet,                      # Print Name
 
-        # ── PAGE 4 — Combined Verification, Oath and Designation ──────────────
-        "Text Field 85": v("petitionerState", "New York"),
-        "Text Field 87": county,
-        "Text Field 89": county,
-        "Text Field 91": petitioner_address,
+        # ── PAGE 4 — Combined Verification, Oath and Designation ──
+        "Text Field 85": county.upper(),
+        "Text Field 86": dec,
+        "Text Field 87": v("decedentAKA"),
+        "Text Field 88": foreign_state,
+        "Text Field 89": v("fileNo"),
+        "Text Field 90": "",                       # STATE OF — where signed (notary)
+        "Text Field 91": "",                       # COUNTY OF — where signed (notary)
+        "Radio Button 4": letters_radio,
+        "Text Field 92": county,
+        "Text Field 93": v("petitionerStreet"),
+        "Text Field 94": v("petitionerCity"),
+        "Text Field 95": v("petitionerState"),
+        "Text Field 96": v("petitionerZip"),
         "Text Field 97": pet,
+        "Text Field 101": v("attorneyName", "Jessica Wilson, Esq."),
+        "Text Field 102": v("attorneyFirm", "Law Office of Jessica Wilson"),
+        "Text Field 103": v("attorneyPhone", "(212) 739-1736"),
+        "Text Field 104": v("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
     }
 
-    # Para 6(a) distributees — 3 rows (name / address / interest)
-    dist_rows = [
-        ("Text Field 57", "Text Field 58", "Text Field 59"),
-        ("Text Field 60", "Text Field 61", "Text Field 62"),
-        ("Text Field 63", "Text Field 64", "Text Field 65"),
-    ]
-    for i, dist in enumerate(data.get("distributees", [])[:3]):
-        if dist.get("name"):
-            nf, af, rf = dist_rows[i]
-            fields[nf] = dist["name"]
-            fields[af] = dist.get("address", "")
-            fields[rf] = dist.get("relationship", "")
+    # ¶6 — domiciliary distributees: (a) full age, 3 rows; (b) under disability, 2 rows
+    dists = [d for d in (data.get("distributees") or []) if (d.get("name") or "").strip()]
+    adults = [d for d in dists if not d.get("isMinor")]
+    minors = [d for d in dists if d.get("isMinor")]
+    adult_rows = [("Text Field 57", "Text Field 58", "Text Field 59"),
+                  ("Text Field 60", "Text Field 61", "Text Field 62"),
+                  ("Text Field 63", "Text Field 64", "Text Field 65")]
+    minor_rows = [("Text Field 66", "Text Field 67", "Text Field 68", "Text Field 69"),
+                  ("Text Field 70", "Text Field 71", "Text Field 72", "Text Field 73")]
+    for (nf, af, rf), d in zip(adult_rows, adults):
+        fields[nf], fields[af], fields[rf] = d["name"], d.get("address", ""), d.get("relationship", "")
+    for (nf, af, rf, df), d in zip(minor_rows, minors):
+        fields[nf], fields[af], fields[rf] = d["name"], d.get("address", ""), d.get("relationship", "")
+        fields[df] = (d.get("disabilityType") or "infant").strip()
+    if len(adults) > len(adult_rows) or len(minors) > len(minor_rows):
+        print("[WARN] AA-1 ¶6: more distributees than form rows — attach an addendum")
 
     template = os.path.join(PDFS_DIR, "admin_ancil.pdf")
-    return fill_pdf(template, fields)
+    return fill_pdf(template, fields, autofit=True)
 
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -2225,6 +2235,14 @@ def _money_str(val):
         return f"{float(s):,.2f}"
     except ValueError:
         return str(val or "").strip().lstrip("$").strip()
+
+
+def _money_value(val):
+    """'$729,020.95' / '77, 760' / '' → float (0.0 when blank or unparseable)."""
+    try:
+        return float(re.sub(r"[\s$,]", "", str(val or "")) or 0)
+    except ValueError:
+        return 0.0
 
 
 def _administration_petition_fields(data):
@@ -3371,12 +3389,12 @@ def fill_cta_pdf(data):
     fields["TextField17[0]"]  = v("petitionerCounty", county)  # County
     fields["TextField18[0]"]  = pet_state             # State
     fields["TextField19[0]"]  = pet_zip               # Zip
-    fields["TextField20[0]"]  = ""                    # Telephone
+    fields["TextField20[0]"]  = v("petitionerPhone", "(212) 739-1736")  # Telephone
     fields["TextField21[0]"]  = ""                    # Mailing address if different
 
     # Citizenship checkboxes (normalize "U.S.A." → "usa" before matching)
     _cit = pet_cit.lower().replace(".", "").replace(" ", "")
-    if "us" in _cit or "citizen" in _cit or "america" in _cit:
+    if _cit in ("us", "usa", "uscitizen", "unitedstates", "unitedstatesofamerica", "america", "american"):
         fields["CheckBox1[0]"] = True   # USA
     else:
         fields["CheckBox2[0]"] = True   # Other
@@ -3440,14 +3458,25 @@ def fill_cta_pdf(data):
         fields["TextField50[0]"]  = ""
 
     # Section 6 — Debts
-    fields["TextField51[0]"]  = ""    # Debts/funeral expenses (leave for manual)
+    debt_lines = [label.format(_money_str(val) if "$" in label else val)
+                  for key, label in (("mortgageAmount", "Outstanding Mortgage: ${}"),
+                                     ("funeralPaid", "Funeral Expenses Paid: ${}"),
+                                     ("funeralOutstanding", "Funeral Expenses Outstanding: ${}"),
+                                     ("miscDebts", "Misc Debts: {}"))
+                  for val in [v(key)] if val]
+    # ¶6 "except: ___" is one short line (~92pt) — too small for real debt lists
+    debts_text = "; ".join(debt_lines) or "NONE"
+    if fitz.get_text_length(debts_text, fontname="helv", fontsize=6) > 92:
+        print("[WARN] CTA ¶6: debts don't fit the form line — attach a rider")
+        debts_text = "See annexed rider"
+    fields["TextField51[0]"]  = debts_text   # ¶6 debts / funeral expenses
 
     # Section 7 — Estate values
-    fields["TextField52[0]"]  = personal    # Personal property
-    fields["TextField53[0]"]  = real_imp    # Improved real property
-    fields["TextField54[0]"]  = real_unimp  # Unimproved real property
-    fields["TextField55[0]"]  = gross_rents # Estimated gross rents 18 months
-    fields["TextField56[0]"]  = ""          # Other assets / cause of action
+    fields["TextField52[0]"]  = _money_str(personal)    # Personal property
+    fields["TextField53[0]"]  = _money_str(real_imp)    # Improved real property
+    fields["TextField54[0]"]  = _money_str(real_unimp)  # Unimproved real property
+    fields["TextField55[0]"]  = _money_str(gross_rents) # Estimated gross rents 18 months
+    fields["TextField56[0]"]  = v("otherAssets", "NONE")  # Other assets / cause of action
 
     # WHEREFORE
     fields["Petitioner"]      = letters_to   # Letters of Admin CTA to
@@ -3546,17 +3575,35 @@ def fill_cta_pdf(data):
     fields["TextField165[0]"] = county                 # County (SS:)
     fields["TextField166[0]"] = pet                    # Deponent name
     fields["TextField170[0]"] = pet_street             # Resides at
-    fields["TextField168[0]"] = dec_county             # County of residence
+    fields["TextField168[0]"] = v("petitionerCounty")  # Deponent's county of residence
     fields["TextField169[0]"] = pet_state              # State
-    fields["TextField171[0]"] = personal               # Estate value
-    fields["TextField172[0]"] = v("miscDebts", "NONE") # [If "none", write "NONE"]
+    # "personal property … plus estimated gross rents … for 18 months will not exceed $___"
+    fields["TextField171[0]"] = f"{_money_value(personal) + _money_value(gross_rents):,.2f}"
+    # Outstanding claims: "NONE", or one table row each (Name / Address / Nature of claim / Amount)
+    claims = []
+    if _money_value(v("mortgageAmount")):
+        claims.append(("Mortgage holder", "", "Mortgage", _money_str(v("mortgageAmount"))))
+    if _money_value(v("funeralOutstanding")):
+        claims.append(("Funeral home", "", "Unpaid funeral expenses", _money_str(v("funeralOutstanding"))))
+    for line in v("miscDebts").splitlines():
+        if line.strip() and line.strip().upper() != "NONE":
+            claims.append((line.strip(), "", "", ""))
+    fields["TextField172[0]"] = "" if claims else "NONE"
+    claim_rows = [("TextField173[0]", "TextField176[0]", "TextField179[0]", "TextField182[0]"),
+                  ("TextField174[0]", "TextField177[0]", "TextField180[0]", "TextField183[0]"),
+                  ("TextField175[0]", "TextField178[0]", "TextField181[0]", "TextField184[0]")]
+    for row, claim in zip(claim_rows, claims):
+        for field_name, val in zip(row, claim):
+            fields[field_name] = val
+    if len(claims) > len(claim_rows):
+        print("[WARN] CTA P-12: more claims than table rows — attach a rider")
     fields["TextField189[0]"] = pet                    # Print Name (signature stays blank)
     fields["TextField191[0]"] = atty_name              # Name of Attorney
     fields["TextField192[0]"] = atty_phone             # Tel. No.
     fields["TextField193[0]"] = atty_addr              # Address of Attorney
 
     template = os.path.join(PROBATE_TEMPLATES_DIR, "probcta.pdf")
-    return fill_pdf(template, fields)
+    return fill_pdf(template, fields, autofit=True)
 
 
 # ─── WAIVER OF CONSENT AND RENUNCIATION (A-8 Individual) ────────────────────

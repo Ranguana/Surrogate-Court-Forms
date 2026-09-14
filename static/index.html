@@ -617,11 +617,13 @@ body {
         <div class="field"><label>Last Name <span class="req">*</span></label><input id="petitionerLastName" oninput="updateSummary()"></div>
       </div>
       <div class="field"><label>Street Address</label><input id="petitionerStreet"></div>
-      <div class="grid3">
+      <div class="grid4">
         <div class="field"><label>City / Town</label><input id="petitionerCity"></div>
+        <div class="field"><label>County</label><input id="petitionerCounty"></div>
         <div class="field"><label>State</label><input id="petitionerState" value="NY"></div>
         <div class="field"><label>Zip</label><input id="petitionerZip"></div>
       </div>
+      <div class="field"><label>Phone</label><input id="petitionerPhone" placeholder="(555) 555-5555"><div class="hint">Printed on the petition; left blank, the petition uses the office number</div></div>
       <div class="grid2">
         <div class="field"><label>Citizenship</label>
           <select id="petitionerCitizenship"><option>U.S.A.</option><option>Other</option></select>
@@ -1728,7 +1730,7 @@ function getFormData() {
     childrenNote:g("childrenNote"),
     petitionerFirstName:g("petitionerFirstName"), petitionerMiddleName:g("petitionerMiddleName"),
     petitionerLastName:g("petitionerLastName"), petitionerStreet:g("petitionerStreet"),
-    petitionerCity:g("petitionerCity"), petitionerState:g("petitionerState"), petitionerZip:g("petitionerZip"),
+    petitionerCity:g("petitionerCity"), petitionerCounty:g("petitionerCounty"), petitionerState:g("petitionerState"), petitionerZip:g("petitionerZip"), petitionerPhone:g("petitionerPhone"),
     petitionerCitizenship:g("petitionerCitizenship"), petitionerInterest:g("petitionerInterest"),
     petitionerIsAttorney:g("petitionerIsAttorney"), petitionerIsDraftsperson:g("petitionerIsDraftsperson"),
     petitionerRelationship:g("petitionerRelationship"),
@@ -3212,7 +3214,7 @@ async function loadCaseFromDash(name){
   renderChecklist();
 
   // Restore all text/select fields
-  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentSex","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","domicileIntestacyStatute","domicileDistributeesDiffer","domicileDistributees","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerState","petitionerZip","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
+  const allF=["county","signer","decedentFirstName","decedentMiddleName","decedentLastName","decedentAKA","decedentDOB","decedentDOD","decedentPlaceOfDeath","decedentSex","decedentStreet","decedentCity","decedentCounty","decedentState","decedentZip","decedentCitizenship","foreignState","domicileIntestacyStatute","domicileDistributeesDiffer","domicileDistributees","motherName","motherDOD","fatherName","fatherDOD","maritalStatus","spouseName","divorceYear","priorSpouseDeathDate","childrenNote","petitionerFirstName","petitionerMiddleName","petitionerLastName","petitionerStreet","petitionerCity","petitionerCounty","petitionerState","petitionerZip","petitionerPhone","petitionerCitizenship","petitionerInterest","petitionerIsAttorney","petitionerIsDraftsperson","petitionerRelationship","deponentName","deponentRelationship","deponentAddress","yearsKnown","soleDistributee","personalPropertyValue","realPropertyValue","improvedRealProperty","unimprovedRealProperty","realPropertyDescription","grossRents18mo","otherAssets","mortgageAmount","funeralPaid","funeralOutstanding","miscDebts","willDate","codicilDate","witness1","witness2","noOtherWill","lettersType","lettersTo","foreignLettersDate","foreignLettersIssuedTo","foreignCourtName","foreignBondAmount","ctaOriginalCounty","ctaOriginalDate","ctaOriginalExecutor","ctaExecutorReason","ctaPetitionerInterest","ctaAdminIsAttorney","efileDate","fileNo","caseStatus","dateSubmitted","ssn","confidentialRelationships"];
   for(const k of allF){ const el=document.getElementById(k); if(el&&data[k]!=null) el.value=data[k]; }
   // CTA: ctaPetitionerInterest may hold custom "Other" text — re-route into Other input
   const _cpiSel = document.getElementById('ctaPetitionerInterest');
