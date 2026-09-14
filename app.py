@@ -190,7 +190,8 @@ from generators import (
     generate_waiver_cover, generate_attorney_cert, generate_designee_affidavit,
     generate_probate_docs, fill_ancillary_pdf,
     fill_administration_pdf, fill_nondom_pdf, fill_cta_pdf, generate_ft1,
-    generate_nondom_affidavit,
+    generate_nondom_affidavit, generate_tax_waiver_request, fill_et20_pdf, fill_et141_pdf,
+    au67_instructions_pdf,
     generate_auth_letter, generate_instruction_letter,
     generate_accounting_excel, fill_schedule_da_pdf,
     needs_family_tree_affidavit, needs_family_tree_diagram,
@@ -439,6 +440,23 @@ def generate_packet():
             print(f"[ERR] 02b NonDomiciliary affidavit: {e}")
             traceback.print_exc()
             errors.append(f"Non-Dom affidavit: {e}")
+
+    # ── NYS Tax Department waiver of citation request (NonDomiciliary) ──────────
+    # Mailed to the Tax Department's Waiver of Citation Unit, not filed with the
+    # court — the "TaxDept_" prefix keeps these after the court documents.
+    if proceeding == "NonDomiciliary":
+        for fname, make in ((f"TaxDept_0_AU-67_Instructions.pdf",                  au67_instructions_pdf),
+                            (f"TaxDept_1_Waiver_Request_Letter_{last_name}.docx", generate_tax_waiver_request),
+                            (f"TaxDept_2_ET-20_Stipulation_x3_{last_name}.pdf",   fill_et20_pdf),
+                            (f"TaxDept_3_ET-141_Domicile_Affidavit_{last_name}.pdf", fill_et141_pdf)):
+            try:
+                print(f"[TRYING] {fname}")
+                files.append((fname, make(data)))
+                print(f"[OK] {fname}")
+            except Exception as e:
+                print(f"[ERR] {fname}: {e}")
+                traceback.print_exc()
+                errors.append(f"{fname}: {e}")
 
     # ── 805 Affidavit (always)
     # Probate:    slot 05  (after petition 02, oath 03, witness 04)

@@ -26,6 +26,11 @@ from generators import (
     generate_auth_letter,
     generate_instruction_letter,
     generate_nondom_affidavit,
+    fill_nondom_pdf,
+    generate_tax_waiver_request,
+    fill_et20_pdf,
+    fill_et141_pdf,
+    au67_instructions_pdf,
 )
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "test_output")
@@ -502,10 +507,20 @@ def main():
     # ════════════════════════════════════════════════════════════════════════════
 
     # Non-Domiciliary affidavit in support
+    run("NonDom_02_Petition.pdf",
+        fill_nondom_pdf, NONDOM_DATA)
     run("NonDom_02b_Affidavit.docx",
         generate_nondom_affidavit, NONDOM_DATA)
     run("NonDom_02b_Affidavit_distributees_differ.docx",
         generate_nondom_affidavit, NONDOM_DIFFER_DATA)
+    run("NonDom_TaxDept_0_AU-67_Instructions.pdf",
+        au67_instructions_pdf, NONDOM_DATA)
+    run("NonDom_TaxDept_1_Waiver_Request_Letter.docx",
+        generate_tax_waiver_request, NONDOM_DATA)
+    run("NonDom_TaxDept_2_ET-20_Stipulation_x3.pdf",
+        fill_et20_pdf, NONDOM_DATA)
+    run("NonDom_TaxDept_3_ET-141_Domicile_Affidavit.pdf",
+        fill_et141_pdf, NONDOM_DATA)
 
     run("Accounting_Smith.xlsx",
         generate_accounting_excel, ADMIN_DATA, SAMPLE_ASSETS)

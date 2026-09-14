@@ -1126,7 +1126,7 @@ def _ensure_acroform_root(pdf_bytes):
         return pdf_bytes
 
 
-def fill_pdf(template_path, fields, font_overrides=None):
+def fill_pdf(template_path, fields, font_overrides=None, autofit=False):
     """Universal PDF form filler using pymupdf/fitz.
 
     Behavior:
@@ -1134,6 +1134,8 @@ def fill_pdf(template_path, fields, font_overrides=None):
     - Checkbox-style 'X' values are sized to the box height so they fill the box.
     - font_overrides: optional dict mapping field name → font size in points.
       When the field's name is a key, that size wins over the default 8pt.
+    - autofit: shrink single-line text that would run past its field's edge
+      (e.g. a long Place of Death) from 8pt down to 6pt.
 
     Note: Multiline flag is NOT set. Adding Multiline to single-line template
     fields causes Acrobat to draw a "+" scroll indicator at every field's
@@ -1145,7 +1147,8 @@ def fill_pdf(template_path, fields, font_overrides=None):
     Handles text, checkboxes (True/False), radio buttons, and combo/dropdown fields.
     Calls widget.update() to bake appearance streams so fields render in all viewers.
     """
-    doc = fitz.open(template_path)
+    doc = (fitz.open(template_path) if isinstance(template_path, str)
+           else fitz.open(stream=template_path, filetype="pdf"))
     for page in doc:
         for widget in page.widgets():
             name = widget.field_name
@@ -1188,7 +1191,12 @@ def fill_pdf(template_path, fields, font_overrides=None):
                     if font_overrides and name in font_overrides:
                         widget.text_fontsize = font_overrides[name]
                     else:
-                        widget.text_fontsize = 8
+                        size = 8
+                        if autofit and s and not (widget.field_flags & 4096):   # 4096 = multiline
+                            room = widget.rect.width - 4
+                            while size > 6 and fitz.get_text_length(s, fontname="helv", fontsize=size) > room:
+                                size -= 0.5
+                        widget.text_fontsize = size
             widget.update()
     buf = io.BytesIO()
     doc.save(buf)
@@ -2209,8 +2217,20 @@ def petitioner_full(data):
 
 # ─── ADMINISTRATION PETITION (A-1) ────────────────────────────────────────────
 
-def fill_administration_pdf(data):
-    """Fill the A-1 Administration Petition + Oath PDF form."""
+def _money_str(val):
+    """'$729,020.95' / '850000' / '$77, 760' → '729,020.95' / '850,000.00' /
+    '77,760.00'. The forms print their own '$'; unparseable text passes through."""
+    s = re.sub(r"[\s$,]", "", str(val or ""))
+    try:
+        return f"{float(s):,.2f}"
+    except ValueError:
+        return str(val or "").strip().lstrip("$").strip()
+
+
+def _administration_petition_fields(data):
+    """Field values for the A-1 petition layout, shared by the Administration
+    and Non-Domiciliary petitions (same template fields and positions).
+    Returns (fields, font_overrides)."""
     _auto_compute_property(data)
     county    = data.get("county", "")
     dec       = decedent_full(data)
@@ -2242,15 +2262,20 @@ def fill_administration_pdf(data):
     # (spouse/relative). Override any will-related interest (e.g.,
     # "Executor named in Will" left over from probate-era data) — it
     # never applies to an admin proceeding.
+    # "Administrator" / "Petitioner" name the role sought, not an interest
+    # this form accepts — with a family relationship, that's a distributee.
     pet_interest_raw = v("petitionerInterest", "Distributee")
-    if "executor" in pet_interest_raw.lower() or "will" in pet_interest_raw.lower():
+    interest_lower = pet_interest_raw.lower()
+    if ("executor" in interest_lower or "will" in interest_lower
+            or (interest_lower in ("administrator", "proposed administrator", "petitioner")
+                and v("petitionerRelationship"))):
         pet_interest_raw = "Distributee"
     is_pet_distributee = pet_interest_raw.lower() == "distributee"
 
     # ── §6 distributees — use the canonical EPTL-routing helper ────────
     pet_addr = ", ".join(filter(None, [
         v("petitionerStreet"), v("petitionerCity"),
-        v("petitionerState"), v("petitionerZip"),
+        " ".join(filter(None, [v("petitionerState"), v("petitionerZip")])),
     ]))
     all_dists = compute_interested_persons(data, pet, pet_addr, letters_to)
     primary_adults = [d for d in all_dists if (d.get("beneficiaryType") or "primary") == "primary" and not d.get("isMinor")]
@@ -2325,13 +2350,13 @@ def fill_administration_pdf(data):
                        ("miscDebts",          "Misc Debts: {}")]:
         val = (data.get(key, "") or "").strip()
         if val:
-            debt_lines.append(label.format(val))
+            debt_lines.append(label.format(_money_str(val) if "$" in label else val))
     if not debt_lines:
         debt_lines = ["NONE"]
 
     pet_addr = ", ".join(filter(None, [
         v("petitionerStreet"), v("petitionerCity"),
-        v("petitionerState"), v("petitionerZip"),
+        " ".join(filter(None, [v("petitionerState"), v("petitionerZip")])),
     ]))
 
     fields = {
@@ -2351,7 +2376,8 @@ def fill_administration_pdf(data):
         # ── PAGE 1: Petitioner ───────────────────────────────────────
         "Name":                             pet,
         "Domicile":                         v("petitionerStreet"),
-        "County":                           v("petitionerCity"),
+        "City/Town/Village":                v("petitionerCity"),
+        "County":                           v("petitionerCounty"),
         "State":                            v("petitionerState"),
         "Zip":                              v("petitionerZip"),
         "yes us citizen":                   pet_us,
@@ -2370,11 +2396,15 @@ def fill_administration_pdf(data):
 
         # ── PAGE 1: Decedent ─────────────────────────────────────────
         "Name_2":                           dec,
-        "Domicile_2":                       v("decedentStreet"),
-        "City/Town/Village":                v("decedentCity"),
+        # The decedent's domicile line has no separate city widget — the
+        # "City/Town/Village" widget belongs to the petitioner's row above.
+        "Domicile_2":                       ", ".join(filter(None, [v("decedentStreet"), v("decedentCity")])),
         "State_2":                          v("decedentState"),
         "Zip Code":                         v("decedentZip"),
-        "Township of":                      v("decedentCounty", v("decedentCity")),
+        "Township of":                      v("decedentCity"),
+        # Page-1 decedent county; split from page 5's clerk-designation
+        # "County of" (they were one shared field in the template).
+        "Decedent County of":               v("decedentCounty"),
         "Date of Death":                    v("decedentDOD"),
         "Place of Death":                   v("decedentPlaceOfDeath"),
         "yes us citizen 1":                 dec_us,
@@ -2384,14 +2414,14 @@ def fill_administration_pdf(data):
         # Personal property defaults to "0" (NY convention when no
         # personalty exists or hasn't been valued yet). Real property
         # auto-computes from the asset tracker via _auto_compute_property.
-        "gross value personal":             v("personalPropertyValue", "0"),
-        "gross value real property":        v("realPropertyValue", "0"),
+        "gross value personal":             _money_str(v("personalPropertyValue", "0")),
+        "gross value real property":        _money_str(v("realPropertyValue", "0")),
         "improved":                         bool(nonzero(data.get("improvedRealProperty"))),
         "unimproved":                       bool(nonzero(data.get("unimprovedRealProperty"))),
         "A brief description of each parcel is as follows":
                                             v("realPropertyDescription"),
         "c The estimated gross rent for a period of eighteen 18 months is the sum of":
-                                            v("grossRents18mo"),
+                                            _money_str(v("grossRents18mo")) if v("grossRents18mo") else "",
         # ── §3(d) "right of action / wrongful death asset" — default NONE
         "and the person against whom it exists including names and carrier 1":
                                             v("rightOfAction", "NONE"),
@@ -2426,7 +2456,6 @@ def fill_administration_pdf(data):
         "Telephone Number":                 v("petitionerPhone", "(212) 739-1736"),
 
         # ── PAGE 5: Combined Verification, Oath & Designation ────────
-        "ss":                               v("petitionerState", "New York"),
         "County of":                        county.upper(),
         "My domicile is":                   pet_addr,
         "before me personally came":        pet,
@@ -2470,184 +2499,285 @@ def fill_administration_pdf(data):
         "Dropdown 6e": 8, "Dropdown 6f": 8, "Dropdown 6g": 8, "Dropdown 6h": 8,
     }
 
+    return fields, font_overrides
+
+
+def fill_administration_pdf(data):
+    """Fill the A-1 Administration Petition + Oath PDF form."""
+    fields, font_overrides = _administration_petition_fields(data)
     template = os.path.join(ADMIN_TEMPLATES_DIR, "Admin Petition + Oath.pdf")
-    return fill_pdf(template, fields, font_overrides=font_overrides)
+    return fill_pdf(template, fields, font_overrides=font_overrides, autofit=True)
+
+
+# Statutory party cited on every non-domiciliary administration petition
+# (Tax Law 971-a). Address per Tax Department Form AU-67 (rev. 4/24).
+NYS_TAX_PARTY = {
+    "name":         "Commissioner of Taxation and Finance",
+    "relationship": "Statutory Party",
+    "address":      "Waiver of Citation Unit, W A Harriman Campus, Albany NY 12227-2994",
+    "citizenship":  "N/A",
+}
 
 
 def fill_nondom_pdf(data):
     """Fill the Non-Domiciliary Administration Petition + Oath PDF form.
 
-    Uses the same field mapping as fill_administration_pdf but with the
-    Non Dom template which has additional non-domiciliary specific fields.
+    Same A-1 layout and field names as the Administration petition (only the
+    caption differs), so it shares that field builder and adds the
+    non-domiciliary statutory party.
     """
-    county    = data.get("county", "")
-    dec       = decedent_full(data)
-    pet       = petitioner_full(data)
-    lt        = data.get("lettersType", "Letters of Administration")
-    lt_lower  = lt.lower()
-    # Letters always issued to the petitioner's full legal name. One
-    # source of truth — data.lettersTo is intentionally ignored, since
-    # using it as an override produced inconsistencies between the
-    # petition caption (full name) and the "Letters Testamentary to:"
-    # line / waiver "be issued to" (short name).
-    letters_to = petitioner_full(data)
+    fields, font_overrides = _administration_petition_fields(data)
 
-    def v(key, default=""):
-        return str(data.get(key, "") or "").strip() or default
-
-    is_limited    = "limited" in lt_lower and "limitation" not in lt_lower
-    is_limitation = "limitation" in lt_lower
-    is_temporary  = "temporary" in lt_lower
-    is_standard   = not any([is_limited, is_limitation, is_temporary])
-
-    pet_cit = v("petitionerCitizenship", "U.S.A.")
-    dec_cit = v("decedentCitizenship",   "U.S.A.")
-    pet_us  = "U.S.A" in pet_cit or "usa" in pet_cit.lower()
-    dec_us  = "U.S.A" in dec_cit or "usa" in dec_cit.lower()
-
-    is_attorney = data.get("petitionerIsAttorney") == "Yes"
-
-    surv_keys = [
-        "survivingSpouse", "survivingChildren", "survivingIssue",
-        "survivingParents", "survivingSiblings", "survivingGrandparents",
-        "survivingAuntsUncles", "survivingFirstCousinsOnceRemoved",
-    ]
-    first_surviving = None
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if raw and str(raw).strip().lower() not in ("false", "0", "no", ""):
-            first_surviving = idx
-            break
-    dropdown_vals = []
-    for idx, key in enumerate(surv_keys):
-        raw = data.get(key)
-        if first_surviving is None:
-            dropdown_vals.append("No")
-        elif idx < first_surviving:
-            dropdown_vals.append("No")
-        elif idx == first_surviving:
-            s = str(raw).strip()
-            dropdown_vals.append(s if s.lower() not in ("true", "yes") else "Yes")
-        else:
-            dropdown_vals.append("X")
-
-    debt_lines = []
-    for key, label in [("mortgageAmount",    "Outstanding Mortgage: ${}"),
-                       ("funeralPaid",        "Funeral Expenses Paid: ${}"),
-                       ("funeralOutstanding", "Funeral Expenses Outstanding: ${}"),
-                       ("miscDebts",          "Misc Debts: {}")]:
-        val = (data.get(key, "") or "").strip()
-        if val:
-            debt_lines.append(label.format(val))
-    if not debt_lines:
-        debt_lines = ["NONE"]
-
-    pet_addr = ", ".join(filter(None, [
-        v("petitionerStreet"), v("petitionerCity"),
-        v("petitionerState"), v("petitionerZip"),
-    ]))
-
-    # Foreign letters info for non-domiciliary
-    foreign_state = v("foreignState", v("decedentState"))
-
-    fields = {
-        "COUNTY OF":                        county.upper(),
-        "Estate of 1":                      dec,
-        "aka":                              v("decedentAKA"),
-        "File No":                          v("fileNo"),
-        "TO THE SURROGATES COURT COUNTY OF": county.upper(),
-
-        "Name":                             pet,
-        "Domicile":                         v("petitionerStreet"),
-        "County":                           v("petitionerCity"),
-        "State":                            v("petitionerState"),
-        "Zip":                              v("petitionerZip"),
-        "Mailing address is":               pet_addr,
-        "yes us citizen":                   pet_us,
-        "NO us citizen":                    not pet_us,
-        "Distributee of decedent state relationship":
-            v("petitionerRelationship") if v("petitionerInterest", "").lower() in ("", "distributee") else "",
-        "Otherspecify":
-            "" if v("petitionerInterest", "").lower() in ("", "distributee") else v("petitionerInterest"),
-        "Mark if Distributee":
-            v("petitionerInterest", "").lower() in ("", "distributee"),
-        "Mark if other and then specifiy":
-            bool(v("petitionerInterest")) and v("petitionerInterest", "").lower() != "distributee",
-        "yes attorney":                     is_attorney,
-        "NO not an attorney":               not is_attorney,
-        "not a convicted felon":            True,
-
-        "Name_2":                           dec,
-        "Domicile_2":                       v("decedentStreet"),
-        "City/Town/Village":                v("decedentCity"),
-        "State_2":                          v("decedentState"),
-        "Zip Code":                         v("decedentZip"),
-        "Township of":                      v("decedentCounty", v("decedentCity")),
-        "Date of Death":                    v("decedentDOD"),
-        "Place of Death":                   v("decedentPlaceOfDeath"),
-        "yes us citizen 1":                 dec_us,
-        "NO not US Citizen 2":              not dec_us,
-
-        "gross value personal":             v("personalPropertyValue", "0"),
-        "gross value real property":        v("realPropertyValue", "0"),
-        "improved":                         bool(nonzero(data.get("improvedRealProperty"))),
-        "unimproved":                       bool(nonzero(data.get("unimprovedRealProperty"))),
-        "A brief description of each parcel is as follows":
-                                            v("realPropertyDescription"),
-        "c The estimated gross rent for a period of eighteen 18 months is the sum of":
-                                            v("grossRents18mo"),
-
-        "Dropdown 6a": dropdown_vals[0],
-        "Dropdown 6b": dropdown_vals[1],
-        "Dropdown 6c": dropdown_vals[2],
-        "Dropdown 6d": dropdown_vals[3],
-        "Dropdown 6e": dropdown_vals[4],
-        "Dropdown 6f": dropdown_vals[5],
-        "Dropdown 6g": dropdown_vals[6],
-        "Dropdown 6h": dropdown_vals[7],
-
-        "a-process issue letters":          True,
-        "c a decree award letters of":      True,
-        "9c1":                              is_standard,
-        "9c2":                              is_limited,
-        "9c3":                              is_limitation,
-        "9c4":                              is_temporary,
-        "Administration to":                letters_to if is_standard   else "",
-        "Limited Administration to":        letters_to if is_limited    else "",
-        "Administration with Limitation to": letters_to if is_limitation else "",
-        "Temporary Administration to":      letters_to if is_temporary  else "",
-        "Dated":                            "",
-        "Print Name":                       pet,
-
-        "Telephone Number":                 v("petitionerPhone", "(212) 739-1736"),
-
-        "ss":                               v("petitionerState", "New York"),
-        "My domicile is":                   pet_addr,
-        "before me personally came":        pet,
-        "Print Name_3":                     v("attorneyName", "Jessica Wilson, Esq."),
-        "Firm Name":                        v("attorneyFirm", "Law Office of Jessica Wilson"),
-        "TelNo":                            v("attorneyPhone", "(212) 739-1736"),
-        "Address of Attorney":              v("attorneyAddress", "221 Columbia Street, Brooklyn NY 11231"),
-
-        "yes wrongful death":               False,
-    }
-
-    # Distributees — full age / sound mind (rows 1-8)
-    for i, dist in enumerate(data.get("distributees", [])[:8]):
-        if dist.get("name"):
-            n = str(i + 1)
-            fields[f"Name {n}"]                        = dist["name"]
-            fields[f"Relationship {n}"]                = dist.get("relationship", "")
-            fields[f"Domicile and Mailing Address {n}"] = dist.get("address", "")
-            fields[f"Citizenship {n}"]                 = dist.get("citizenship", "U.S.A.")
-
-    # Debts
-    debt_key = "8 There are no outstanding debts or funeral expenses except Write NONE or state same {}"
-    for i, line in enumerate(debt_lines[:9]):
-        fields[debt_key.format(i + 1)] = line
+    # ¶7(a) statutory party: Tax Law 971-a — a petition for original letters
+    # for a non-domiciliary must name the Commissioner of Taxation and Finance
+    # as a party to be cited (clerks reject petitions without it). The address
+    # is the Tax Department's Waiver of Citation Unit, which also receives
+    # citations served on the department (Form AU-67, rev. 4/24).
+    tax_row = next((i for i in range(1, 9) if not fields.get(f"Name {i}")), None)
+    if tax_row:
+        n = str(tax_row)
+        fields[f"Name {n}"]                         = NYS_TAX_PARTY["name"]
+        fields[f"Relationship {n}"]                 = NYS_TAX_PARTY["relationship"]
+        fields[f"Domicile and Mailing Address {n}"] = NYS_TAX_PARTY["address"]
+        fields[f"Citizenship {n}"]                  = NYS_TAX_PARTY["citizenship"]
+    else:
+        print("[WARN] Non-Dom petition ¶7(a): all 8 rows hold distributees — "
+              "add the Commissioner of Taxation and Finance on a rider")
 
     template = os.path.join(ADMIN_TEMPLATES_DIR, "Non Dom Petition + Oath.pdf")
-    return fill_pdf(template, fields)
+    return fill_pdf(template, fields, font_overrides=font_overrides, autofit=True)
+
+
+# ─── NYS TAX DEPARTMENT: WAIVER OF CITATION REQUEST (non-domiciliary) ─────────
+# Tax Law 971-a makes the Commissioner of Taxation and Finance a party to be
+# cited on non-domiciliary petitions. Instead of citing the department, the
+# firm requests a Waiver of Citation and Consent (Form AU-67, rev. 4/24): a
+# cover letter plus the death certificate, the proposed petition, three ET-20
+# stipulations with original signatures, and ET-141. The department does not
+# accept waivers we prepare — its system generates one on approval.
+# ET-20 (1/04) and ET-141 (1/15) are flat as published; the bundled copies in
+# templates/Tax have fillable fields added for every blank.
+
+TAX_TEMPLATES_DIR = os.path.join(TEMPLATES_DIR, "Tax")
+TAX_WAIVER_UNIT_ADDRESS = [
+    "NYS Tax Department",
+    "TDAB/Estate Tax Audit – Waiver of Citation Unit",
+    "W A Harriman Campus",
+    "Albany NY 12227-2994",
+]
+
+
+def au67_instructions_pdf(data=None):
+    """Form AU-67 (rev. 4/24), the Tax Department's instructions and document
+    checklist for requesting a Waiver of Citation — included unchanged as the
+    reference sheet for assembling the mailing."""
+    with open(os.path.join(TAX_TEMPLATES_DIR, "AU-67 Instructions.pdf"), "rb") as f:
+        return f.read()
+
+
+def _domicile_state(data):
+    """Foreign domicile state of a non-domiciliary decedent ('' if unknown)."""
+    addr_state = (data.get("decedentState") or "").strip()
+    return ((data.get("foreignState") or "").strip()
+            or (addr_state if addr_state.upper() not in ("NY", "NEW YORK") else ""))
+
+
+def _parse_date(date_str):
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime((date_str or "").strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+
+
+def _split_us_address(addr):
+    """'221 Columbia Street, Brooklyn NY 11231' → (street, city, state, zip)."""
+    m = re.match(r"^\s*(.+),\s*([^,]+?),?\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$", addr or "")
+    if not m:
+        return (addr or "").strip(), "", "", ""
+    return m.groups()
+
+
+def _split_phone(phone):
+    """'(212) 739-1736' → ('212', '739-1736')."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        return "", (phone or "").strip()
+    return digits[:3], f"{digits[3:6]}-{digits[6:]}"
+
+
+def generate_tax_waiver_request(data):
+    """Cover letter to the Tax Department's Waiver of Citation Unit requesting
+    a Waiver of Citation and Consent for a non-domiciliary administration."""
+    blank = "_______________"
+    signer_key = data.get("signer", "Jessica Wilson")
+    signer = SIGNERS.get(signer_key, signer_key)
+    county = (data.get("county") or "").strip() or blank
+    dec = decedent_full(data) or blank
+    aka = (data.get("decedentAKA") or "").strip()
+    pet = petitioner_full(data) or blank
+    dom_state = _domicile_state(data)
+    dom_county = re.sub(r"\s+county$", "", (data.get("decedentCounty") or "").strip(), flags=re.IGNORECASE)
+    domicile = ", ".join(filter(None, [f"{dom_county} County" if dom_county else "", dom_state])) or blank
+    dod = format_date_long((data.get("decedentDOD") or "").strip()) or blank
+    file_no = (data.get("fileNo") or "").strip() or blank
+    ssn = (data.get("ssn") or "").strip() or "___-__-____"
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.space_before = Pt(0)
+
+    def _para(text="", space_after=0):
+        p = doc.add_paragraph(text)
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p.paragraph_format.space_after = Pt(space_after)
+        p.paragraph_format.space_before = Pt(0)
+        return p
+
+    _para(today(), space_after=12)
+    for line in TAX_WAIVER_UNIT_ADDRESS[:-1]:
+        _para(line)
+    _para(TAX_WAIVER_UNIT_ADDRESS[-1], space_after=12)
+
+    _para("RE: Request for Waiver of Citation and Consent")
+    _para(f"      Estate of {dec}{f' a/k/a {aka}' if aka else ''}, Deceased")
+    _para(f"      Surrogate’s Court, {county} County, File No. {file_no}")
+    _para(f"      Date of Death: {dod}")
+    _para(f"      Social Security No.: {ssn}")
+    _para(f"      Domicile: {domicile}", space_after=12)
+
+    _para("Dear Sir or Madam:", space_after=6)
+    _para(
+        f"This office represents {pet}, the petitioner in a proceeding in the Surrogate’s "
+        f"Court, {county} County, for original Letters of Administration for the estate of the "
+        f"above-named decedent, who died a domiciliary of {dom_state or blank} and left property "
+        f"in New York State. We respectfully request that the Department issue a Waiver of "
+        f"Citation and Consent in this proceeding. Enclosed please find:",
+        space_after=6,
+    )
+    for enc in (
+        "Copy of the decedent’s death certificate",
+        "Copy of the proposed Petition for Non-Domiciliary Letters of Administration",
+        "Three (3) Stipulations Reserving Domicile (Form ET-20), each bearing original signatures",
+        "New York State Estate Tax Domicile Affidavit (Form ET-141)",
+    ):
+        p = doc.add_paragraph(style="List Bullet")
+        p.text = enc
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p.paragraph_format.space_after = Pt(0)
+
+    _para("", space_after=6)
+    _para("Please do not hesitate to call our office if you have concerns and questions.")
+    _para("", space_after=6)
+    _para("Sincerely,")
+    _para("")
+    _para("")
+    _para(signer)
+    _para("Enc.")
+
+    _validate_docx(doc, "generate_tax_waiver_request")
+    return make_docx_bytes(doc)
+
+
+def fill_et20_pdf(data, copies=3):
+    """Form ET-20 Stipulation Reserving Domicile. The Tax Department's PDF is
+    flat, so the bundled template carries fillable fields for every blank; the
+    estate side is pre-filled and the page repeated `copies` times — AU-67
+    requires three, each originally signed. Fields on copies 2+ get a numeric
+    suffix so each copy stays independently editable."""
+    street, city, state, zip_code = _split_us_address(
+        data.get("attorneyAddress") or "221 Columbia Street, Brooklyn NY 11231")
+    area, number = _split_phone(data.get("attorneyPhone") or "(212) 739-1736")
+    dod = _parse_date(data.get("decedentDOD"))
+    fields = {
+        "County":                                 (data.get("county") or "").strip().upper(),
+        "Letters of Administration Nonresident":  True,
+        "Estate Of":                              decedent_full(data),
+        "Date of Death":                          dod.strftime("%m/%d/%Y") if dod else (data.get("decedentDOD") or ""),
+        "SSN":                                    (data.get("ssn") or "").strip(),
+        "Phone Area Code":                        area,
+        "Phone Number":                           number,
+        "Attorney Name":                          data.get("attorneyName") or "Jessica Wilson, Esq.",
+        "Firm Name":                              data.get("attorneyFirm") or "Law Office of Jessica Wilson",
+        "Attorney Street":                        street,
+        "Attorney City":                          city,
+        "Attorney State":                         state,
+        "Attorney ZIP":                           zip_code,
+    }
+    template = os.path.join(TAX_TEMPLATES_DIR, "ET-20 Stipulation Reserving Domicile.pdf")
+    out = fitz.open()
+    for i in range(copies):
+        # Rename before filling and joining — insert_pdf drops the widgets of
+        # repeat copies whose field names collide with an earlier page.
+        sfx = f" {i + 1}" if i else ""
+        page_doc = fitz.open(template)
+        if sfx:
+            for w in page_doc[0].widgets():
+                w.field_name += sfx
+                w.update()
+        filled = fill_pdf(page_doc.tobytes(), {k + sfx: val for k, val in fields.items()}, autofit=True)
+        out.insert_pdf(fitz.open(stream=filled, filetype="pdf"))
+    return _ensure_acroform_root(out.tobytes(garbage=3, deflate=True))
+
+
+def fill_et141_pdf(data):
+    """Form ET-141 Estate Tax Domicile Affidavit. The Tax Department's PDF is
+    flat, so the bundled template carries a fillable field for every blank and
+    checkbox. The case's known facts (decedent header, NY real property,
+    applicant block) are pre-filled; questions 1–13 stay open to complete in
+    Acrobat as the applicant's sworn answers."""
+    def v(key):
+        return str(data.get(key) or "").strip()
+
+    dob, dod = _parse_date(v("decedentDOB")), _parse_date(v("decedentDOD"))
+    us_state = lambda st: "USA" if re.fullmatch(r"[A-Za-z]{2}", st) else ""
+    fields = {
+        "Decedent Last Name":      v("decedentLastName"),
+        "Decedent First Name":     v("decedentFirstName"),
+        "Decedent Middle Initial": v("decedentMiddleName")[:1],
+        "Decedent Address":        v("decedentStreet"),
+        "Decedent City":           v("decedentCity"),
+        "Decedent County":         re.sub(r"\s+county$", "", v("decedentCounty"), flags=re.IGNORECASE),
+        "Decedent State":          v("decedentState"),
+        "Decedent ZIP":            v("decedentZip"),
+        "Decedent Country":        us_state(v("decedentState")),
+        "Date of Birth":           dob.strftime("%m/%d/%Y") if dob else v("decedentDOB"),
+
+        "Applicant Last Name":      v("petitionerLastName"),
+        "Applicant First Name":     v("petitionerFirstName"),
+        "Applicant Middle Initial": v("petitionerMiddleName")[:1],
+        "Applicant Relationship":   v("petitionerRelationship"),
+        "Applicant Address":        v("petitionerStreet"),
+        "Applicant Connection":     "Proposed administrator",
+        "Applicant City":           v("petitionerCity"),
+        "Applicant State":          v("petitionerState"),
+        "Applicant ZIP":            v("petitionerZip"),
+        "Applicant Country":        us_state(v("petitionerState")),
+    }
+    ssn = re.sub(r"\D", "", v("ssn"))
+    if len(ssn) == 9:
+        fields.update({"SSN 1": ssn[:3], "SSN 2": ssn[3:5], "SSN 3": ssn[5:]})
+    if dod:
+        fields.update({"DOD Month": f"{dod.month:02d}", "DOD Day": f"{dod.day:02d}", "DOD Year": str(dod.year)})
+    if dob and dod:
+        fields["Age at Death"] = str(dod.year - dob.year - ((dod.month, dod.day) < (dob.month, dob.day)))
+
+    # Q3: a non-domiciliary proceeding exists because the decedent held NY
+    # property — pre-check Yes and list it; periods of ownership stay blank.
+    real = "; ".join(ln.strip() for ln in v("realPropertyDescription").splitlines() if ln.strip())
+    if real:
+        fields["Q3 Yes"] = True
+        fields["Q3 Addresses"] = real
+
+    template = os.path.join(TAX_TEMPLATES_DIR, "ET-141 Estate Tax Domicile Affidavit.pdf")
+    return fill_pdf(template, fields, autofit=True)
 
 
 # ─── FAMILY TREE WORKSHEET (FT-1) ─────────────────────────────────────────────
