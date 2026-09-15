@@ -1,6 +1,6 @@
 {
   "name": "probate-hq",
-  "version": "1.6.48",
+  "version": "1.6.49",
   "description": "NY Surrogate's Court Probate HQ",
   "main": "main.js",
   "scripts": {

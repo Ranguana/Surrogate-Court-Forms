@@ -1161,6 +1161,15 @@ def fill_pdf(template_path, fields, font_overrides=None, autofit=False):
                 if "." in name and name.rsplit(".", 1)[1] in fields:
                     name = name.rsplit(".", 1)[1]
                 else:
+                    # Unfilled text/dropdown fields keep the template's size —
+                    # often auto (0) or 12pt — so anything typed later in
+                    # Acrobat came out oversized in tall boxes. Pin them to
+                    # the 8pt used for filled fields.
+                    if (widget.field_type in (fitz.PDF_WIDGET_TYPE_TEXT, fitz.PDF_WIDGET_TYPE_COMBOBOX)
+                            and widget.rect.height >= 2
+                            and (widget.text_fontsize == 0 or widget.text_fontsize > 9)):
+                        widget.text_fontsize = 8
+                        widget.update()
                     continue
             value = fields[name]
             if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
@@ -1177,7 +1186,9 @@ def fill_pdf(template_path, fields, font_overrides=None, autofit=False):
             else:
                 s = str(value) if value is not None else ""
                 widget.field_value = s
-                if s == "X":
+                # Auto-size an "X" only in checkbox-sized cells; in taller boxes
+                # (e.g. P-1 survivor dropdowns) auto-size draws a huge X.
+                if s == "X" and widget.rect.height <= 10:
                     if font_overrides and name in font_overrides:
                         # Explicit per-field override wins.
                         widget.text_fontsize = font_overrides[name]
@@ -3481,7 +3492,7 @@ def fill_cta_pdf(data):
     # WHEREFORE
     fields["Petitioner"]      = letters_to   # Letters of Admin CTA to
     fields["TextField58[0]"]  = ""           # Other relief
-    fields["TextField59[0]"]  = today()      # Dated
+    fields["TextField59[0]"]  = ""           # Dated — at signing
 
     # Petitioner signature block — signature lines stay blank for wet
     # signatures; only the Print Name line is filled.
@@ -3499,7 +3510,7 @@ def fill_cta_pdf(data):
     fields["(State)_F57"]              = pet_state
     fields["(Print Name)_F68"]         = pet
     fields["came_F79"]                 = pet     # "came [name]"
-    fields["Date0"]                    = today()
+    fields["Date0"]                    = ""      # notary's "On ___" — at signing
     fields["Year1"]                    = ""
     # Attorney block at the bottom of the oath page
     atty_name  = data.get("attorneyName")  or "Jessica Wilson, Esq."
